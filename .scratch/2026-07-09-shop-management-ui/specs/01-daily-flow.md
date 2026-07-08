@@ -1,7 +1,7 @@
 # Daily flow — per (day, staff) in/out amount derived read model
 
 Type: spec
-Status: ready-for-agent # Gate A approved 2026-07-09 — adversarial review PASS (cfd1fa6), human approved the 9-spec breakdown; entering Stage 2 (/tdd)
+Status: ready-for-human # implemented via /tdd 2026-07-09 — awaits Stage 3 review
 Parent: #01
 Blocked by: None — can start immediately
 
@@ -59,3 +59,17 @@ A pure-TypeScript derived read model (sibling of `Inventory`) that aggregates ea
 ## Rework on failure
 
 Failure is isolated — `DailyFlow` writes nothing, so a wrong aggregation cannot corrupt the ledger. If a different day-bucket rule is ever needed (TZ), it is a one-function change behind `dayBucket`.
+
+## Comments
+
+- 2026-07-09 — implemented via /tdd (sdd-flow Stage 2, spec #01). Acceptance criteria → proving test (all in `src/data/daily-flow.test.ts`):
+  - AC1 two `in` same day → one summed row → `two 'in' records, same staff + same day → one row summing their line_amounts`
+  - AC2 `in`+`out` same day → both on ONE row → `an 'in' (1000) and an 'out' (300), same staff + same day → both on ONE row`
+  - AC3 different days → distinct rows, newest first → `records on different days → distinct rows, newest day first`
+  - AC4 void drops its line_amount next read → `voiding a record drops its line_amount from the day's totals on next read`
+  - AC5 edit line resnapshot propagates → `editing a record's line resnapshots → day total reflects the new amount`
+  - AC6 price change leaves past flow unchanged → `changing a product's current price leaves past flow rows unchanged`
+  - AC7 staff_id / date_range filter → `staff_id filter narrows rows to that staff` + `date_range filter narrows rows to the window`
+  - derived-never-stored (ADR-0002, AC4 no-drift half) → `every read recomputes; DailyFlow exposes no write surface`
+  Test: `npx jest src/data/daily-flow.test.ts` → 9 passed / 9 total. Typecheck: `npx tsc --noEmit` → exit 0.
+  Commit: `feat(daily-flow): derived per-(day,staff) in/out flow read model` (this spec's implementation commit).
