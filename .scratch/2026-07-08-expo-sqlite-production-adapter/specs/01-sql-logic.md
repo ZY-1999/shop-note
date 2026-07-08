@@ -1,7 +1,7 @@
 # Pure SQL logic — schema registry, SQL builders, row serialization
 
 Type: spec
-Status: ready-for-human # designed + adversarial review PASS (coverage + feasibility); awaits Gate A
+Status: ready-for-agent # Gate A approved 2026-07-08
 Parent: #01
 Blocked by: None — can start immediately
 

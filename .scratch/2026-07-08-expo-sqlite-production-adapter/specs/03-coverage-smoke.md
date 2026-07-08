@@ -1,7 +1,7 @@
 # Full-coverage device smoke — behavioral parity across every repo path
 
 Type: spec
-Status: ready-for-human # designed + adversarial review PASS (coverage + feasibility); awaits Gate A
+Status: ready-for-agent # Gate A approved 2026-07-08
 Parent: #01
 Blocked by: #02 (tracer-bullet smoke — `behaviorScript`, `runExpoSqliteSmoke`, normalization, Home entry — all land there)
 

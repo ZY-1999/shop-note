@@ -1,7 +1,7 @@
 # ExpoSqliteAdapter — real SQL execution + tracer-bullet device smoke
 
 Type: spec
-Status: ready-for-human # designed + adversarial review PASS (coverage + feasibility); awaits Gate A
+Status: ready-for-agent # Gate A approved 2026-07-08
 Parent: #01
 Blocked by: #01 (consumes the pure SQL-logic foundation — registry, builders, serialize/deserialize)
 
