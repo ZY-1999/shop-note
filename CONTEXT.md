@@ -26,7 +26,7 @@ Key decisions live in [docs/adr/](docs/adr/); the code terrain is mapped in [doc
 | **欠货 Negative inventory** | `balance < 0` (more `out` than `in`). Allowed — returned as-is, no clamp, no error. | PRD invariant. |
 | **作废 Void** | Soft-delete: set `voided_at`. The record + its items remain (never hard-removed); excluded from `list`/`staffHistory`/derivation. | No `delete` API exists anywhere (ADR-0001). |
 | **审计 Audit** | Per-mutate field-level diff timeline. Actions: `create`/`update`/`void`/`restore`. | Stock-record `create` is intentionally not audited. |
-| **StoragePort** | The single test seam — a dumb typed row store (`withTransaction`/`insert`/`findById`/`update`/`find`). | Two adapters: `InMemoryAdapter` (tests) / `ExpoSqliteAdapter` (prod stub). See ADR-0001. |
+| **StoragePort** | The single test seam — a dumb typed row store (`withTransaction`/`insert`/`findById`/`update`/`find`). | Two adapters: `InMemoryAdapter` (tests) / `ExpoSqliteAdapter` (production, backed by `expo-sqlite`). See ADR-0001, ADR-0003. |
 
 ## Invariants
 
