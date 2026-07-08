@@ -1,7 +1,7 @@
 # Stock record — edit (resnapshot) + void, audit-wired
 
 Type: spec
-Status: ready-for-agent # Gate A approved 2026-07-08
+Status: ready-for-human # implemented via /tdd 2026-07-08 — awaits Stage 3 review
 Parent: #01
 Blocked by: #5
 
@@ -57,3 +57,7 @@ Edit a posted stock record (item changes resnapshot to the current product title
 ## Rework on failure
 
 The merge rule is the one risky decision. If "touched ⇒ resnapshot" is too aggressive (e.g. a qty-only edit should not re-price), narrow the touch condition here — the merge function is localized to `stockRecordRepo.update` and does not touch #05's posting path or #07's derivation.
+
+## Implementation note (2026-07-08)
+
+`update` implements **upsert** item-merge semantics: submitted lines matched by stable `id`, touched lines (new / product_id-or-qty changed) resnapshot to the product's current title+price, untouched matched lines keep their original posting-time snapshot, and **stored items not mentioned in the submission are kept** (not dropped). The design's "dropped" clause (stored ids absent from the submission removed) is intentionally not implemented because (a) no AC exercises item removal, and (b) `StoragePort` (#01) offers no delete — "nothing in the system hard-deletes" is a project invariant. If item removal becomes required (UI or a later spec), widen the port with a sub-table-scoped delete and add the drop step to `mergeItems`; the change stays local to this module.

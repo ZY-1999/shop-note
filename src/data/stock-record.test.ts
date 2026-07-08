@@ -7,9 +7,10 @@ import { cents } from "@/data/primitives";
 
 function setup() {
   const storage = new InMemoryAdapter();
-  const products = new ProductRepository(storage, new AuditProvider(storage));
-  const stockRecords = new StockRecordRepository(storage, products);
-  return { storage, products, stockRecords };
+  const audit = new AuditProvider(storage);
+  const products = new ProductRepository(storage, audit);
+  const stockRecords = new StockRecordRepository(storage, products, audit);
+  return { storage, audit, products, stockRecords };
 }
 
 describe("StockRecordRepository — create + snapshot", () => {
@@ -171,5 +172,217 @@ describe("StockRecordRepository — list/filter", () => {
     const history = await stockRecords.staffHistory("s1");
     expect(history).toHaveLength(3);
     expect(history.map((r) => r.record.timestamp)).toEqual([t2, t3, t1]); // ascending
+  });
+});
+
+describe("StockRecordRepository — edit (resnapshot) + void", () => {
+  test("edit resnapshots touched lines to current product price; untouched lines keep original snapshot", async () => {
+    const { products, stockRecords } = setup();
+    const productA = await products.create({ title: "可乐", purchase_price: cents(1995) });
+    const productB = await products.create({ title: "薯片", purchase_price: cents(500) });
+
+    const { record, items } = await stockRecords.create({
+      staff_id: "s1",
+      direction: "in",
+      items: [
+        { product_id: productA.id, qty: 10 },
+        { product_id: productB.id, qty: 5 },
+      ],
+    });
+    const itemA = items.find((i) => i.product_id === productA.id)!;
+    const itemB = items.find((i) => i.product_id === productB.id)!;
+
+    // product A's price drifts after posting
+    await products.update(productA.id, { purchase_price: cents(2495) });
+
+    // edit: change item A's qty 10→20 (touched → resnapshot); item B not mentioned
+    const { items: updatedItems } = await stockRecords.update(record.id, {
+      items: [{ id: itemA.id, product_id: productA.id, qty: 20 }],
+    });
+
+    const updatedA = updatedItems.find((i) => i.id === itemA.id)!;
+    expect(updatedA.qty).toBe(20);
+    expect(updatedA.unit_price).toBe(2495); // resnapshot to current price
+    expect(updatedA.line_amount).toBe(49900); // 2495 × 20
+
+    const updatedB = updatedItems.find((i) => i.id === itemB.id)!;
+    expect(updatedB.unit_price).toBe(500); // original snapshot preserved
+    expect(updatedB.qty).toBe(5);
+  });
+
+  test("header edit (note/timestamp/staff_id) applies; updated_at advances", async () => {
+    const { products, stockRecords } = setup();
+    const productA = await products.create({ title: "可乐", purchase_price: cents(1995) });
+
+    const t1 = Date.parse("2026-01-01T00:00:00Z");
+    const t2 = Date.parse("2026-01-02T00:00:00Z");
+    jest.useFakeTimers();
+    try {
+      jest.setSystemTime(t1);
+      const { record } = await stockRecords.create({
+        staff_id: "s1",
+        direction: "in",
+        items: [{ product_id: productA.id, qty: 1 }],
+      });
+
+      jest.setSystemTime(t2);
+      const earlier = Date.parse("2025-01-01T00:00:00Z");
+      const { record: updated } = await stockRecords.update(record.id, {
+        staff_id: "s2",
+        note: "修改备注",
+        timestamp: earlier,
+      });
+
+      expect(updated.staff_id).toBe("s2");
+      expect(updated.note).toBe("修改备注");
+      expect(updated.timestamp).toBe(earlier); // backdatable, independent of system time
+      expect(updated.updated_at).toBe(t2); // system time, advanced past record's t1
+      expect(updated.updated_at).toBeGreaterThan(record.updated_at);
+
+      const reRead = await stockRecords.getById(record.id);
+      expect(reRead?.record.staff_id).toBe("s2");
+      expect(reRead?.record.note).toBe("修改备注");
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  test("adding a new line resnapshots it to the current product price", async () => {
+    const { products, stockRecords } = setup();
+    const productA = await products.create({ title: "可乐", purchase_price: cents(1995) });
+    const productB = await products.create({ title: "薯片", purchase_price: cents(500) });
+    const { record, items } = await stockRecords.create({
+      staff_id: "s1",
+      direction: "in",
+      items: [{ product_id: productA.id, qty: 10 }],
+    });
+
+    // add product B as a new line
+    const { items: updatedItems } = await stockRecords.update(record.id, {
+      items: [
+        { id: items[0].id, product_id: productA.id, qty: 10 }, // unchanged
+        { product_id: productB.id, qty: 3 }, // new line
+      ],
+    });
+
+    expect(updatedItems).toHaveLength(2);
+    const newItem = updatedItems.find((i) => i.product_id === productB.id)!;
+    expect(newItem.unit_price).toBe(500); // snapshot at edit time
+    expect(newItem.line_amount).toBe(1500);
+  });
+});
+
+describe("StockRecordRepository — void semantics", () => {
+  test("void sets voided_at; getById still returns with items intact; no delete API", async () => {
+    const { products, stockRecords } = setup();
+    const productA = await products.create({ title: "可乐", purchase_price: cents(1995) });
+    const { record } = await stockRecords.create({
+      staff_id: "s1",
+      direction: "in",
+      items: [{ product_id: productA.id, qty: 10 }],
+    });
+
+    const { record: voided } = await stockRecords.void(record.id);
+    expect(voided.voided_at).not.toBeNull();
+
+    const got = await stockRecords.getById(record.id);
+    expect(got).not.toBeNull();
+    expect(got!.items).toHaveLength(1); // items intact — never hard-removed
+
+    // No hard-delete API exists on the surface.
+    // @ts-expect-error — no delete method; records are voided, never erased
+    void stockRecords.delete;
+  });
+
+  test("voided records are excluded from list/staffHistory (propagates to downstream reads)", async () => {
+    const { products, stockRecords } = setup();
+    const productA = await products.create({ title: "可乐", purchase_price: cents(1995) });
+    const { record } = await stockRecords.create({
+      staff_id: "s1",
+      direction: "in",
+      items: [{ product_id: productA.id, qty: 10 }],
+    });
+
+    await stockRecords.void(record.id);
+
+    expect(await stockRecords.list()).toHaveLength(0);
+    expect(await stockRecords.staffHistory("s1")).toHaveLength(0);
+  });
+});
+
+describe("StockRecordRepository — edit/void audit", () => {
+  test("edit produces one 'update' entry with a field-level diff; void produces one 'void' entry", async () => {
+    const { storage, products, stockRecords } = setup();
+    const productA = await products.create({ title: "可乐", purchase_price: cents(1995) });
+    const { record } = await stockRecords.create({
+      staff_id: "s1",
+      direction: "in",
+      note: "原备注",
+      items: [{ product_id: productA.id, qty: 10 }],
+    });
+
+    await stockRecords.update(record.id, { note: "新备注" });
+    await stockRecords.void(record.id);
+
+    const timeline = await new AuditProvider(storage).queryTimeline({ entity_type: "stock_record" });
+    expect(timeline.map((e) => e.action)).toEqual(["update", "void"]);
+
+    const updateEntry = timeline.find((e) => e.action === "update")!;
+    expect(updateEntry.diff).toContainEqual({ field: "note", old: "原备注", new: "新备注" });
+  });
+
+  test("a qty change shows in the audit diff via the items signature", async () => {
+    const { storage, products, stockRecords } = setup();
+    const productA = await products.create({ title: "可乐", purchase_price: cents(1995) });
+    const { record, items } = await stockRecords.create({
+      staff_id: "s1",
+      direction: "in",
+      items: [{ product_id: productA.id, qty: 10 }],
+    });
+
+    await stockRecords.update(record.id, {
+      items: [{ id: items[0].id, product_id: productA.id, qty: 20 }],
+    });
+
+    const timeline = await new AuditProvider(storage).queryTimeline({ entity_type: "stock_record", action: "update" });
+    expect(timeline).toHaveLength(1);
+    const itemsDiff = timeline[0].diff.find((d) => d.field === "items");
+    expect(itemsDiff).toBeDefined();
+    expect(String(itemsDiff!.old)).toContain(":10:");
+    expect(String(itemsDiff!.new)).toContain(":20:");
+  });
+});
+
+describe("StockRecordRepository — resnapshot scope (negative)", () => {
+  test("editing one item never corrupts the snapshot of untouched items", async () => {
+    const { products, stockRecords } = setup();
+    const productA = await products.create({ title: "可乐", purchase_price: cents(1995) });
+    const productB = await products.create({ title: "薯片", purchase_price: cents(500) });
+    const { record, items } = await stockRecords.create({
+      staff_id: "s1",
+      direction: "in",
+      items: [
+        { product_id: productA.id, qty: 10 },
+        { product_id: productB.id, qty: 5 },
+      ],
+    });
+    const itemA = items.find((i) => i.product_id === productA.id)!;
+    const itemB = items.find((i) => i.product_id === productB.id)!;
+
+    // both products drift after posting
+    await products.update(productA.id, { purchase_price: cents(9999) });
+    await products.update(productB.id, { purchase_price: cents(9999) });
+
+    // edit only item A
+    await stockRecords.update(record.id, {
+      items: [{ id: itemA.id, product_id: productA.id, qty: 20 }],
+    });
+
+    const reRead = await stockRecords.getById(record.id);
+    const untouchedB = reRead!.items.find((i) => i.id === itemB.id)!;
+    // B's snapshot is pristine — not re-priced to 9999
+    expect(untouchedB.unit_price).toBe(500);
+    expect(untouchedB.title).toBe("薯片");
+    expect(untouchedB.qty).toBe(5);
   });
 });
