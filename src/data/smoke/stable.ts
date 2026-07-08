@@ -23,6 +23,11 @@
  *   even though the key holding them is always the generic `"old"`/`"new"`. This
  *   is what stops a raw `now()` millisecond (the two adapters call it ~ms apart)
  *   from leaking through a void/restore diff's `new`.
+ * - **id-tokens embedded inside string values are scrubbed** — some audit diffs
+ *   serialize a snapshot that embeds ids as substrings (e.g. a stock-record
+ *   `items` signature `product_id:qty:unit_price|...`); that `product_id` is
+ *   adapter-minted, so the surrounding qty/price (real behavior) is preserved
+ *   while the id token is replaced.
  *
  * Pure, no I/O, no `expo-sqlite` import — Jest-covered. Returns a deep clone
  * (the caller's repo data is never mutated).
@@ -33,6 +38,26 @@ export const ID_PLACEHOLDER = "<id>";
 /** Stable placeholder for time (`*_at`, `timestamp`) fields. */
 export const TIME_PLACEHOLDER = "<time>";
 
+/**
+ * `id()` format (see `primitives.ts`): `<Date.now() base36>-<counter base36>-<rand6>`.
+ * base36 never contains `-`, so the three dash-separated runs are unambiguous. The
+ * final `{6}` pins the random part and stops the match at the id's real boundary
+ * (a serialized value continues with `:` / `|` / digits, none of which extend it).
+ */
+const ID_TOKEN = /[0-9a-z]+-[0-9a-z]+-[0-9a-z]{6}/g;
+
+/**
+ * Scrub embedded id-tokens from a string value. Needed because some audit diffs
+ * serialize a snapshot that EMBEDS ids as substrings — e.g. a stock-record `items`
+ * signature is `product_id:qty:unit_price|...` (`auditableRecord`), and that
+ * `product_id` is adapter-minted, so two adapters diverge even when the behavior
+ * (same product, same qty/price) is identical. Replacing the token (not the whole
+ * value) preserves the surrounding qty/price, which ARE the behavior under test.
+ */
+function scrubIds(value: string): string {
+  return value.replace(ID_TOKEN, ID_PLACEHOLDER);
+}
+
 /** Normalize a value tree for cross-adapter compare. Returns a deep clone. */
 export function stable<T>(value: T): T {
   return normalize(value) as T;
@@ -41,6 +66,7 @@ export function stable<T>(value: T): T {
 function normalize(value: unknown): unknown {
   if (value === undefined || value === null) return null;
   if (Array.isArray(value)) return value.map(normalize);
+  if (typeof value === "string") return scrubIds(value);
   if (typeof value === "object") {
     const obj = value as Record<string, unknown>;
     // FieldDiff {field, old, new}: old/new hold VALUES of the field named by the

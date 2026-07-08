@@ -112,4 +112,31 @@ describe("stable() — normalizes volatile fields for cross-adapter compare", ()
       { field: "record_id", old: "<id>", new: "<id>" },
     ]);
   });
+
+  test("id tokens embedded in a serialized string value are scrubbed (stock items signature)", () => {
+    // auditableRecord serializes items as `product_id:qty:unit_price|...`. The
+    // product_id is adapter-minted, so two adapters diverge even when behavior
+    // (same product, same qty/price) is identical — this is exactly the
+    // [8].diff[0].old mismatch. Scrub the id token; keep qty/price (real behavior).
+    const expo = stable({
+      field: "items",
+      old: "mrc71lye-a-cfp1kh:3:1995|mrc71lye-a-cfp1kh:5:1995",
+      new: "mrc71lye-a-cfp1kh:3:1995|mrc71lye-a-cfp1kh:5:2495",
+    });
+    const mem = stable({
+      field: "items",
+      old: "mrc71lyp-c-ctg8na:3:1995|mrc71lyp-c-ctg8na:5:1995",
+      new: "mrc71lyp-c-ctg8na:3:1995|mrc71lyp-c-ctg8na:5:2495",
+    });
+    expect(expo).toEqual(mem);
+    expect(expo).toEqual({
+      field: "items",
+      old: "<id>:3:1995|<id>:5:1995",
+      new: "<id>:3:1995|<id>:5:2495",
+    });
+    // a bare id-string value also scrubs (not just inside a larger payload).
+    expect(stable("mrc71lye-a-cfp1kh")).toBe("<id>");
+    // a string with no id-token passes through unchanged.
+    expect(stable("可乐:3:1995")).toBe("可乐:3:1995");
+  });
 });
