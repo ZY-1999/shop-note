@@ -1,7 +1,7 @@
 # Derived inventory & cost valuation — balance, revaluation, aggregate, negative
 
 Type: spec
-Status: ready-for-agent # Gate A approved 2026-07-08
+Status: ready-for-human # implemented via /tdd 2026-07-08 — awaits Stage 3 review
 Parent: #01
 Blocked by: #4, #6
 
