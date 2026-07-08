@@ -107,4 +107,4 @@ The adapter is the load-bearing spec. If real-SQL execution reveals a port/build
 >
 > **To verify:** on a device or simulator, press Home → "run expo-sqlite smoke". Expected: `PASS` with one `✓` line per step. Any `✗ MISMATCH`/`THREW` names the diverging operation — fix in this spec + #01's builders (revert point above), not in the repos/port.
 >
-> - Commit: `<pending>`
+> - Commit: `dd79c5c`
