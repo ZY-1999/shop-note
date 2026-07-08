@@ -1,7 +1,7 @@
 # Pure SQL logic — schema registry, SQL builders, row serialization
 
 Type: spec
-Status: ready-for-agent # Gate A approved 2026-07-08
+Status: ready-for-human # implemented via /tdd 2026-07-08 — awaits Stage 3 review
 Parent: #01
 Blocked by: None — can start immediately
 
