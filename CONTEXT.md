@@ -1,10 +1,10 @@
 # shop-note — Project Context
 
-> Single-context glossary for the shop-management domain. Source of truth for ubiquitous language; code and specs defer to the terms here. Created 2026-07-08 during the SDD build of the data layer (specs #01–#07); extend as the domain grows.
+> Single-context glossary for the shop-management domain. Source of truth for ubiquitous language; code and specs defer to the terms here. Created 2026-07-08 during the SDD build of the data layer (specs #01–#07); extended 2026-07-09 for the UI layer (composition root + first screens + `dailyFlow` read model + RNTL component testing).
 
 ## What this is
 
-`shop-note` is a **local-first, single-operator, offline** shop management app (Expo SDK 57 / React Native). No backend, no sync. The first deliverable is a pure-TypeScript data layer ([src/data/](src/data/)) — staff, products, stock records, audit, and derived inventory over a typed storage port. UI is not yet built.
+`shop-note` is a **local-first, single-operator, offline** shop management app (Expo SDK 57 / React Native). No backend, no sync. The data layer ([src/data/](src/data/)) — staff, products, stock records, audit, and derived inventory over a typed storage port — is production-grade. The **UI layer is now in progress**: a composition root wires the repositories into React, and the first shop-management screens (bookkeeping / summary / manage) are being built on top. See the [UI 层架构](#ui-层架构) section below, [ADR-0005](docs/adr/0005-ui-layer-architecture.md), and [ADR-0006](docs/adr/0006-ui-component-testing-rntl.md).
 
 Key decisions live in [docs/adr/](docs/adr/); the code terrain is mapped in [docs/codemap/project.md](docs/codemap/project.md).
 
@@ -23,10 +23,12 @@ Key decisions live in [docs/adr/](docs/adr/); the code terrain is mapped in [doc
 | **派生余额 Derived balance** | `balance(staff, product) = Σ(in qty, unvoided) − Σ(out qty, unvoided)`. | **Never stored** — recomputed every read (ADR-0002). |
 | **成本金额 cost_amount** | `current purchase_price × balance qty`, in `Cents`. | Revalued instantly on price change (never stored). |
 | **店铺汇总 shopAggregate** | Cross-staff sum of balances/cost per product. | Derived, never stored. |
+| **每日流水 dailyFlow** | Per (day, staff) sum of snapshot `line_amount`, split by direction (`in`/`out`), newest day first. | Derived read model (same rule as ADR-0002 — never stored); excludes voided; amounts are **historical snapshot**, not current-price-revalued. |
 | **欠货 Negative inventory** | `balance < 0` (more `out` than `in`). Allowed — returned as-is, no clamp, no error. | PRD invariant. |
 | **作废 Void** | Soft-delete: set `voided_at`. The record + its items remain (never hard-removed); excluded from `list`/`staffHistory`/derivation. | No `delete` API exists anywhere (ADR-0001). |
 | **审计 Audit** | Per-mutate field-level diff timeline. Actions: `create`/`update`/`void`/`restore`. | Stock-record `create` is intentionally not audited. |
-| **StoragePort** | The single test seam — a dumb typed row store (`withTransaction`/`insert`/`findById`/`update`/`find`). | Two adapters: `InMemoryAdapter` (tests) / `ExpoSqliteAdapter` (production, backed by `expo-sqlite`). See ADR-0001, ADR-0003. |
+| **StoragePort** | The single test seam — a dumb typed row store (`withTransaction`/`insert`/`findById`/`update`/`find`). | Two adapters: `InMemoryAdapter` (tests) / `ExpoSqliteAdapter` (production, backed by `expo-sqlite`). See ADR-0001, ADR-0003. **`withTransaction` is not reentrant.** |
+| **组合根 Composition root** | The one place that constructs the repo set at app boot: `ExpoSqliteAdapter.open()` → `setupRepos()` → React Context. | UI's only entry to the data layer; see [ADR-0005](docs/adr/0005-ui-layer-architecture.md). |
 
 ## Invariants
 
@@ -35,13 +37,25 @@ These hold across the whole data layer; code is shaped to make breaking them har
 1. **No hard deletes.** Everything is voided (`voided_at`), never erased. `StoragePort` has no `remove`.
 2. **Money is integer `Cents`.** Never a float. Quantities are plain integers.
 3. **Snapshots are frozen at posting.** An item's `title`/`unit_price` don't track the product after posting — except a *touched* line on edit, which resnapshots to the then-current price.
-4. **Derived figures are never stored.** Balances/cost/aggregate are recomputed from the ledger every read (ADR-0002).
+4. **Derived figures are never stored.** Balances/cost/aggregate/**dailyFlow** are recomputed from the ledger every read (ADR-0002).
 5. **Negative inventory is allowed.** No clamp, no error — 欠货 is a real state.
 6. **Every mutate is audited** (except stock-record `create`) inside a `withTransaction` — no change without an audit entry, no audit entry without a change.
 
+## UI 层架构
+
+The data layer is consumed by a thin UI layer (the system PRD calls UI a "thin consumer"):
+
+- **组合根 Composition root** — at app boot, `ExpoSqliteAdapter.open("shop_note.db")` → `setupRepos(adapter)` constructs the repo set, injected via React Context. `setupRepos` (formerly smoke-only) is lifted to a shared module so UI and smoke share one wiring. DB-not-ready holds the splash; open failure shows an error screen + retry.
+- **数据流** — UI reads/writes through React Query hooks (`useStaff` / `useProducts` / `useStockRecords` / `useInventory` / `useDailyFlow`); writes invalidate the affected queries so derived reads refresh automatically. Derived reads stay pure-and-recomputed (ADR-0002) — performance is controlled by precise invalidation, not by caching results.
+- **导航** — three tabs: 记账 (bookkeeping, home) → 汇总 (summary) → 管理 (manage). 记账 is staff-centric (search a staff → post in/out); the `dailyFlow` report lives under 汇总.
+- **样式** — RN `StyleSheet` + extended `theme.ts` semantic tokens (success/danger/warning/border/inputBg/accent); no NativeWind / component library. Native inputs (TextField/Picker/SegmentedControl) use the already-installed `@expo/ui` where it helps.
+
+UI testing ([ADR-0006](docs/adr/0006-ui-component-testing-rntl.md)): derived pure logic (`dailyFlow` etc.) is Jest-covered against `InMemoryAdapter`; **screens / hooks / user-behavior flows are covered by React Native Testing Library component tests** using the real `InMemoryAdapter` (no Repos mocking), driven from user actions (search → post → observe). Real SQL execution stays with the [ADR-0004](docs/adr/0004-adapter-verification-device-smoke.md) device smoke; dark-mode / feel stay manual.
+
 ## Pointers
 
-- **PRD**: [.scratch/2026-07-08-shop-management-system/01-shop-management-system.md](.scratch/2026-07-08-shop-management-system/01-shop-management-system.md)
+- **System PRD**: [.scratch/2026-07-08-shop-management-system/01-shop-management-system.md](.scratch/2026-07-08-shop-management-system/01-shop-management-system.md)
+- **UI PRD**: [.scratch/2026-07-09-shop-management-ui/01-shop-management-ui.md](.scratch/2026-07-09-shop-management-ui/01-shop-management-ui.md)
 - **Specs**: [.scratch/2026-07-08-shop-management-system/specs/](.scratch/2026-07-08-shop-management-system/specs/)
-- **ADRs**: [docs/adr/](docs/adr/)
+- **ADRs**: [docs/adr/](docs/adr/) (incl. [ADR-0005 UI 层架构](docs/adr/0005-ui-layer-architecture.md), [ADR-0006 UI 组件测试](docs/adr/0006-ui-component-testing-rntl.md))
 - **CodeMap**: [docs/codemap/project.md](docs/codemap/project.md)
