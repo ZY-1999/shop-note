@@ -85,4 +85,31 @@ describe("stable() — normalizes volatile fields for cross-adapter compare", ()
     const memSide = stable([{ field: "name", new: "张三" }]); // old absent
     expect(expoSide).toEqual(memSide);
   });
+
+  test("FieldDiff old/new are normalized by the sibling `field` name (timestamps/ids nested under generic keys)", () => {
+    // The audit-timeline hazard: a void/restore diff's `new` holds a real `now()`
+    // millisecond, and the two adapters call now() ~ms apart. The key is "new"
+    // (generic), so stable() must classify the VALUE by the sibling `field` name.
+    // void diff: field=voided_at, old:null (was active) → dropped, new:<ts> → "<time>".
+    expect(stable([{ field: "voided_at", old: null, new: 1783521752541 }])).toEqual([
+      { field: "voided_at", new: "<time>" },
+    ]);
+    // restore diff: old:<ts> → "<time>", new:null → dropped.
+    expect(stable([{ field: "voided_at", old: 1783521752541, new: null }])).toEqual([
+      { field: "voided_at", old: "<time>" },
+    ]);
+    // two adapters with different now() timestamps compare equal (the actual fix).
+    expect(stable([{ field: "voided_at", old: null, new: 111 }])).toEqual(
+      stable([{ field: "voided_at", old: null, new: 222 }]),
+    );
+    // non-timestamp field values pass through unchanged — money/qty must NOT be
+    // collapsed (a price diff's new is a real number both sides agree on).
+    expect(stable([{ field: "purchase_price", old: 1995, new: 2495 }])).toEqual([
+      { field: "purchase_price", old: 1995, new: 2495 },
+    ]);
+    // an id-valued diff field (e.g. record_id change) collapses new → "<id>".
+    expect(stable([{ field: "record_id", old: "r1", new: "r2" }])).toEqual([
+      { field: "record_id", old: "<id>", new: "<id>" },
+    ]);
+  });
 });

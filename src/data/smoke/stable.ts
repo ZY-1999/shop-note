@@ -17,6 +17,12 @@
  *   (InMemory, whose JSON-clone rollback drops undefined-valued keys) compare
  *   equal (the `audit_log.diff` create-scenario hazard where `FieldDiff.old` is
  *   `undefined` on InMemory vs `null` on Expo).
+ * - a `FieldDiff` `{field, old, new}` is normalized **by its sibling `field` name**:
+ *   `old`/`new` carry VALUES of that field, so a `voided_at` diff's `new` is a
+ *   timestamp (→ `"<time>"`) and a `staff_id` diff's `new` is an id (→ `"<id>"`),
+ *   even though the key holding them is always the generic `"old"`/`"new"`. This
+ *   is what stops a raw `now()` millisecond (the two adapters call it ~ms apart)
+ *   from leaking through a void/restore diff's `new`.
  *
  * Pure, no I/O, no `expo-sqlite` import — Jest-covered. Returns a deep clone
  * (the caller's repo data is never mutated).
@@ -36,8 +42,18 @@ function normalize(value: unknown): unknown {
   if (value === undefined || value === null) return null;
   if (Array.isArray(value)) return value.map(normalize);
   if (typeof value === "object") {
+    const obj = value as Record<string, unknown>;
+    // FieldDiff {field, old, new}: old/new hold VALUES of the field named by the
+    // sibling `field` key — a `voided_at` diff carries timestamps in old/new, a
+    // `staff_id` diff carries ids. So classify old/new by the field name, not by
+    // their own key (which is always "old"/"new"); a raw timestamp leaking through
+    // `new` is exactly the audit-timeline hazard. `field` as a string key is
+    // unique to FieldDiff in this domain, so the shape check is reliable.
+    if (typeof obj.field === "string" && ("old" in obj || "new" in obj)) {
+      return normalizeFieldDiff(obj);
+    }
     const out: Record<string, unknown> = {};
-    for (const [key, v] of Object.entries(value as Record<string, unknown>)) {
+    for (const [key, v] of Object.entries(obj)) {
       const normalized = normalizeField(key, v);
       // The port treats null/undefined as "absent" (`Query`: "null/undefined both
       // mean absent"; `InMemoryAdapter.matches`: null/undefined both count as
@@ -54,6 +70,27 @@ function normalize(value: unknown): unknown {
     return out;
   }
   return value;
+}
+
+/** Normalize a FieldDiff: `field` keeps its name; `old`/`new` are classified by it. */
+function normalizeFieldDiff(diff: Record<string, unknown>): Record<string, unknown> {
+  const field = diff.field as string;
+  const out: Record<string, unknown> = {};
+  for (const [key, v] of Object.entries(diff)) {
+    const normalized =
+      key === "old" || key === "new" ? normalizeByFieldName(field, v) : normalizeField(key, v);
+    if (normalized === null) continue;
+    out[key] = normalized;
+  }
+  return out;
+}
+
+/** Classify a value by a domain field name (used for FieldDiff old/new). */
+function normalizeByFieldName(field: string, value: unknown): unknown {
+  if (value === undefined || value === null) return null;
+  if (field === "id" || field.endsWith("_id")) return ID_PLACEHOLDER;
+  if (field.endsWith("_at") || field === "timestamp") return TIME_PLACEHOLDER;
+  return normalize(value);
 }
 
 function normalizeField(key: string, value: unknown): unknown {
