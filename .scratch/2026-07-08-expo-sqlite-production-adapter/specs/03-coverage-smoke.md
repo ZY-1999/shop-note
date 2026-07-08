@@ -1,7 +1,7 @@
 # Full-coverage device smoke — behavioral parity across every repo path
 
 Type: spec
-Status: ready-for-agent # Gate A approved 2026-07-08
+Status: ready-for-human # implemented via /tdd 2026-07-08 — [DEVICE-PENDING] re-run the 22-step smoke on device; Jest InMemory half GREEN (see comment)
 Parent: #01
 Blocked by: #02 (tracer-bullet smoke — `behaviorScript`, `runExpoSqliteSmoke`, normalization, Home entry — all land there)
 
@@ -48,3 +48,20 @@ No adapter, wiring, or normalization changes. If a new step surfaces a stabiliza
 ## Rework on failure
 
 Failure is isolated to the step list; redo this spec only. The adapter (#02) and the smoke harness are not in scope.
+
+> **Comment** — implemented 2026-07-08; Status → ready-for-human (device smoke PENDING user re-run)
+>
+> **What landed** — appended 17 steps to `behaviorScript` (now 22 total: 5 tracer + 17 full-coverage), covering every repository public path: staff + product CRUD/search/void/restore; the `voided_at:null` filter (staff `listActive` + product `search({})`); the stock-record snapshot/update/void paths (touched resample at the new price, untouched line keeps its posting-time snapshot, UPSERT never drops unmentioned lines, void never erases items); the derived balance / staffInventory / shopAggregate reads incl. cost revaluation after a price change and qty→0 after a void; and the full audit timeline (create + edit + void + restore diffs). No adapter / wiring / runner change — `runExpoSqliteSmoke` already takes `behaviorScript` as its default.
+>
+> **Jest-proven (GREEN):**
+> - [x] the full 22-step script runs clean against InMemory; every step returns a defined result — `src/data/smoke/behavior-script.test.ts::every step returns a defined result…`
+> - [x] tracer invariants still hold after the full sequence (rollback leaves 1 staff; create audit diff `old === undefined`) — `::the transaction-rollback step…` + `::the create audit diff…`
+> - [x] the full stock→inventory→void chain drives the balance to 0 (void propagation) — `::the full stock→inventory→void chain…`
+> - [x] `npm run typecheck` exit 0; `npm test` → 90 passed, 0 failed
+>
+> **Device-pending (PRD verification regime — re-run the smoke, now 22 steps):**
+> - [ ] every step's Expo snapshot deep-equals its InMemory snapshot, incl. the hardest paths (stock-record UPSERT/resample/void, derived aggregates, full audit timeline) — `runExpoSqliteSmoke()` runs all 22 steps unchanged
+>
+> **To verify:** re-press Home → "run expo-sqlite smoke" (the button is unchanged). Expected: `PASS` with 22 `✓` lines. Any `✗` names the diverging step.
+>
+> - Commit: `<pending>`
