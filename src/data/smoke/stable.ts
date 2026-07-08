@@ -12,9 +12,11 @@
  * - `id` and any `*_id` → `"<id>"`;
  * - any `*_at` and `timestamp` → `"<time>"` when present, `null` when absent
  *   (`voided_at: null` means "not voided" and must stay null);
- * - `undefined` → `null` (the `audit_log.diff` create-scenario hazard: on
- *   InMemory `FieldDiff.old` is `undefined`, on Expo it round-trips through JSON
- *   as `null` — collapsing both to `null` makes them equal).
+ * - any key whose value normalizes to `null`/`undefined` is **dropped** — the port
+ *   treats null/undefined as "absent", so a `null` key (Expo) and a missing key
+ *   (InMemory, whose JSON-clone rollback drops undefined-valued keys) compare
+ *   equal (the `audit_log.diff` create-scenario hazard where `FieldDiff.old` is
+ *   `undefined` on InMemory vs `null` on Expo).
  *
  * Pure, no I/O, no `expo-sqlite` import — Jest-covered. Returns a deep clone
  * (the caller's repo data is never mutated).
@@ -36,7 +38,18 @@ function normalize(value: unknown): unknown {
   if (typeof value === "object") {
     const out: Record<string, unknown> = {};
     for (const [key, v] of Object.entries(value as Record<string, unknown>)) {
-      out[key] = normalizeField(key, v);
+      const normalized = normalizeField(key, v);
+      // The port treats null/undefined as "absent" (`Query`: "null/undefined both
+      // mean absent"; `InMemoryAdapter.matches`: null/undefined both count as
+      // absent). Canonicalize the same way here — DROP null-valued keys — so a key
+      // that is `null` on one side and MISSING on the other compare equal. That gap
+      // is real: `InMemoryAdapter`'s rollback deep-clones rows via
+      // `JSON.parse(JSON.stringify(...))`, which drops undefined-valued keys (e.g. a
+      // create-audit `FieldDiff.old === undefined`), while `expo-sqlite`'s ROLLBACK
+      // leaves the committed row's stored `null` intact. Both are observably
+      // "absent" per the port contract, so they must compare equal.
+      if (normalized === null) continue;
+      out[key] = normalized;
     }
     return out;
   }

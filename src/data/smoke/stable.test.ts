@@ -20,30 +20,32 @@ describe("stable() — normalizes volatile fields for cross-adapter compare", ()
     });
   });
 
-  test("timestamp-ish fields (_at + timestamp) → '<time>' when present, null when absent", () => {
+  test("timestamp-ish fields (_at + timestamp) → '<time>' when present; null/absent both dropped", () => {
     expect(stable({ created_at: 1, updated_at: 2, timestamp: 5 })).toEqual({
       created_at: "<time>",
       updated_at: "<time>",
       timestamp: "<time>",
     });
-    // voided_at null (not voided) stays null; voided_at set → "<time>".
-    expect(stable({ voided_at: null })).toEqual({ voided_at: null });
+    // voided_at null (not voided) → dropped (port: null ≈ absent).
+    expect(stable({ voided_at: null })).toEqual({});
     expect(stable({ voided_at: 9 })).toEqual({ voided_at: "<time>" });
   });
 
-  test("undefined → null everywhere (the audit_log.diff create-scenario hazard)", () => {
-    expect(stable({ note: undefined })).toEqual({ note: null });
-    // FieldDiff.old: undefined on InMemory → null, matching Expo's stored null.
+  test("null- and undefined-valued keys are dropped (port: null/undefined ≈ absent)", () => {
+    expect(stable({ note: undefined })).toEqual({});
+    expect(stable({ note: null })).toEqual({});
+    // create-scenario FieldDiff: old:undefined → dropped, matching both Expo's
+    // old:null (also dropped) and InMemory's lossy rollback clone (key omitted).
     const diff = [{ field: "name", old: undefined, new: "张三" }];
-    expect(stable(diff)).toEqual([{ field: "name", old: null, new: "张三" }]);
+    expect(stable(diff)).toEqual([{ field: "name", new: "张三" }]);
   });
 
-  test("non-volatile fields pass through; objects and arrays are recursed", () => {
+  test("non-volatile fields pass through; null-valued keys dropped; objects/arrays recursed", () => {
     const product = {
       id: "p1",
       title: "可乐",
       purchase_price: 1995,
-      code: null,
+      code: null, // dropped
       category: "饮料",
       created_at: 1,
     };
@@ -51,11 +53,9 @@ describe("stable() — normalizes volatile fields for cross-adapter compare", ()
       id: "<id>",
       title: "可乐",
       purchase_price: 1995,
-      code: null,
       category: "饮料",
       created_at: "<time>",
     });
-    // nested array of rows
     const rows = [
       { id: "a", qty: 3 },
       { id: "b", qty: 5 },
@@ -74,5 +74,15 @@ describe("stable() — normalizes volatile fields for cross-adapter compare", ()
     // input untouched (id still "x", old still undefined)
     expect(input.id).toBe("x");
     expect(input.diff[0].old).toBeUndefined();
+  });
+
+  test("a null-valued key and a missing key compare equal (the rollback-clone gap)", () => {
+    // Expo side: create-audit FieldDiff stored with old: null (faithful SQL row).
+    // InMemory side after a rollback: the same FieldDiff with `old` MISSING (the
+    // JSON-clone rollback dropped old:undefined). stable() must canonicalize both
+    // to the same shape — this is exactly the [0].diff[0] 3-keys-≠-2-keys case.
+    const expoSide = stable([{ field: "name", old: null, new: "张三" }]);
+    const memSide = stable([{ field: "name", new: "张三" }]); // old absent
+    expect(expoSide).toEqual(memSide);
   });
 });
