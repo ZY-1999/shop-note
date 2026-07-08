@@ -41,7 +41,7 @@ Node: shop-note
   - [src/data/port.ts](../../../src/data/port.ts): the storage contract every repository is built on (single test seam).
 - Edges / Children: the nine nodes below.
 - Evidence: source files listed throughout; [package.json](../../../package.json) dependency set.
-- Unknowns: no `CONTEXT.md` exists yet — domain vocabulary lives in code/specs, not a project glossary.
+- Unknowns: none — domain vocabulary is captured in [CONTEXT.md](../../../CONTEXT.md); key decisions in [docs/adr/](../../../docs/adr/).
 - Next Drill-Down: read the **Module Index** for layout, **Domain And Data** for the data layer, **Entry Index** for route semantics, **Risk Areas** for the unstable APIs.
 
 ### Node: Capability Index
@@ -107,7 +107,7 @@ Node: shop-note
   - **Derived inventory** — [src/data/inventory.ts](../../../src/data/inventory.ts): `Inventory` — read-only projection; `balance` / `staffInventory` / `shopAggregate` recomputed from the unvoided ledger every call (never stored → no drift; instant cost revaluation against current price; negative qty allowed = 欠货).
   - Config namespaces: `expo.*` in [app.json](../../../app.json) only.
 - Evidence: 9 modules under `src/data/` + 8 Jest suites (64 tests); [port.ts](../../../src/data/port.ts) doc-comment records the DESIGN-IT-TWICE port decision.
-- Unknowns: no `CONTEXT.md` glossary yet — terms (Cents, 快照/snapshot, voided, 派生余额/derived balance, 欠货) live in code/specs. The composition root (who constructs the repos + which adapter) is undecided — currently only tests wire them.
+- Unknowns: the composition root (who constructs the repos + which adapter) is undecided — currently only tests wire them. (Domain vocabulary: [CONTEXT.md](../../../CONTEXT.md); key decisions: [docs/adr/](../../../docs/adr/).)
 - Validation: `npm test` covers every module against `InMemoryAdapter`; the real `expo-sqlite` path has no test, by design (verified later by device smoke).
 - Next Drill-Down: read [port.ts](../../../src/data/port.ts) first (the contract), then [stock-record.ts](../../../src/data/stock-record.ts) (the core write module) and [inventory.ts](../../../src/data/inventory.ts) (the deepest read module).
 
@@ -197,7 +197,7 @@ Node: shop-note
   - `note-taking` — Why: "shop-note" name implies notes/lists. Likely entry: new route under `src/app/`. Likely files: new `src/app/notes*.tsx`, a store/persistence module (none exists). Priority: high (first real feature).
   - `shopping-list-or-items` — Why: "shop" half of the name. Likely entry: list screen + item components. Likely files: under `src/components/` + a data layer. Priority: high.
   - `persistence` — **Partially built.** The typed `StoragePort` + `InMemoryAdapter` are landed and Jest-covered ([src/data/](../../../src/data/)); the production `expo-sqlite` adapter is still a stub (see Risk Areas). Remaining: real SQL schema/migrations + a composition root that wires repositories into the app. Priority: unblocks UI for shop management.
-- Evidence: project name + the landed specs under `.scratch/2026-07-08-shop-management-system/` + the `src/data/` layer; still no `CONTEXT.md` glossary.
+- Evidence: project name + specs under `.scratch/2026-07-08-shop-management-system/` + the `src/data/` layer + [CONTEXT.md](../../../CONTEXT.md) glossary + [docs/adr/](../../../docs/adr/).
 - Unknowns: UI scope for the shop-management screens; offline/sync needs (PRD is local-first, no sync planned).
 - Next Drill-Down: run `/to-prd` on the first feature; create `CONTEXT.md` via `/domain-modeling` when terms settle.
 
