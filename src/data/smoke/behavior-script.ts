@@ -1,9 +1,4 @@
-import { AuditProvider } from "@/data/audit";
-import { Inventory } from "@/data/inventory";
-import { ProductRepository } from "@/data/product";
-import { StaffRepository } from "@/data/staff";
-import { StockRecordRepository } from "@/data/stock-record";
-import type { StoragePort } from "@/data/port";
+import type { Repos } from "@/data/composition";
 import { cents } from "@/data/primitives";
 
 /**
@@ -16,31 +11,14 @@ import { cents } from "@/data/primitives";
  * operation (DESIGN-IT-TWICE in spec #02). This file holds the *script*; the
  * runner lives in `run-smoke.ts` (device-only — it imports `expo-sqlite`).
  *
- * This module imports **no** `expo-sqlite` (only repos + port), so Jest can run
- * the script's InMemory half — see `behavior-script.test.ts`. Spec #02 seeded the
- * tracer bullet (steps 1–5); spec #03 appended the full-coverage steps (6+). The
- * runner is untouched by that growth — it takes `behaviorScript` as the default.
+ * This module imports **no** `expo-sqlite` (only the `Repos` type + `cents`), so
+ * Jest can run the script's InMemory half — see `behavior-script.test.ts`. The
+ * `Repos` set and `setupRepos` wiring live in `src/data/composition.ts` (lifted
+ * here in spec #02-composition-preflight) so the UI composition root and the
+ * smoke share one assembly. Spec #02 seeded the tracer bullet (steps 1–5);
+ * spec #03 appended the full-coverage steps (6+). The runner is untouched by
+ * that growth — it takes `behaviorScript` as the default.
  */
-
-/** A composed repo set over a single storage adapter — mirrors `inventory.test.ts`'s setup(). */
-export interface Repos {
-  storage: StoragePort;
-  audit: AuditProvider;
-  products: ProductRepository;
-  staff: StaffRepository;
-  stockRecords: StockRecordRepository;
-  inventory: Inventory;
-}
-
-/** Build a fresh repo set over `storage` — identical wiring for Expo and InMemory. */
-export function setupRepos(storage: StoragePort): Repos {
-  const audit = new AuditProvider(storage);
-  const products = new ProductRepository(storage, audit);
-  const staff = new StaffRepository(storage, audit);
-  const stockRecords = new StockRecordRepository(storage, products, audit);
-  const inventory = new Inventory(stockRecords, products);
-  return { storage, audit, products, staff, stockRecords, inventory };
-}
 
 /** One named behavior; its snapshot is compared across adapters after `stable()`. */
 export interface SmokeStep {
@@ -232,6 +210,18 @@ export const behaviorScript: readonly SmokeStep[] = [
           { product_id: p.id, qty: 2 },
         ],
       });
+    },
+  },
+  {
+    name: "dailyFlow: per (day,staff) in/out from snapshot line_amount",
+    run: async (repos) => {
+      const s = await activeStaff(repos);
+      // Runs BEFORE the void step — the 'in' record is still active, so the flow
+      // is non-empty. Placed AFTER the price update (1995→2495) and the record
+      // edit (touched lines resampled at 2495; the unmentioned line keeps its
+      // 1995 snapshot), so in_amount is the Σ of FROZEN line_amounts — NOT a
+      // current-price (2495) revaluation. stable() collapses `date`→`<date>`.
+      return repos.dailyFlow.flow({ staff_id: s.id });
     },
   },
   {

@@ -12,6 +12,8 @@
  * - `id` and any `*_id` → `"<id>"`;
  * - any `*_at` and `timestamp` → `"<time>"` when present, `null` when absent
  *   (`voided_at: null` means "not voided" and must stay null);
+ * - a `date` key → `"<date>"` (a 'YYYY-MM-DD' derived from a timestamp, e.g.
+ *   `DailyFlowRow.date`, so it varies across adapters the same way time does);
  * - any key whose value normalizes to `null`/`undefined` is **dropped** — the port
  *   treats null/undefined as "absent", so a `null` key (Expo) and a missing key
  *   (InMemory, whose JSON-clone rollback drops undefined-valued keys) compare
@@ -37,6 +39,9 @@
 export const ID_PLACEHOLDER = "<id>";
 /** Stable placeholder for time (`*_at`, `timestamp`) fields. */
 export const TIME_PLACEHOLDER = "<time>";
+/** Stable placeholder for a `date` field — a 'YYYY-MM-DD' derived from a
+ *  timestamp (e.g. `DailyFlowRow.date`), varying across adapters like time. */
+export const DATE_PLACEHOLDER = "<date>";
 
 /**
  * `id()` format (see `primitives.ts`): `<Date.now() base36>-<counter base36>-<rand6>`.
@@ -125,6 +130,9 @@ function normalizeField(key: string, value: unknown): unknown {
   }
   if (key.endsWith("_at") || key === "timestamp") {
     return value == null ? null : TIME_PLACEHOLDER;
+  }
+  if (key === "date") {
+    return value == null ? null : DATE_PLACEHOLDER;
   }
   return normalize(value);
 }

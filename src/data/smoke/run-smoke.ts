@@ -1,8 +1,9 @@
 import * as SQLite from "expo-sqlite";
 import { ExpoSqliteAdapter } from "@/data/expo-sqlite";
 import { InMemoryAdapter } from "@/data/in-memory";
-import { behaviorScript, setupRepos } from "@/data/smoke/behavior-script";
+import { behaviorScript } from "@/data/smoke/behavior-script";
 import type { SmokeStep } from "@/data/smoke/behavior-script";
+import { setupRepos } from "@/data/composition";
 import { stable } from "@/data/smoke/stable";
 
 /**

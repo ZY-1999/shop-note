@@ -1,6 +1,7 @@
 import { describe, expect, test } from "@jest/globals";
 import { InMemoryAdapter } from "@/data/in-memory";
-import { behaviorScript, setupRepos } from "@/data/smoke/behavior-script";
+import { behaviorScript } from "@/data/smoke/behavior-script";
+import { setupRepos } from "@/data/composition";
 
 /**
  * The behavior script's *InMemory* half. Jest can reach this half because
@@ -8,7 +9,7 @@ import { behaviorScript, setupRepos } from "@/data/smoke/behavior-script";
  * the device smoke (`runExpoSqliteSmoke`), exercised by the Home `__DEV__` entry.
  * Together they prove behavioral parity; this test alone proves the full script
  * is well-formed and its step sequence is sound (a malformed step would otherwise
- * surface only on device). It runs the ENTIRE 22-step script per test.
+ * surface only on device). It runs the ENTIRE 23-step script per test.
  */
 describe("behaviorScript (full coverage) — InMemory half", () => {
   test("every step returns a defined result, in sequence", async () => {
@@ -45,12 +46,26 @@ describe("behaviorScript (full coverage) — InMemory half", () => {
   test("the full stock→inventory→void chain drives the balance to 0 (void propagation)", async () => {
     const repos = setupRepos(new InMemoryAdapter());
     for (const step of behaviorScript) await step.run(repos);
-    // After step 20 voids the only stock record, the derived balance is 0 — this
+    // After step 21 voids the only stock record, the derived balance is 0 — this
     // pins the whole sequence (create → read → price change → update → void) on
     // the InMemory side; the device smoke proves Expo matches it step by step.
     const [s] = await repos.staff.listActive();
     const [p] = await repos.products.list();
     const bal = await repos.inventory.balance(s.id, p.id);
     expect(bal.qty).toBe(0);
+  });
+
+  test("the dailyFlow step reflects Σ frozen line_amount (not current-price revalued)", async () => {
+    const repos = setupRepos(new InMemoryAdapter());
+    // Run up to and including the dailyFlow step (it sits just before the void).
+    const dailyFlowIdx = behaviorScript.findIndex((s) => s.name.startsWith("dailyFlow"));
+    for (let i = 0; i <= dailyFlowIdx; i++) await behaviorScript[i].run(repos);
+    const [s] = await repos.staff.listActive();
+    const flow = await repos.dailyFlow.flow({ staff_id: s.id });
+    expect(flow).toHaveLength(1);
+    expect(flow[0].out_amount).toBe(0);
+    // touched qty7@2495 (17465) + new qty2@2495 (4990) + untouched qty3@1995 (5985)
+    // = 28440 — frozen snapshots, NOT a current-price (2495) revaluation.
+    expect(flow[0].in_amount).toBe(28440);
   });
 });

@@ -1,7 +1,7 @@
 # Composition preflight — extract setupRepos/Repos to a shared module + wire dailyFlow + sync smoke
 
 Type: spec
-Status: ready-for-agent # Gate A approved 2026-07-09 — adversarial review PASS (cfd1fa6), human approved the 9-spec breakdown; entering Stage 2 (/tdd)
+Status: ready-for-human # implemented via /tdd 2026-07-09 — awaits Stage 3 review
 Parent: #01
 Blocked by: #1
 
@@ -61,3 +61,13 @@ Blocked by: #1
 ## Rework on failure
 
 Failure is isolated to the assembly wiring — no business logic changes. If the move breaks the smoke, revert the import in `behavior-script.ts`; `composition.ts` is additive and can land independently of the smoke step.
+
+## Comments
+
+- 2026-07-09 — implemented via /tdd (sdd-flow Stage 2, spec #02). Acceptance criteria → evidence:
+  - AC1 single-source wiring → `Repos`/`setupRepos` defined once in `src/data/composition.ts`; `behavior-script.ts` imports `type Repos` from there (local definitions removed).
+  - AC2 dailyFlow in the set → `setupRepos` constructs `new DailyFlow(stockRecords)`.
+  - AC3 behaviorScript behavior-preserving → `behavior-script.test.ts` "every step returns a defined result, in sequence" green across all 23 steps.
+  - AC4 dailyFlow smoke step + InMemory half → step `dailyFlow: per (day,staff) in/out from snapshot line_amount` (before the void step); test `the dailyFlow step reflects Σ frozen line_amount (not current-price revalued)` pins in_amount=28440 (touched 2495 + untouched 1995 lines).
+  - AC5 full suite + typecheck → `npx jest` 12 suites / 103 passed; `npx tsc --noEmit` exit 0.
+  Commit: `refactor(composition): lift setupRepos/Repos to shared module + wire dailyFlow` (this commit).
