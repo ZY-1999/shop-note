@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import * as Device from 'expo-device';
-import { Platform, Pressable, StyleSheet } from 'react-native';
+import { Platform, Pressable, ScrollView, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AnimatedIcon } from '@/components/animated-icon';
@@ -45,7 +45,11 @@ function SmokeEntry() {
     setResult(null);
     try {
       const { runExpoSqliteSmoke } = await import('@/data/smoke/run-smoke');
-      setResult(await runExpoSqliteSmoke());
+      const res = await runExpoSqliteSmoke();
+      // Full per-step log to the Metro terminal too — scrollable/copyable there
+      // even when the on-screen view is truncated.
+      console.log(`[expo-sqlite smoke] ${res.pass ? "PASS" : "FAIL"}\n${res.details}`);
+      setResult(res);
     } catch (error) {
       setResult({
         pass: false,
@@ -56,6 +60,10 @@ function SmokeEntry() {
     }
   }
 
+  const lines = result?.details.split("\n") ?? [];
+  const passed = lines.filter((l) => l.startsWith("✓")).length;
+  const failed = lines.filter((l) => l.startsWith("✗")).length;
+
   return (
     <ThemedView type="backgroundElement" style={styles.smoke}>
       <Pressable onPress={run} disabled={running}>
@@ -64,11 +72,18 @@ function SmokeEntry() {
         </ThemedText>
       </Pressable>
       {result && (
-        <ThemedText type="small" style={styles.smokeResult}>
-          {result.pass ? '✅ PASS' : '❌ FAIL'}
-          {'\n'}
-          {result.details}
-        </ThemedText>
+        <>
+          <ThemedText type="small">
+            {result.pass ? '✅ PASS' : '❌ FAIL'} — {passed}/{passed + failed} steps
+            {'  '}
+            <ThemedText type="small">see Metro terminal for full log</ThemedText>
+          </ThemedText>
+          <ScrollView style={styles.smokeScroll}>
+            <ThemedText type="small" style={styles.smokeResult}>
+              {result.details}
+            </ThemedText>
+          </ScrollView>
+        </>
       )}
     </ThemedView>
   );
@@ -152,5 +167,9 @@ const styles = StyleSheet.create({
   },
   smokeResult: {
     fontFamily: 'monospace',
+  },
+  smokeScroll: {
+    maxHeight: 280,
+    alignSelf: 'stretch',
   },
 });

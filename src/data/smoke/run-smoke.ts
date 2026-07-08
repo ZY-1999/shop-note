@@ -54,11 +54,11 @@ export async function runExpoSqliteSmoke(
       try {
         const expoSnapshot = stable(await step.run(expo));
         const memSnapshot = stable(await step.run(mem));
-        ok = deepEqual(expoSnapshot, memSnapshot);
-        if (!ok) {
-          note =
-            `MISMATCH\n      expo: ${JSON.stringify(expoSnapshot)}\n` +
-            `      mem:  ${JSON.stringify(memSnapshot)}`;
+        const diff = firstDiff(expoSnapshot, memSnapshot, "<root>");
+        if (diff === null) {
+          ok = true;
+        } else {
+          note = diff; // first diverging field, e.g. "<root>.items[1].unit_price: 2495 ≠ 1995"
         }
       } catch (error) {
         note = `THREW: ${error instanceof Error ? error.message : String(error)}`;
@@ -73,21 +73,48 @@ export async function runExpoSqliteSmoke(
   }
 }
 
-/** Order-independent deep equal (post-`stable`, no undefined/Date/function edges). */
-function deepEqual(a: unknown, b: unknown): boolean {
-  if (a === b) return true;
-  if (a === null || b === null || typeof a !== "object" || typeof b !== "object") {
-    return false;
+/** Compact value label for a mismatch hint. */
+function describeVal(v: unknown): string {
+  if (v === null) return "null";
+  if (Array.isArray(v)) return `array(len ${v.length})`;
+  if (typeof v === "object") return "object";
+  return JSON.stringify(v);
+}
+
+/**
+ * First diverging path between two post-`stable` snapshots, or `null` if equal.
+ * Order-independent for object keys, order-sensitive for arrays (a real array
+ * reordering between adapters IS a behavioral difference worth surfacing).
+ * Returns a human path like `<root>.items[1].unit_price: 2495 ≠ 1995`.
+ */
+function firstDiff(a: unknown, b: unknown, path: string): string | null {
+  if (a === b) return null;
+  const aObj = a !== null && typeof a === "object";
+  const bObj = b !== null && typeof b === "object";
+  if (!aObj || !bObj) {
+    return `${path}: ${describeVal(a)} ≠ ${describeVal(b)}`;
   }
-  if (Array.isArray(a) || Array.isArray(b)) {
-    return Array.isArray(a) && Array.isArray(b) && a.length === b.length &&
-      a.every((v, i) => deepEqual(v, b[i]));
+  const aArr = Array.isArray(a);
+  const bArr = Array.isArray(b);
+  if (aArr || bArr) {
+    if (!aArr || !bArr) return `${path}: array ≠ non-array`;
+    if (a.length !== b.length) return `${path}: array length ${a.length} ≠ ${b.length}`;
+    for (let i = 0; i < a.length; i++) {
+      const d = firstDiff(a[i], b[i], `${path}[${i}]`);
+      if (d) return d;
+    }
+    return null;
   }
   const ak = Object.keys(a as Record<string, unknown>);
   const bk = Object.keys(b as Record<string, unknown>);
-  return ak.length === bk.length &&
-    ak.every((k) => deepEqual(
+  if (ak.length !== bk.length) return `${path}: ${ak.length} keys ≠ ${bk.length} keys`;
+  for (const k of ak) {
+    const d = firstDiff(
       (a as Record<string, unknown>)[k],
       (b as Record<string, unknown>)[k],
-    ));
+      path ? `${path}.${k}` : k,
+    );
+    if (d) return d;
+  }
+  return null;
 }
