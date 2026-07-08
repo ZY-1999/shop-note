@@ -145,3 +145,4 @@ hook 层 — 数据流（详见 ADR-0005）
 - 2026-07-09 — drafted via `/idea-to-prd`（`/grilling` + `/domain-modeling` 沉淀 CONTEXT / ADR-0005 / ADR-0006，再 `/to-prd`）。
 - 2026-07-09 — 对抗性评审 **PASS**（fresh-context general-purpose sub-agent，veracity first：所有既定事实对照代码核验通过，无 veracity defect；feasibility 风险均已诚实标注）。据评审 minor 建议 fold 入：`.web.*` 表述修正、theme 现有 token 数精确化、spec 阶段待办（串行化机制 / smoke 同步 / splash 协调 / codemap 维护 / 版本锁定）显式化。状态 `needs-info` → `ready-for-human`，待 Gate 0。
 - 2026-07-09 — Gate 0 通过（用户 reviewed）。状态 `ready-for-human` → `ready-for-agent`，进入 /sdd-flow 执行；下一步 /to-spec 拆分 specs（系统 PRD 数据层已 ship，本 PRD 为其 UI 延续）。
+- 2026-07-09 — /to-spec 完成：拆为 9 个 specs（`specs/01`–`09`，依赖序）。best-of-N decomposition（2 个 divergent 候选 + 独立裁决合成）。两轴对抗评审：A=覆盖度 PASS（37 故事全覆盖）；B=可行性/累积一致性，首轮 4 处缺陷（dailyFlow smoke 步骤位置 / `qk.staffSummaries` 鬼影键命名空间 / `ProductRepository.listActive` 误配 / `useInventory()` 可调用形式违反 rules-of-react）已全部修复并 grep 复核干净。9 specs 全部 `ready-for-human`，待 Gate A。
