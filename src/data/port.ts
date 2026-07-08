@@ -29,6 +29,13 @@ export interface StoragePort {
    * Run `fn` atomically: on resolve, its writes commit; on throw, every write
    * made inside is rolled back and the error rethrows. Used to keep mutate +
    * audit in lockstep (no audit-without-change or change-without-audit).
+   *
+   * Not reentrant: do not call `withTransaction` from inside another
+   * `withTransaction`. The expo-sqlite adapter (production) uses a single
+   * connection with hand-written `BEGIN`/`COMMIT`/`ROLLBACK` — `BEGIN` cannot
+   * nest, so a nested call would error. (The in-memory adapter happens to nest
+   * via snapshot/restore, but that is beyond this contract; repos must not rely
+   * on it.)
    */
   withTransaction<T>(fn: () => Promise<T>): Promise<T>;
   /** Store a row exactly as given (the repo has already set id/timestamps). */

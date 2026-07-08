@@ -1,5 +1,6 @@
+import { useState } from 'react';
 import * as Device from 'expo-device';
-import { Platform, StyleSheet } from 'react-native';
+import { Platform, Pressable, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AnimatedIcon } from '@/components/animated-icon';
@@ -8,6 +9,7 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { WebBadge } from '@/components/web-badge';
 import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
+import type { SmokeResult } from '@/data/smoke/run-smoke';
 
 function getDevMenuHint() {
   if (Platform.OS === 'web') {
@@ -25,6 +27,50 @@ function getDevMenuHint() {
     <ThemedText type="small">
       press <ThemedText type="code">{shortcut}</ThemedText>
     </ThemedText>
+  );
+}
+
+/**
+ * Dev-only smoke entry: runs the expo-sqlite adapter against the in-memory
+ * adapter on press and renders the per-step result. The runner is loaded via
+ * dynamic `import()` so this screen's static bundle never pulls in `expo-sqlite`
+ * (and the native module loads only when the smoke actually runs).
+ */
+function SmokeEntry() {
+  const [result, setResult] = useState<SmokeResult | null>(null);
+  const [running, setRunning] = useState(false);
+
+  async function run() {
+    setRunning(true);
+    setResult(null);
+    try {
+      const { runExpoSqliteSmoke } = await import('@/data/smoke/run-smoke');
+      setResult(await runExpoSqliteSmoke());
+    } catch (error) {
+      setResult({
+        pass: false,
+        details: `RUN FAILED: ${error instanceof Error ? error.message : String(error)}`,
+      });
+    } finally {
+      setRunning(false);
+    }
+  }
+
+  return (
+    <ThemedView type="backgroundElement" style={styles.smoke}>
+      <Pressable onPress={run} disabled={running}>
+        <ThemedText type="code">
+          {running ? 'running smoke…' : 'run expo-sqlite smoke'}
+        </ThemedText>
+      </Pressable>
+      {result && (
+        <ThemedText type="small" style={styles.smokeResult}>
+          {result.pass ? '✅ PASS' : '❌ FAIL'}
+          {'\n'}
+          {result.details}
+        </ThemedText>
+      )}
+    </ThemedView>
   );
 }
 
@@ -54,6 +100,8 @@ export default function HomeScreen() {
             hint={<ThemedText type="code">npm run reset-project</ThemedText>}
           />
         </ThemedView>
+
+        {__DEV__ && <SmokeEntry />}
 
         {Platform.OS === 'web' && <WebBadge />}
       </SafeAreaView>
@@ -94,5 +142,15 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.three,
     paddingVertical: Spacing.four,
     borderRadius: Spacing.four,
+  },
+  smoke: {
+    gap: Spacing.two,
+    alignSelf: 'stretch',
+    paddingHorizontal: Spacing.three,
+    paddingVertical: Spacing.three,
+    borderRadius: Spacing.four,
+  },
+  smokeResult: {
+    fontFamily: 'monospace',
   },
 });
