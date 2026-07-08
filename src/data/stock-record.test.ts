@@ -386,3 +386,38 @@ describe("StockRecordRepository — resnapshot scope (negative)", () => {
     expect(untouchedB.qty).toBe(5);
   });
 });
+
+describe("StockRecordRepository — FK validation", () => {
+  test("create throws if a referenced product does not exist", async () => {
+    const { stockRecords } = setup();
+    await expect(
+      stockRecords.create({
+        staff_id: "s1",
+        direction: "in",
+        items: [{ product_id: "nonexistent", qty: 1 }],
+      }),
+    ).rejects.toThrow(/product .* not found/);
+  });
+
+  test("update throws if a resnapshotted line references a missing product", async () => {
+    const { products, stockRecords } = setup();
+    const productA = await products.create({ title: "可乐", purchase_price: cents(1995) });
+    const { record, items } = await stockRecords.create({
+      staff_id: "s1",
+      direction: "in",
+      items: [{ product_id: productA.id, qty: 1 }],
+    });
+
+    // touching the line with a bad product_id must fail before any write persists
+    await expect(
+      stockRecords.update(record.id, {
+        items: [{ id: items[0].id, product_id: "nonexistent", qty: 2 }],
+      }),
+    ).rejects.toThrow(/product .* not found/);
+
+    // the failed edit left the record untouched (transaction rolled back)
+    const untouched = await stockRecords.getById(record.id);
+    expect(untouched!.items[0].product_id).toBe(productA.id);
+    expect(untouched!.items[0].qty).toBe(1);
+  });
+});
