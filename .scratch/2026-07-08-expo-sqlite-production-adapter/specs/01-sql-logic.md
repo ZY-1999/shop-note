@@ -72,3 +72,13 @@ function deserializeRow(table: TableName, row: Record<string, unknown>): Record<
 ## Rework on failure
 
 Failure is isolated; redo this spec only. The functions are consumed solely by #02; a wrong SQL shape is a one-function fix with its unit test.
+
+> **Comment** — implemented 2026-07-08; Status → ready-for-human
+> - [x] SCHEMA registry is the single source of truth (5 tables; audit_log.diff the only JSON column) — `src/data/sql-logic.test.ts::SCHEMA registry > covers all 5 tables…`
+> - [x] `buildInsert` — registry column order, placeholders == columns, JSON stringified — `::buildInsert > emits INSERT…` + `::buildInsert > stringifies JSON columns…`
+> - [x] `buildUpdate` — SET over patch keys, `WHERE id = ?`, typo guard — `::buildUpdate > emits UPDATE…` + `::buildUpdate > rejects a patch key…` (guard shared with insert via `::buildInsert > rejects a row key…`)
+> - [x] `buildFind` mirrors `InMemoryAdapter.find` (null→`IS NULL`, `= ?`, AND, orderBy no `NULLS`, `LIMIT ?`, WHERE→ORDER BY→LIMIT) — `::buildFind` (4 tests)
+> - [x] JSON round-trip survives `FieldDiff.old === undefined` (normalized → null) — `::JSON round-trip > audit_log.diff survives…`
+> - [x] `deserializeRow` parses JSON columns, passes others through — `::deserializeRow > parses JSON columns…` + `::deserializeRow > is a passthrough…`
+> - [x] `npm test` green + typecheck clean — `npm test` → 77 passed, 0 failed; `npm run typecheck` → exit 0
+> - Commit: `2d7eac8`
