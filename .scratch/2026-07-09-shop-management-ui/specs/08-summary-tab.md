@@ -1,7 +1,7 @@
 # 汇总 tab — shop overview + daily flow + by-staff / by-product distribution
 
 Type: spec
-Status: ready-for-human # designed 2026-07-09 — awaits adversarial review, then Gate A
+Status: ready-for-agent # Gate A approved 2026-07-09 — adversarial review PASS (cfd1fa6), human approved the 9-spec breakdown; entering Stage 2 (/tdd)
 Parent: #01
 Blocked by: #3, #4
 
