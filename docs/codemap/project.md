@@ -4,14 +4,14 @@
 
 - Last updated: `2026-07-08`
 - Project: `shop-note` — Expo SDK 57 / React Native app (name from [app.json](../../../app.json), slug `shop-note`, scheme `shopnote`).
-- Role / responsibility: **Template-stage scaffold.** No shop/note business logic exists yet — the source is the Expo default starter (two demo tabs). Treat the app surface as greenfield; the terrain below is scaffolding to build on, not a product.
+- Role / responsibility: **Template UI + data foundation.** The Expo default UI (two demo tabs) is unchanged, but a pure-TypeScript local-first data layer now exists under `src/data/` (staff / product / stock-record / audit / derived inventory over a typed storage port). No screen consumes it yet — the surface is "data layer ready, UI greenfield".
 - Main languages / frameworks: TypeScript + React 19.2, React Native 0.86, Expo SDK 57 (`expo-router` file-based routing, `expo-image`, `expo-symbols`, `expo-web-browser`, `react-native-reanimated` 4.5, `react-native-worklets`, `react-native-safe-area-context`).
 - Runtime / deployment shape: client-only RN app; iOS / Android / web (`web.output: static`). No backend, no persistence, no network calls.
 - Primary entry types: app route screens (`src/app/*.tsx`) consumed by `expo-router/entry` ([package.json:3](../../../package.json#L3)).
 - Confidence:
-  - confirmed: app structure, routing, theme system, component set, scripts, config (read from source).
-  - inferred: nothing above template level — "shop-note" domain intent is inferred from the project name only.
-  - unknown: intended shop/note features, data model, future navigation beyond two tabs.
+  - confirmed: app structure, routing, theme system, component set, scripts, config, and the `src/data/` layer (storage port, repositories, audit, derived inventory — all Jest-covered).
+  - inferred: nothing at the UI/product level — no screen consumes the data layer yet.
+  - unknown: UI for shop management, the real `expo-sqlite` adapter (stub only), navigation beyond two tabs.
 
 ## 2. Context Tree
 
@@ -38,10 +38,11 @@ Node: shop-note
   - [src/app/index.tsx](../../../src/app/index.tsx): Home screen.
   - [src/constants/theme.ts](../../../src/constants/theme.ts): colors, fonts, spacing — the styling substrate.
   - [app.json](../../../app.json): expo config + experiments (`typedRoutes`, `reactCompiler`).
-- Edges / Children: the eight nodes below.
+  - [src/data/port.ts](../../../src/data/port.ts): the storage contract every repository is built on (single test seam).
+- Edges / Children: the nine nodes below.
 - Evidence: source files listed throughout; [package.json](../../../package.json) dependency set.
-- Unknowns: no `CONTEXT.md` exists yet — domain language for "shop note" is undefined until `/domain-modeling` runs.
-- Next Drill-Down: read the **Module Index** for layout, **Entry Index** for route semantics, **Risk Areas** for the unstable APIs.
+- Unknowns: no `CONTEXT.md` exists yet — domain vocabulary lives in code/specs, not a project glossary.
+- Next Drill-Down: read the **Module Index** for layout, **Domain And Data** for the data layer, **Entry Index** for route semantics, **Risk Areas** for the unstable APIs.
 
 ### Node: Capability Index
 
@@ -68,6 +69,7 @@ Node: shop-note
   - `src/components/` — presentational + themed components. Responsibility: reusable UI (`ThemedText`, `ThemedView`, `Collapsible`, `ExternalLink`, `HintRow`, `WebBadge`, `AnimatedIcon`). Key deps: `react-native-reanimated`, `expo-image`, `expo-symbols`, `expo-web-browser`. Risk: several `.web.tsx` platform variants exist — editing the base file may need a matching web edit.
   - `src/constants/theme.ts` — theme tokens. Responsibility: `Colors` (light/dark), `Fonts` (per-platform), `Spacing`, `BottomTabInset`, `MaxContentWidth`; side-effect imports `@/global.css`. Key deps: `react-native` (`Platform`).
   - `src/hooks/` — `use-theme.ts` (scheme → `Colors`), `use-color-scheme.ts` (re-exports RN `useColorScheme`). Responsibility: theme resolution.
+  - `src/data/` — local-first data layer (see **Domain And Data** node). Responsibility: storage port + adapters, repositories (staff/product/stock-record), audit log, derived inventory. Key deps: `jest`/`ts-jest` (dev only). Risk: `expo-sqlite` adapter is a compiling stub — no device store wired yet.
   - `scripts/reset-project.js` — one-off template reset (moves `src`/`scripts` to `/example`, writes blank `src/app`). Responsibility: scaffolding utility; deletable once real dev starts.
 - Evidence: `find ./src ./scripts` + source reads.
 - Unknowns: none for layout.
@@ -94,17 +96,20 @@ Node: shop-note
 ### Node: Domain And Data
 
 - Type: `object`
-- Status: `unknown`
-- Purpose: domain objects / persistence — **none exist yet**.
+- Status: `confirmed` (data layer) / `inferred` (no UI consumes it yet)
+- Purpose: domain objects, persistence, and the derived read model for shop management.
 - Children:
-  - Core domain objects: none.
-  - Database tables / models: none.
-  - State / stores: none beyond local component `useState`.
+  - **Storage port** — [src/data/port.ts](../../../src/data/port.ts): `StoragePort`, the single test seam — a dumb typed row-store (`withTransaction` / `insert` / `findById` / `update` / `find`), plus `HasId` and `Query`. No `remove` on the surface (PRD invariant: no hard deletes). All business logic lives in pure-TS repos above the port; resist pushing query/aggregation logic down here.
+  - **Adapters** — [src/data/in-memory.ts](../../../src/data/in-memory.ts): `InMemoryAdapter` (used by every test; transactional rollback via snapshots). [src/data/expo-sqlite.ts](../../../src/data/expo-sqlite.ts): `ExpoSqliteAdapter` — compiling stub only, every method throws; the `expo-sqlite` package is not in dependencies yet (separate non-TDD task + device smoke).
+  - **Primitives** — [src/data/primitives.ts](../../../src/data/primitives.ts): `Cents` brand int (money as integer cents via `cents()`); qty is a plain int.
+  - **Repositories** — [src/data/staff.ts](../../../src/data/staff.ts) + [src/data/product.ts](../../../src/data/product.ts): CRUD with soft-delete (`voided_at`) + restore, search, audit-wired via a shared `mutate()` template (read → compute patch → persist → audit, inside `withTransaction`). [src/data/stock-record.ts](../../../src/data/stock-record.ts): posting freezes each line's `title` + `unit_price` snapshot from the product; edit resnapshots touched lines (stable-id merge — untouched lines keep their original snapshot; UPSERT semantics, never drops unmentioned stored lines); void sets `voided_at` (items never erased).
+  - **Audit** — [src/data/audit.ts](../../../src/data/audit.ts): `AuditProvider` — field-level diff on each mutate; read-only timeline query. Stock-record **create** is intentionally NOT audited (only edit/void are).
+  - **Derived inventory** — [src/data/inventory.ts](../../../src/data/inventory.ts): `Inventory` — read-only projection; `balance` / `staffInventory` / `shopAggregate` recomputed from the unvoided ledger every call (never stored → no drift; instant cost revaluation against current price; negative qty allowed = 欠货).
   - Config namespaces: `expo.*` in [app.json](../../../app.json) only.
-- Evidence: no data/import/store files under `src/`; dependency set has no DB/storage/async-storage/net client.
-- Unknowns: the entire "shop note" domain model is undefined — first feature work should go through `/domain-modeling` and seed `CONTEXT.md`.
-- Validation: n/a.
-- Next Drill-Down: none until a feature introduces data.
+- Evidence: 9 modules under `src/data/` + 8 Jest suites (64 tests); [port.ts](../../../src/data/port.ts) doc-comment records the DESIGN-IT-TWICE port decision.
+- Unknowns: no `CONTEXT.md` glossary yet — terms (Cents, 快照/snapshot, voided, 派生余额/derived balance, 欠货) live in code/specs. The composition root (who constructs the repos + which adapter) is undecided — currently only tests wire them.
+- Validation: `npm test` covers every module against `InMemoryAdapter`; the real `expo-sqlite` path has no test, by design (verified later by device smoke).
+- Next Drill-Down: read [port.ts](../../../src/data/port.ts) first (the contract), then [stock-record.ts](../../../src/data/stock-record.ts) (the core write module) and [inventory.ts](../../../src/data/inventory.ts) (the deepest read module).
 
 ### Node: External Dependencies
 
@@ -114,7 +119,7 @@ Node: shop-note
 - Children:
   - Third-party SDKs (all Expo-managed, SDK 57 pinned): `expo-router`, `expo-image`, `expo-symbols`, `expo-web-browser`, `expo-device`, `expo-glass-effect`, `expo-splash-screen`, `expo-status-bar`, `expo-system-ui`, `expo-font`, `expo-constants`, `expo-linking`; RN community: `react-native-reanimated`, `react-native-worklets`, `react-native-safe-area-context`, `react-native-screens`, `react-native-gesture-handler`. See [package.json](../../../package.json).
   - External web links: opened via `expo-web-browser` in-app browser — [src/components/external-link.tsx](../../../src/components/external-link.tsx) (`ExternalLink`).
-  - Storage / filesystem: none.
+  - Storage / filesystem: none wired to a device store yet — [src/data/expo-sqlite.ts](../../../src/data/expo-sqlite.ts) is a compiling stub and the `expo-sqlite` package is **not** in dependencies; tests run against `InMemoryAdapter` only.
   - Auth / network: none.
   - Observability: none.
 - Edges:
@@ -152,19 +157,19 @@ Node: shop-note
 - Status: `confirmed`
 - Purpose: how to prove the app still works — note the gaps.
 - Validation Entry:
-  - Test commands: **none** — no test runner configured.
-  - Test directories: none.
-  - Lint: `npm run lint` (`expo lint`) — [package.json:13](../../../package.json#L13).
+  - Test commands: `npm test` (`jest`) and `npm run typecheck` (`tsc --noEmit`) — [package.json:44-45](../../../package.json#L44-L45).
+  - Test directories: `src/data/*.test.ts` — 8 suites / 64 tests covering the storage port, primitives, in-memory adapter, audit, staff, product, stock-record (post/edit/void + FK), inventory, and the expo-sqlite stub contract.
+  - Lint: `npm run lint` (`expo lint`).
   - Local run: `npm start` → `a` (Android) / `i` (iOS) / `w` (web).
   - Smoke paths: boot → splash hides → Home tab renders welcome + hints; Explore tab renders collapsibles; dark/light switch correct.
   - Logs / metrics: none.
   - Known CI checks: none in repo.
 - Edges:
-  - proves: app boots, routes resolve, theme switches, splash completes.
-  - does not prove: correctness of any future business logic (no unit/integration tests exist yet).
-- Evidence: [package.json](../../../package.json) has only `lint` among quality scripts.
-- Unknowns: whether a test runner (Jest / React Native Testing Library) is intended — `@types/react-test-renderer` and `@testing-library/user-event` appear in the lockfile but no test script or `*.test.*` files exist.
-- Next Drill-Down: when adding tests, pick a runner, add a `test` script, and record the command here.
+  - proves: app boots, routes resolve, theme switches, splash completes; the `src/data/` layer's behaviour (posting, snapshots, voids, audit diffs, derived balances) via Jest against `InMemoryAdapter`.
+  - does not prove: behaviour against real `expo-sqlite` on a device (adapter is a stub), or any UI (no screen consumes the data layer yet).
+- Evidence: [package.json](../../../package.json) `test` + `typecheck` scripts; [jest.config.js](../../../jest.config.js) (ts-jest, diagnostics off, `@/` alias → `./src/*`).
+- Unknowns: device/UI test strategy (React Native Testing Library / detox) — not yet set up; only the pure-TS data layer is unit-tested.
+- Next Drill-Down: Jest test imports come from `@jest/globals` (Expo's `moduleDetection:force` breaks `@types/jest` env globals); time-dependent tests use `jest.useFakeTimers` + `setSystemTime`.
 
 ### Node: Risk Areas
 
@@ -175,9 +180,10 @@ Node: shop-note
   - **Unstable native tabs API** — [src/components/app-tabs.tsx:1](../../../src/components/app-tabs.tsx#L1) imports `expo-router/unstable_native_tabs`. Source: import path carries `unstable_`. Affected: tab navigation across all platforms. Suggested Feature CodeMap: `docs/codemap/tab-navigation.md` when customizing tabs.
   - **React Compiler experiment enabled** — [app.json](../../../app.json) `experiments.reactCompiler: true`. Affected: all components (compiler transforms run). Verify components follow rules-of-react before assuming manual memo is needed.
   - **Typed routes on** — `experiments.typedRoutes: true`; route names are type-checked, so a renamed file must update all `Href`/`Link` references.
-  - **No tests** — zero safety net for refactors; see Validation node.
   - **`.web.tsx` platform variants** — `app-tabs`, `animated-icon`, `use-color-scheme` each have a web sibling; editing one without the other creates platform drift.
   - **Template not yet customized** — risk of treating demo screens as product behavior.
+  - **`expo-sqlite` adapter is a stub** — [src/data/expo-sqlite.ts](../../../src/data/expo-sqlite.ts) throws on every method and the `expo-sqlite` package is not even in dependencies. Real schema/migrations + device smoke are a separate task before any UI ships.
+  - **Data layer has no UI consumer** — repositories are constructed only inside test `setup()` functions; no screen/hook/app composition root wires them yet, so DI is undecided.
 - Unknowns: whether `expo-glass-effect` / `expo-symbols` APIs will be used by planned features.
 - Validation: after editing a component, run on all three platforms (`a`/`i`/`w`).
 - Next Drill-Down: re-read the specific unstable/experimental API's v57 docs before extending.
@@ -190,9 +196,9 @@ Node: shop-note
 - Backlog:
   - `note-taking` — Why: "shop-note" name implies notes/lists. Likely entry: new route under `src/app/`. Likely files: new `src/app/notes*.tsx`, a store/persistence module (none exists). Priority: high (first real feature).
   - `shopping-list-or-items` — Why: "shop" half of the name. Likely entry: list screen + item components. Likely files: under `src/components/` + a data layer. Priority: high.
-  - `persistence` — Why: notes/lists need storage; no storage dep present. Likely entry: a hook/store wrapping a storage lib. Likely files: `src/hooks/` or `src/store/`. Priority: blocking for the above.
-- Evidence: project name only — no source, no spec, no `CONTEXT.md`.
-- Unknowns: scope, data model, and offline/sync needs are entirely undecided.
+  - `persistence` — **Partially built.** The typed `StoragePort` + `InMemoryAdapter` are landed and Jest-covered ([src/data/](../../../src/data/)); the production `expo-sqlite` adapter is still a stub (see Risk Areas). Remaining: real SQL schema/migrations + a composition root that wires repositories into the app. Priority: unblocks UI for shop management.
+- Evidence: project name + the landed specs under `.scratch/2026-07-08-shop-management-system/` + the `src/data/` layer; still no `CONTEXT.md` glossary.
+- Unknowns: UI scope for the shop-management screens; offline/sync needs (PRD is local-first, no sync planned).
 - Next Drill-Down: run `/to-prd` on the first feature; create `CONTEXT.md` via `/domain-modeling` when terms settle.
 
 ## 3. Compact Indexes
@@ -216,6 +222,7 @@ Node: shop-note
 | components       | [src/components/](../../../src/components/) | reusable themed UI                      | reanimated, expo-image, expo-symbols, expo-web-browser       | `.web.tsx` siblings for 3 components       |
 | theme tokens     | [theme.ts](../../../src/constants/theme.ts) | Colors/Fonts/Spacing                    | react-native (`Platform`)                                    | side-effect imports `@/global.css`         |
 | hooks            | [src/hooks/](../../../src/hooks/)          | theme/scheme resolution                 | react-native                                                 | web variant of `use-color-scheme`         |
+| data layer       | [src/data/](../../../src/data/)            | storage port + repos + audit + derived inventory | jest/ts-jest (dev only)                              | `expo-sqlite` adapter is a stub; no UI consumer |
 | reset script     | [scripts/reset-project.js](../../../scripts/reset-project.js) | template reset utility                  | node fs/path                                                 | deletable after real dev starts            |
 
 ### Cross-Module Flow Table
@@ -231,6 +238,7 @@ Node: shop-note
 - [src/components/app-tabs.tsx](../../../src/components/app-tabs.tsx): tab navigator (uses unstable API).
 - [src/constants/theme.ts](../../../src/constants/theme.ts): all theme tokens.
 - [src/hooks/use-theme.ts](../../../src/hooks/use-theme.ts): scheme → colors.
+- [src/data/port.ts](../../../src/data/port.ts): storage contract — the single test seam under the data layer.
 - [app.json](../../../app.json): expo config + experiments.
 - [package.json](../../../package.json): scripts + dependency pins.
 
@@ -238,4 +246,4 @@ Node: shop-note
 
 - Refresh this Project CodeMap when module boundaries, entry types, external dependencies, or validation commands change (e.g. a test runner is added, a backend/persistence layer lands, routes grow beyond two tabs).
 - Do **not** refresh the whole map for a narrow feature edit — update or create the relevant Feature CodeMap (`docs/codemap/<feature>.md`) instead, via `/codemap` in `feature` mode.
-- Re-run `/codemap` drift-check before trusting this map if `src/app/`, `src/components/`, or `src/constants/theme.ts` have changed since `Last updated`.
+- Re-run `/codemap` drift-check before trusting this map if `src/app/`, `src/components/`, `src/constants/theme.ts`, or `src/data/` have changed since `Last updated`.
