@@ -1,7 +1,7 @@
 # Full-coverage device smoke — behavioral parity across every repo path
 
 Type: spec
-Status: ready-for-human # implemented via /tdd 2026-07-08 — [DEVICE-PENDING] re-run the 22-step smoke on device; Jest InMemory half GREEN (see comment)
+Status: ready-for-human # implemented via /tdd 2026-07-08 — device-verified PASS 2026-07-08 (22/22 ✓); Jest InMemory half GREEN (see comment)
 Parent: #01
 Blocked by: #02 (tracer-bullet smoke — `behaviorScript`, `runExpoSqliteSmoke`, normalization, Home entry — all land there)
 
@@ -59,9 +59,11 @@ Failure is isolated to the step list; redo this spec only. The adapter (#02) and
 > - [x] the full stock→inventory→void chain drives the balance to 0 (void propagation) — `::the full stock→inventory→void chain…`
 > - [x] `npm run typecheck` exit 0; `npm test` → 90 passed, 0 failed
 >
-> **Device-pending (PRD verification regime — re-run the smoke, now 22 steps):**
-> - [ ] every step's Expo snapshot deep-equals its InMemory snapshot, incl. the hardest paths (stock-record UPSERT/resample/void, derived aggregates, full audit timeline) — `runExpoSqliteSmoke()` runs all 22 steps unchanged
+> **Device-verified (PRD verification regime — 22-step smoke, PASS 2026-07-08):**
+> - [x] every step's Expo snapshot deep-equals its InMemory snapshot, incl. the hardest paths (stock-record UPSERT/resample/void, derived aggregates, full audit timeline) — `runExpoSqliteSmoke()` returns `PASS`, 22/22 ✓
 >
-> **To verify:** re-press Home → "run expo-sqlite smoke" (the button is unchanged). Expected: `PASS` with 22 `✓` lines. Any `✗` names the diverging step.
+> **Stabilization surfaced by the full audit timeline (all isolated to the smoke harness `stable()`, no adapter / repos / port change):** four encodings of volatile tokens (ids/timestamps) that `stable()` had to learn to canonicalize — (1) a `null`-valued key vs a missing key (`InMemoryAdapter` rollback deep-clones via `JSON.parse(JSON.stringify(...))`, dropping undefined-valued keys; port treats null/undefined as "absent" → drop both); (2) a timestamp value nested under the generic `new` key of a void/restore `FieldDiff` (classified by the sibling `field` name, not its own key); (3) an id token embedded inside a serialized snapshot string (`auditableRecord` items signature `product_id:qty:price|…`, scrubbed by the `id()` token format). Each pinned by a regression test in `src/data/smoke/stable.test.ts`.
 >
-> - Commit: `285eea7`
+> **Stage-3 note (latent, tolerated):** `InMemoryAdapter`'s rollback JSON-clone drops undefined-valued keys — a fidelity gap vs `expo-sqlite` ROLLBACK. Tolerated: the port contract treats null/undefined as "absent", so observable behavior is identical (and `stable()` canonicalizes both); existing Jest tests are unaffected. Recorded for the review.
+>
+> - Commits: `285eea7` (22 steps), `138d2f8` + `5b3e6d0` (stabilization)
