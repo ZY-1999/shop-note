@@ -64,4 +64,4 @@ Failure is isolated to the step list; redo this spec only. The adapter (#02) and
 >
 > **To verify:** re-press Home → "run expo-sqlite smoke" (the button is unchanged). Expected: `PASS` with 22 `✓` lines. Any `✗` names the diverging step.
 >
-> - Commit: `<pending>`
+> - Commit: `285eea7`
