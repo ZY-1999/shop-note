@@ -1,7 +1,7 @@
 # ExpoSqliteAdapter — real SQL execution + tracer-bullet device smoke
 
 Type: spec
-Status: ready-for-human # implemented via /tdd 2026-07-08 — [DEVICE-PENDING] device smoke not yet run; Jest-testable parts GREEN (see comment)
+Status: ready-for-human # implemented via /tdd 2026-07-08 — device smoke PASS (user-run 2026-07-08); all criteria GREEN
 Parent: #01
 Blocked by: #01 (consumes the pure SQL-logic foundation — registry, builders, serialize/deserialize)
 
@@ -89,7 +89,7 @@ The adapter is the load-bearing spec. If real-SQL execution reveals a port/build
 
 > **Comment** — implemented 2026-07-08; Status → ready-for-human (device smoke PENDING user run)
 >
-> **Verification split** — the PRD's testing decision puts real-SQL execution on the device, not in Jest. Jest proves the pure-logic foundation + the smoke's *InMemory* half; the device smoke proves real-SQL execution + cross-adapter parity. The device smoke is ONE user action (Home `__DEV__` → "run expo-sqlite smoke") that exercises every device-pending criterion at once. **Do not start spec #03 until it returns `{pass:true}`** — #03 appends steps to this same script and would build on an unverified adapter.
+> **Verification split** — the PRD's testing decision puts real-SQL execution on the device, not in Jest. Jest proves the pure-logic foundation + the smoke's *InMemory* half; the device smoke proves real-SQL execution + cross-adapter parity. The device smoke is ONE user action (Home `__DEV__` → "run expo-sqlite smoke") that exercises every device-pending criterion at once. The smoke was **run by the user on 2026-07-08 and returned PASS** — every step's Expo snapshot deep-equals its InMemory snapshot, so the adapter is verified behaviorally aligned. #03 may now extend the script.
 >
 > **Jest-proven (GREEN):**
 > - [x] migration DDL: types/NOT NULL/PK, value-domain CHECK (direction/action), no FK/UNIQUE, `COLUMNS`↔`SCHEMA` drift guard, `idx_item_record_id` non-unique — `src/data/expo-sqlite-migration.test.ts` (5 tests)
@@ -98,13 +98,13 @@ The adapter is the load-bearing spec. If real-SQL execution reveals a port/build
 > - [x] port contract: `withTransaction` non-reentrant note added — `src/data/port.ts`
 > - [x] stub test deleted; `npm run typecheck` exit 0; `npm test` → 89 passed, 0 failed
 >
-> **Device-pending (PRD verification regime — one user-run smoke covers all):**
-> - [ ] `expo-sqlite` installed (SDK 57); adapter opens → WAL → migrates on open — `package.json`/`app.json` (expo-sqlite 57.0.0 + config plugin); runtime path `ExpoSqliteAdapter.open`
-> - [ ] all 5 port methods execute real SQL with correct TS row shapes — `ExpoSqliteAdapter` insert/findById/update/find
-> - [ ] `audit_log.diff` round-trips through real SQLite — exercised by the smoke's "audit: timeline" step
-> - [ ] `withTransaction` commits on resolve (returns T) / rolls back + rethrows on throw — exercised by the smoke's "tx: rollback" step
-> - [ ] minimal device smoke returns `{pass:true}`; Home `__DEV__` entry renders — `runExpoSqliteSmoke()`; `src/app/index.tsx`
+> **Device-verified (user-run smoke — PASS, 2026-07-08):**
+> - [x] `expo-sqlite` installed (SDK 57); adapter opens → WAL → migrates on open — `package.json`/`app.json` (expo-sqlite 57.0.0 + config plugin); runtime path `ExpoSqliteAdapter.open`
+> - [x] all 5 port methods execute real SQL with correct TS row shapes — `ExpoSqliteAdapter` insert/findById/update/find
+> - [x] `audit_log.diff` round-trips through real SQLite — exercised by the smoke's "audit: timeline" step
+> - [x] `withTransaction` commits on resolve (returns T) / rolls back + rethrows on throw — exercised by the smoke's "tx: rollback" step
+> - [x] minimal device smoke returns `{pass:true}`; Home `__DEV__` entry renders — `runExpoSqliteSmoke()`; `src/app/index.tsx`
 >
-> **To verify:** on a device or simulator, press Home → "run expo-sqlite smoke". Expected: `PASS` with one `✓` line per step. Any `✗ MISMATCH`/`THREW` names the diverging operation — fix in this spec + #01's builders (revert point above), not in the repos/port.
+> **Verified:** user ran Home → "run expo-sqlite smoke" on 2026-07-08 → **PASS** (every step ✓). Any future `✗ MISMATCH`/`THREW` would name the diverging operation; fix in this spec + #01's builders (revert point above), not in the repos/port.
 >
 > - Commit: `dd79c5c`
