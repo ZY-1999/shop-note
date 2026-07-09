@@ -27,6 +27,7 @@ export const qk = {
     all: ["records"] as const,
     list: (filter?: RecordFilter) => ["records", "list", filter ?? {}] as const,
     staffHistory: (staffId: string) => ["records", "staffHistory", staffId] as const,
+    byId: (recordId: string) => ["records", "byId", recordId] as const,
   },
   inventory: {
     all: ["inventory"] as const,

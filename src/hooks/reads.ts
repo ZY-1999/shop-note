@@ -54,6 +54,19 @@ export function useStockRecords(filter?: RecordFilter): UseQueryResult<RecordWit
   });
 }
 
+/**
+ * One record by id — the record detail view (#7). `getById` returns EVEN voided
+ * records (so the detail stays viewable after a void), so this hook does too.
+ * Invalidated under `qk.records.all` (prefix) by the update/void mutations.
+ */
+export function useStockRecordById(recordId: string): UseQueryResult<RecordWithItems | null> {
+  const repos = useRepos();
+  return useQuery<RecordWithItems | null>({
+    queryKey: qk.records.byId(recordId),
+    queryFn: () => repos.stockRecords.getById(recordId),
+  });
+}
+
 export function useShopAggregate(): UseQueryResult<Aggregate[]> {
   const repos = useRepos();
   return useQuery<Aggregate[]>({

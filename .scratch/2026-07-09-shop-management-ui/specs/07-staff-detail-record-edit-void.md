@@ -1,7 +1,7 @@
 # 记账 tab — staff detail + record detail / edit / void
 
 Type: spec
-Status: ready-for-agent # Gate A approved 2026-07-09 — adversarial review PASS (cfd1fa6), human approved the 9-spec breakdown; entering Stage 2 (/tdd)
+Status: ready-for-human # Stage 2 implemented 2026-07-09 — RED→GREEN via /tdd; evidence below
 Parent: #01
 Blocked by: #6
 
@@ -48,3 +48,28 @@ The look-back / correct flow on top of the post flow (#6): a staff detail screen
 ## Rework on failure
 
 Edit/void are isolated to their screens + two mutations; the repo's merge/void logic is already shipped and unchanged. If an edit drops a line it shouldn't, the bug is in how the form submits line ids (UI), not the merge — fix in the edit form. Void never erases data, so a wrong void is recoverable by restore (if added later) or by re-reading.
+
+---
+
+## Stage 2 evidence (implemented 2026-07-09)
+
+`npx jest` → 154 passed / 24 suites (both projects); `npx tsc --noEmit` → exit 0.
+
+- **AC1 (staff detail: holdings + newest-first history; tap → record detail)** → `src/components/staff-detail.test.tsx` "shows the staff's per-product holdings and movement history" (holdings via `useStaffInventory` → `holding-${productId}` + amount `¥12.00`; history via `useStockRecords({staff_id})` → `history-${recordId}` + direction) + "lists history newest-first" (timestamp-desc) + "opens the record detail when a history row is tapped" (`onOpenRecord(recordId)`). GREEN.
+- **AC2 (record detail: frozen snapshot + header)** → `src/components/record-detail.test.tsx` "renders each line's frozen snapshot (title/unit_price/qty/line_amount) + the header" (via `useStockRecordById` → getById; per-line `unit-price`/`line-amount` MoneyTexts + direction/note) + "keeps the frozen snapshot after the product's price/title later change" (product edited to 新名称/999¢ AFTER posting → detail still shows 可乐/¥3.00/¥12.00; snapshot is the source of truth, not a re-derivation). GREEN.
+- **AC3 (edit resnapshot-merge: touched resnapshot, untouched keep; balance updates; audit diff)** → "resnapshots touched lines at the current price; untouched lines keep their frozen snapshot" (post cola×2@300¢ + water×3@500¢; raise cola to 700¢; edit cola qty 2→5 only → cola resnapshots to 700¢/5/3500¢ with id preserved; water UNTOUCHED keeps 500¢/3/1500¢; an `update` audit entry lands). The edit form carries each line's stable `id` through submit (`RecordForm` `edit` prop), driving the repo's touched/untouched merge. GREEN.
+- **AC4 (void: disappears from balance, stays viewable, audited)** → "confirms then voids; record stays viewable, drops from the balance, and is audited" ([作废]→confirm→`useVoidStockRecord`; `已作废` shown via getById returning the voided record; `staffInventory` now `[]`; a `void` audit entry lands) + "cancel at the confirm step does not void" (voided_at stays null). GREEN.
+- **AC5 (edit/void reflected across views without manual refresh)** → "a void refreshes other open views through React Query (no manual refetch)" (StaffDetail + RecordDetail mounted under one queryClient; voiding via RecordDetail makes StaffDetail's `holding` + `history` rows vanish live — the mutation's `onSuccess` invalidates `qk.records` + `qk.inventory` + `qk.dailyFlow` by prefix; edit shares the identical invalidation). GREEN.
+
+**Mutations/reads added**: `useUpdateStockRecord` + `useVoidStockRecord` (`src/hooks/mutations.ts`, same gate + prefix-invalidation pattern as `useCreateStockRecord`); `useStockRecordById` + `qk.records.byId` (`src/hooks/reads.ts` / `query-keys.ts` — getById returns voided records too, so the detail stays viewable after a void).
+
+**Components/routes**: `StaffDetail` (router-agnostic; `onOpenRecord` delegated) + `RecordDetail` (in-place view↔edit toggle; edit reuses #06's `RecordForm` via its new `edit` prop, preloaded with each line's stable `id`); routes `src/app/bookkeeping/staff/[id].tsx` + `src/app/bookkeeping/record/[id].tsx` — thin `useLocalSearchParams` adapters, mirroring `record-form.tsx`.
+
+**Edit-mode contract (the one subtle bit)**: `RecordForm` gained an optional `edit: { recordId, timestamp, note, lines: EditLine[] }` prop; `EditLine` carries the stable item `id`. Submit branches to `useUpdateStockRecord` sending `{ id, product_id, qty }` per line (ids preserved for existing lines, absent for newly-added); create mode is unchanged (#06's 8 tests still GREEN).
+
+**RNTL mechanics** reused verbatim from #06: extracted `waitForSync` / `flushPending` into `src/testing/async.ts` (one home for #07–#09); same `afterEach queryClient.clear()` isolation; `MoneyText`'s two-child output joined before string-match. The benign "worker process failed to exit gracefully / active timers" jest warning persists (traces to the pre-existing `staff-list-tracer` suite); `--detectOpenHandles` finds nothing — not chased.
+
+**Device-pending**: jest/RNTL prove behavior through the real data stack (ADR-0006); the real expo-router Stack push/back for the two new routes, and the in-place view↔edit transition on device, remain device-confirmed-pending (same posture as #04/#05/#06).
+
+Commit: see `feat(bookkeeping): staff detail + record detail / edit / void (#07)` (this spec's Stage 2 commit).
+
