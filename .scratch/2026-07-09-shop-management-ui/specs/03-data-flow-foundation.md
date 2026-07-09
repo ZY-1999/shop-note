@@ -1,7 +1,7 @@
 # Data-flow foundation — Repos Context + React Query + read hooks + write-serialization gate + RNTL harness
 
 Type: spec
-Status: ready-for-agent # Gate A approved 2026-07-09 — adversarial review PASS (cfd1fa6), human approved the 9-spec breakdown; entering Stage 2 (/tdd)
+Status: ready-for-human # implemented via /tdd 2026-07-09 — awaits Stage 3 review. Gate A approved (cfd1fa6); entering Stage 2 was 2026-07-09.
 Parent: #01
 Blocked by: #2
 
@@ -77,3 +77,16 @@ The vertical tracer bullet that proves the entire data-flow stack: a React Conte
 ## Rework on failure
 
 The foundation is additive (no existing UI to break; the data layer is untouched). If jest-expo/RNTL cannot coexist with the node data-layer config, isolate the UI tests behind the jest-expo project only and keep the data layer on its current config — the `projects` split makes that a config revert, not a redesign. If React Query's concurrency model changes the gate's necessity, the gate is one helper behind `useSerializedMutation` — localize there.
+
+## Comments
+
+- 2026-07-09 — implemented via /tdd (sdd-flow Stage 2, spec #03). Acceptance criteria → evidence:
+  - AC1 tracer vertical → `src/app/staff-list-tracer.test.tsx` "renders a seeded staff name through the full stack…" — `renderWithProviders(<StaffListTracer/>)` seeded via the real `InMemoryAdapter`, `useStaff()` shows the seeded name.
+  - AC2 write→invalidate→refresh → `src/app/staff-list-tracer.test.tsx` "firing useCreateStaff re-renders the list…" — press "add-staff", `onSuccess` invalidates `qk.staff.all`, new name appears, no manual refetch.
+  - AC3 serialization gate → `src/hooks/mutation-queue.test.ts` (3 tests) — two enqueued tasks never overlap; rejection doesn't break the chain; order preserved. (Committed separately as the gate.)
+  - AC4 test isolation → `src/app/providers.test.tsx` "test A…" / "test B gets a FRESH adapter + QueryClient…" — a second test with no seed sees none of test A's data.
+  - AC5 jest coexistence → `npx jest` runs BOTH projects: 13 data suites (node/ts-jest) + 3 UI suites (jest-expo) = 16 suites / 113 tests, all green.
+  - AC6 QueryClient defaults → `src/app/providers.test.tsx` "disables refetch on focus/mount…" (pins the defaults object) + "a focus event does NOT trigger a refetch" (`focusManager.setFocused(true)` → `staff.list` spy call count unchanged).
+  - Full suite 16 suites / 113 tests green; `npx tsc --noEmit` exit 0.
+- 2026-07-09 — version-lock resolution (PRD-flagged): jest unified to 29 (jest-expo@57 is a jest-29 preset; jest@30 + jest@29 cannot coexist — jest resolves the environment by bare name, so jest-cli@30 loaded `jest-environment-node@29` whose `ModuleMocker` lacks `clearMocksOnScope` → all 13 data suites regressed). `.nvmrc` → 22 (RNTL v14 needs Node ≥22.13). Recorded in commit `aef5942` + this spec's toolchain commit.
+- 2026-07-09 — RNTL v14 harness notes: `render()` is async (await it or `view` is a Promise); the RenderResult is a lazy Proxy (its query methods are reachable by direct access but resist spreading/`Object.assign`-merging), so `renderWithProviders` returns `{ view, repos, queryClient }` rather than attaching repos onto the result. `IS_REACT_ACT_ENVIRONMENT=true` (the usual web fix) deadlocks RNTL's findByText under React Query v5 (nested act) — deliberately NOT set; the "not configured to support act" console.error is cosmetic (RNTL flushes via waitFor).

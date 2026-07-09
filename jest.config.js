@@ -30,6 +30,7 @@ const uiProject = {
   preset: "jest-expo",
   moduleNameMapper,
   testMatch: ["<rootDir>/src/**/*.test.tsx"],
+  setupFilesAfterEnv: ["<rootDir>/jest-setup.js"],
 };
 
 module.exports = {
