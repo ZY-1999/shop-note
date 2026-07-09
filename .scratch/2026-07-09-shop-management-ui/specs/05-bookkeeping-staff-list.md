@@ -1,7 +1,7 @@
 # 记账 tab — staff entry list + search + per-staff holding summary (theme tokens + MoneyText)
 
 Type: spec
-Status: ready-for-agent # Gate A approved 2026-07-09 — adversarial review PASS (cfd1fa6), human approved the 9-spec breakdown; entering Stage 2 (/tdd)
+Status: ready-for-human # Stage 2 (/tdd) implemented 2026-07-09 — all ACs GREEN in jest/RNTL, tsc clean; device-visual + real Stack nav pending
 Parent: #01
 Blocked by: #3, #4
 
@@ -60,3 +60,22 @@ The bookkeeping home (记账, the default tab): a searchable list of staff, each
 ## Rework on failure
 
 `staffSummaries()` is an additive read (writes nothing) — a wrong rollup cannot corrupt the ledger; revert to N `staffInventory()` calls behind the same hook if the one-pass form proves wrong. `MoneyText` + theme tokens are leaf utilities — isolated, no downstream rework.
+
+## Comments
+
+Stage 2 (/tdd) implemented 2026-07-09. `npx jest` → 128 passed / 20 suites; `npx tsc --noEmit` → exit 0.
+
+- **AC1 (search narrows)** → `src/__tests__/bookkeeping-tab.test.tsx` "shows all active staff, then narrows by name as the operator types" (RNTL + real InMemoryAdapter; `useStaff({search})` swaps `list()`↔`search({text})`). GREEN.
+- **AC2 (one-pass per-staff summary)** → `src/data/inventory.test.ts` "Inventory — staff summaries" / "one pass rolls up per-staff variety / total_qty / total_amount / has_negative" (data-layer proof: one `staffSummaries()` call, grouped s1/s2, net-zero-excluded variety, price-revalued total_amount); screen-level join proven by `bookkeeping-tab.test.tsx` "renders a seeded record's variety / qty / amount on the row" (1种 / 4件 / ¥12.00). GREEN.
+- **AC3 (欠货 badge + danger)** → `src/components/staff-row.test.tsx` "shows a 欠货 badge + danger MoneyText when has_negative"; row danger tint via `theme.backgroundSelected`. GREEN.
+- **AC4 (MoneyText format)** → `src/components/money-text.test.tsx` (Cents(12345)→¥123.45; cents(-500)→欠货 ¥5.00 danger; cents(0)→¥0.00 neutral). GREEN.
+- **AC5 (入库/出库 nav carries staff_id + direction)** → `src/__tests__/bookkeeping-tab.test.tsx` "pushes the record form prefilled with the staff + direction" (mock-router asserts `router.push({pathname:'/bookkeeping/record-form', params:{staff_id, direction}})` for both `in` and `out`). Row-tap `onOpen` callback verified at `staff-row.test.tsx` "入库 / 出库 / row each call back with the staff id". GREEN.
+- **AC6 (theme tokens)** → `src/constants/theme.ts` (success/danger/warning/border/inputBg/accent in light + dark); applied in `staff-row.tsx` (入库=success, 出库/欠货=danger) + `money-text.tsx`. Inspection-verified (tsc clean on the `ThemeColor` union).
+
+**Nav targets**: 入库/出库 push `/bookkeeping/record-form` (#6 builds it); row-tap `onOpen` pushes `/bookkeeping/staff/[id]` (#7 builds it). Both are mock-router-asserted here; targets resolve when #6/#7 land (consistent with #04's pre-target wiring).
+
+**Cleanup**: deleted `src/app/bookkeeping/detail.tsx` — the #04 Stack-push placeholder is superseded by this screen's real nav; its own comments said "#6/#7 fill this". The #04 AC4 proof (per-tab `<Stack/>` push wiring) is preserved: `_layout.tsx` `<Stack/>` is unchanged and now carries the real 入库/出库/detail pushes.
+
+**Device-pending**: jest/RNTL prove behavior through the real data stack (ADR-0006); on-device visual rendering (theme tokens, 欠货 badge), real expo-router Stack push/back, and FlatList perf remain device-confirmed-pending (same posture as #04).
+
+Commit: see `feat(bookkeeping): staff list + per-staff summary + MoneyText (#05)` (this spec's Stage 2 commit).

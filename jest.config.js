@@ -11,7 +11,12 @@
  *
  * Plain .js (not .ts) so Jest 30 doesn't need ts-node to read it.
  */
-const moduleNameMapper = { "^@/(.*)$": "<rootDir>/src/$1" };
+// Order matters: `.css` must match BEFORE the `@/` catch-all (else `@/global.css`
+// is rewritten to src/global.css and never stubbed → SyntaxError on the `:root` rule).
+const moduleNameMapper = {
+  "\\.css$": "<rootDir>/jest.css-stub.js",
+  "^@/(.*)$": "<rootDir>/src/$1",
+};
 
 /** The data layer: pure TypeScript, exercised through repo APIs against the
  *  in-memory adapter — no React, no device. Mirrors the pre-UI config. */

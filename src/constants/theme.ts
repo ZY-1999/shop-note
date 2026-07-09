@@ -14,6 +14,13 @@ export const Colors = {
     backgroundElement: '#F0F0F3',
     backgroundSelected: '#E0E1E6',
     textSecondary: '#60646C',
+    // Semantic tokens (spec #05) — the substrate 入库/出库/欠货 + every later screen reuses.
+    success: '#1B873F', // 入库 / positive amounts
+    danger: '#D93B3B', // 出库 / 欠货 / negative amounts
+    warning: '#B8860B',
+    border: '#D6D6DA',
+    inputBg: '#F7F7F9',
+    accent: '#208AEF',
   },
   dark: {
     text: '#ffffff',
@@ -21,6 +28,12 @@ export const Colors = {
     backgroundElement: '#212225',
     backgroundSelected: '#2E3135',
     textSecondary: '#B0B4BA',
+    success: '#30D158',
+    danger: '#FF453A',
+    warning: '#FFD60A',
+    border: '#3A3A3C',
+    inputBg: '#1C1C1E',
+    accent: '#0A84FF',
   },
 } as const;
 

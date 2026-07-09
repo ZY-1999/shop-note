@@ -30,6 +30,7 @@ export const qk = {
   inventory: {
     all: ["inventory"] as const,
     shopAggregate: () => ["inventory", "shopAggregate"] as const,
+    staffSummaries: () => ["inventory", "staffSummaries"] as const,
     staff: (staffId: string) => ["inventory", "staff", staffId] as const,
     balance: (staffId: string, productId: string) =>
       ["inventory", "balance", staffId, productId] as const,

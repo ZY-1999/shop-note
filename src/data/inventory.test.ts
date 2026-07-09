@@ -148,6 +148,61 @@ describe("Inventory — no-drift", () => {
   });
 });
 
+describe("Inventory — staff summaries", () => {
+  test("one pass rolls up per-staff variety / total_qty / total_amount / has_negative", async () => {
+    const { products, staff, stockRecords, inventory } = setup();
+    const pA = await products.create({ title: "可乐", purchase_price: cents(100) });
+    const pB = await products.create({ title: "雪碧", purchase_price: cents(200) });
+    const s1 = await staff.create({ name: "张三", phone: "1", notes: "" });
+    const s2 = await staff.create({ name: "李四", phone: "2", notes: "" });
+
+    // s1: pA in10 out3 → 7 ; pB in2 → 2  ⇒ variety 2, total_qty 9, amount 700+400, no neg
+    await stockRecords.create({ staff_id: s1.id, direction: "in", items: [{ product_id: pA.id, qty: 10 }] });
+    await stockRecords.create({ staff_id: s1.id, direction: "out", items: [{ product_id: pA.id, qty: 3 }] });
+    await stockRecords.create({ staff_id: s1.id, direction: "in", items: [{ product_id: pB.id, qty: 2 }] });
+    // s2: pA out5 → -5 ⇒ variety 1, total_qty -5, amount -500, has_negative
+    await stockRecords.create({ staff_id: s2.id, direction: "out", items: [{ product_id: pA.id, qty: 5 }] });
+
+    const byId = new Map((await inventory.staffSummaries()).map((s) => [s.staff_id, s]));
+    const r1 = byId.get(s1.id)!;
+    expect(r1.variety).toBe(2);
+    expect(r1.total_qty).toBe(9);
+    expect(r1.total_amount).toBe(100 * 7 + 200 * 2);
+    expect(r1.has_negative).toBe(false);
+
+    const r2 = byId.get(s2.id)!;
+    expect(r2.variety).toBe(1);
+    expect(r2.total_qty).toBe(-5);
+    expect(r2.total_amount).toBe(-5 * 100);
+    expect(r2.has_negative).toBe(true);
+  });
+
+  test("a net-zero product balance does not count toward variety", async () => {
+    const { products, staff, stockRecords, inventory } = setup();
+    const pA = await products.create({ title: "可乐", purchase_price: cents(100) });
+    const s1 = await staff.create({ name: "张三", phone: "1", notes: "" });
+    await stockRecords.create({ staff_id: s1.id, direction: "in", items: [{ product_id: pA.id, qty: 5 }] });
+    await stockRecords.create({ staff_id: s1.id, direction: "out", items: [{ product_id: pA.id, qty: 5 }] });
+
+    const summaries = await inventory.staffSummaries();
+    expect(summaries).toHaveLength(1);
+    expect(summaries[0].variety).toBe(0);
+    expect(summaries[0].total_qty).toBe(0);
+    expect(summaries[0].has_negative).toBe(false);
+  });
+
+  test("total_amount revalues with the product's current price (no stored figure)", async () => {
+    const { products, staff, stockRecords, inventory } = setup();
+    const pA = await products.create({ title: "可乐", purchase_price: cents(100) });
+    const s1 = await staff.create({ name: "张三", phone: "1", notes: "" });
+    await stockRecords.create({ staff_id: s1.id, direction: "in", items: [{ product_id: pA.id, qty: 10 }] });
+
+    expect((await inventory.staffSummaries())[0].total_amount).toBe(100 * 10);
+    await products.update(pA.id, { purchase_price: cents(250) });
+    expect((await inventory.staffSummaries())[0].total_amount).toBe(250 * 10);
+  });
+});
+
 describe("Inventory — voided record/product handling", () => {
   test("voided records excluded; voided products still resolve for historical balances", async () => {
     const { products, staff, stockRecords, inventory } = setup();

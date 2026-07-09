@@ -13,6 +13,20 @@ export interface Aggregate {
   total_cost: number; // in cents; may be negative
 }
 
+/**
+ * Per-staff holding rollup (spec #05) — the one-ledger-pass, grouped-by-staff
+ * projection the 记账 list and 汇总's by-staff view consume. `total_amount` is a
+ * cents-valued number (Σ current purchase_price × balance qty); negative means
+ * 欠货. Reuses the same derivation discipline as the other reads (never stored).
+ */
+export interface StaffSummary {
+  staff_id: string;
+  variety: number; // distinct products with a non-zero balance
+  total_qty: number; // Σ balance qty across products (may be negative)
+  total_amount: number; // cents — Σ (current purchase_price × balance qty)
+  has_negative: boolean; // any product balance < 0 → 欠货 flag
+}
+
 interface ItemMove {
   item: StockItem;
   direction: Direction;
@@ -62,6 +76,49 @@ export class Inventory {
       total_qty: totalQty,
       total_cost: product.purchase_price * totalQty,
     }));
+  }
+
+  /**
+   * Per-staff holding rollup in ONE ledger pass (spec #05 / ADR-0005): group every
+   * unvoided move by staff_id → product_id → net qty, then per staff compute
+   * variety / total_qty / total_amount (joining the current price, as
+   * `shopAggregate` does) / has_negative. N staff without N scans — the PRD's
+   * "不对每员工单独算 N 次". Pure, never stored.
+   */
+  async staffSummaries(): Promise<StaffSummary[]> {
+    const records = await this.stockRecords.list(); // voided excluded by default
+    // staff_id → (product_id → net qty)
+    const qtyByStaffProduct = new Map<string, Map<string, number>>();
+    for (const { record, items } of records) {
+      let byProduct = qtyByStaffProduct.get(record.staff_id);
+      if (!byProduct) {
+        byProduct = new Map();
+        qtyByStaffProduct.set(record.staff_id, byProduct);
+      }
+      for (const item of items) {
+        const delta = record.direction === "in" ? item.qty : -item.qty;
+        byProduct.set(item.product_id, (byProduct.get(item.product_id) ?? 0) + delta);
+      }
+    }
+
+    const summaries: StaffSummary[] = [];
+    for (const [staff_id, byProduct] of qtyByStaffProduct) {
+      let variety = 0;
+      let total_qty = 0;
+      let total_amount = 0;
+      let has_negative = false;
+      for (const [productId, qty] of byProduct) {
+        if (qty === 0) continue; // only non-zero balances count toward variety/total
+        variety += 1;
+        total_qty += qty;
+        const product = await this.products.getById(productId);
+        const price = product?.purchase_price ?? 0; // historical FK may outlive a voided product
+        total_amount += price * qty;
+        if (qty < 0) has_negative = true;
+      }
+      summaries.push({ staff_id, variety, total_qty, total_amount, has_negative });
+    }
+    return summaries;
   }
 
   /** A staff's unvoided item moves (records already exclude voided). */
