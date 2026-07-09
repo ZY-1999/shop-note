@@ -19,11 +19,16 @@ import { qk } from "@/hooks/query-keys";
  * only when a mutate invalidates its family.
  */
 
-export function useStaff(opts?: { search?: string }): UseQueryResult<Staff[]> {
+export function useStaff(opts?: { search?: string; includeVoided?: boolean }): UseQueryResult<Staff[]> {
   const repos = useRepos();
   return useQuery<Staff[]>({
     queryKey: qk.staff.list(opts),
-    queryFn: () => (opts?.search ? repos.staff.search({ text: opts.search }) : repos.staff.list()),
+    queryFn: () => {
+      // search() always excludes voided (active-only); the unfiltered list honors
+      // includeVoided so 管理 (#09) can show voided rows + a restore affordance.
+      if (opts?.search) return repos.staff.search({ text: opts.search });
+      return repos.staff.list({ includeVoided: opts?.includeVoided });
+    },
   });
 }
 
@@ -37,12 +42,17 @@ export function useStaffById(staffId: string): UseQueryResult<Staff | null> {
 }
 
 export function useProducts(
-  opts?: { search?: { text?: string; code?: string; category?: string } },
+  opts?: { search?: { text?: string; code?: string; category?: string }; includeVoided?: boolean },
 ): UseQueryResult<Product[]> {
   const repos = useRepos();
   return useQuery<Product[]>({
     queryKey: qk.products.list(opts),
-    queryFn: () => (opts?.search ? repos.products.search(opts.search) : repos.products.list()),
+    queryFn: () => {
+      // search() always excludes voided; the unfiltered list honors includeVoided
+      // so 管理 (#09) can show voided products + a restore affordance.
+      if (opts?.search) return repos.products.search(opts.search);
+      return repos.products.list({ includeVoided: opts?.includeVoided });
+    },
   });
 }
 

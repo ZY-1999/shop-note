@@ -1,6 +1,11 @@
 import { useMutation, useQueryClient, type UseMutationResult } from "@tanstack/react-query";
 import { useMutationQueue, useRepos } from "@/providers/providers";
-import type { StaffCreateInput, Staff } from "@/data/staff";
+import type { StaffCreateInput, StaffUpdatePatch, Staff } from "@/data/staff";
+import type {
+  ProductCreateInput,
+  ProductUpdatePatch,
+  Product,
+} from "@/data/product";
 import type {
   StockRecordCreateInput,
   StockRecordUpdatePatch,
@@ -27,6 +32,122 @@ export function useCreateStaff(): UseMutationResult<Staff, Error, StaffCreateInp
     mutationFn: (input) => queue.run(() => repos.staff.create(input)),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: qk.staff.all });
+    },
+  });
+}
+
+/**
+ * Edit a staff's name/phone/notes (spec #09). Gate-serialized; invalidates
+ * qk.staff so every staff read (selectors, summaries, the manage list) refetches
+ * the new values app-wide.
+ */
+export function useUpdateStaff(): UseMutationResult<Staff, Error, { staffId: string; patch: StaffUpdatePatch }> {
+  const repos = useRepos();
+  const queue = useMutationQueue();
+  const queryClient = useQueryClient();
+  return useMutation<Staff, Error, { staffId: string; patch: StaffUpdatePatch }>({
+    mutationFn: ({ staffId, patch }) => queue.run(() => repos.staff.update(staffId, patch)),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: qk.staff.all });
+    },
+  });
+}
+
+/**
+ * Soft-delete (void) a staff (spec #09). Because every selector/search excludes
+ * voided rows, a voided staff drops out of 记账 selectors automatically — no
+ * extra wiring. History/snapshots are never erased (voided_at set, not deleted).
+ * Invalidates qk.staff so the manage list (which shows voided + a restore
+ * affordance) and every active-only read refetch.
+ */
+export function useVoidStaff(): UseMutationResult<Staff, Error, string> {
+  const repos = useRepos();
+  const queue = useMutationQueue();
+  const queryClient = useQueryClient();
+  return useMutation<Staff, Error, string>({
+    mutationFn: (staffId) => queue.run(() => repos.staff.void(staffId)),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: qk.staff.all });
+    },
+  });
+}
+
+/** Restore a voided staff (spec #09) — clears voided_at; reappears in selectors. */
+export function useRestoreStaff(): UseMutationResult<Staff, Error, string> {
+  const repos = useRepos();
+  const queue = useMutationQueue();
+  const queryClient = useQueryClient();
+  return useMutation<Staff, Error, string>({
+    mutationFn: (staffId) => queue.run(() => repos.staff.restore(staffId)),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: qk.staff.all });
+    },
+  });
+}
+
+/**
+ * Create a product (spec #09). Gate-serialized; invalidates qk.products so the
+ * new product appears in the manage list and in 记账's product picker (#6).
+ */
+export function useCreateProduct(): UseMutationResult<Product, Error, ProductCreateInput> {
+  const repos = useRepos();
+  const queue = useMutationQueue();
+  const queryClient = useQueryClient();
+  return useMutation<Product, Error, ProductCreateInput>({
+    mutationFn: (input) => queue.run(() => repos.products.create(input)),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: qk.products.all });
+    },
+  });
+}
+
+/**
+ * Edit a product (spec #09) — title/code/category, or crucially purchase_price.
+ * A price change is the one CROSS-ENTITY invalidation: derived amounts
+ * (inventory/shopAggregate/staffSummaries — ADR-0002) read the product's CURRENT
+ * price, so invalidating qk.inventory (prefix — covers staffSummaries) revalues
+ * 记账 summaries (#5) + 汇总 (#8) on the next read, with no manual recompute.
+ * qk.products refetches the picker / manage list.
+ */
+export function useUpdateProduct(): UseMutationResult<
+  Product,
+  Error,
+  { productId: string; patch: ProductUpdatePatch }
+> {
+  const repos = useRepos();
+  const queue = useMutationQueue();
+  const queryClient = useQueryClient();
+  return useMutation<Product, Error, { productId: string; patch: ProductUpdatePatch }>({
+    mutationFn: ({ productId, patch }) => queue.run(() => repos.products.update(productId, patch)),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: qk.products.all });
+      void queryClient.invalidateQueries({ queryKey: qk.inventory.all });
+    },
+  });
+}
+
+/** Void a product (spec #09) — drops from pickers; record snapshots stay intact. */
+export function useVoidProduct(): UseMutationResult<Product, Error, string> {
+  const repos = useRepos();
+  const queue = useMutationQueue();
+  const queryClient = useQueryClient();
+  return useMutation<Product, Error, string>({
+    mutationFn: (productId) => queue.run(() => repos.products.void(productId)),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: qk.products.all });
+    },
+  });
+}
+
+/** Restore a voided product (spec #09) — re-selectable in pickers. */
+export function useRestoreProduct(): UseMutationResult<Product, Error, string> {
+  const repos = useRepos();
+  const queue = useMutationQueue();
+  const queryClient = useQueryClient();
+  return useMutation<Product, Error, string>({
+    mutationFn: (productId) => queue.run(() => repos.products.restore(productId)),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: qk.products.all });
     },
   });
 }

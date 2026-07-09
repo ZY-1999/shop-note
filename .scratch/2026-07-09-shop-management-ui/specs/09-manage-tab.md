@@ -1,7 +1,7 @@
 # 管理 tab — staff & product CRUD (search, soft-delete/restore, price revaluation)
 
 Type: spec
-Status: ready-for-agent # Gate A approved 2026-07-09 — adversarial review PASS (cfd1fa6), human approved the 9-spec breakdown; entering Stage 2 (/tdd)
+Status: ready-for-human # Stage 2 implemented 2026-07-09 — RED→GREEN via /tdd; evidence below
 Parent: #01
 Blocked by: #3, #4
 
@@ -50,3 +50,23 @@ The management tab: a staff|product toggle over two CRUD domains — staff (crea
 ## Rework on failure
 
 CRUD is isolated to 管理 + its mutation hooks; repos are unchanged. A voided item still appearing in a selector means that selector isn't using a voided-excluding read — fix the selector's query, not 管理. A price change not revaluing = a missing key in `useUpdateProduct`'s invalidation — one place.
+
+---
+
+## Stage 2 evidence (implemented 2026-07-09)
+
+`npx jest` → 172 passed / 26 suites (both projects); `npx tsc --noEmit` → exit 0.
+
+- **AC1 (staff|product toggle + searchable list + create entry)** → `src/components/manage-tab.test.tsx` "toggles between the staff and product domains" (seg-staff/seg-product swap view-staff↔view-product) + "lists products and narrows by title search" (`product-search` narrows `manage-product-${id}`). GREEN.
+- **AC2 (staff create/edit/void/restore)** → "creates a staff who then appears in the list" (`useCreateStaff` invalidates qk.staff → list refetches, 李四 appears) + "blocks create when the name is empty" (请输入姓名) + "voids a staff then restores them" (void → 已作废, `voided_at` set, drops from `list()` active; restore → `voided_at` null). GREEN.
+- **AC3 (product create + multi-axis search)** → "creates a product (title + 元-price → Cents)" (2.5 元 → 250 分 via `cents(Math.round(yuan*100))`; code carried) + "blocks product create when the title is empty" (请输入名称). `useProducts` search uses the repo's in-memory `search({text})`. GREEN.
+- **AC4 (price edit revalues inventory on next read)** → "editing a product's price reflows the open balance" (a test-only `<InventoryReader>` mounts `useBalance` under the same queryClient as ManageTab; edit 可乐 300¢→700¢ via `product-edit`→`product-price-input`; `useUpdateProduct` invalidates `qk.inventory` → balance refetches, qty stays 4). The one cross-entity invalidation (product write → inventory read) centralized in `useUpdateProduct.onSuccess`. GREEN.
+- **AC5 (product void/restore + snapshot preservation)** → "voids a product then restores it; record snapshots stay intact" (void → drops from `list()` active, 已作废; the record's frozen item snapshot `title/qty/unit_price` untouched across the void; restore → re-selectable). Soft-delete is delegated to the repos' `voided_at` exclusion — no selector-side wiring. GREEN.
+
+**Mutations added** (`src/hooks/mutations.ts`): `useUpdateStaff` / `useVoidStaff` / `useRestoreStaff` / `useCreateProduct` / `useUpdateProduct` / `useVoidProduct` / `useRestoreProduct` — all gate-serialized via `useMutationQueue`; each invalidates `qk.staff.all` / `qk.products.all`, and `useUpdateProduct` additionally invalidates `qk.inventory.all` (the cost-revalue path). `useStaff` / `useProducts` extended with `includeVoided` so the manage list can show voided rows + a restore affordance.
+
+**RNTL v14 + React 19 act lesson (won this spec)**: `fireEvent.press`/`changeText` are `async` in RNTL v14 (each wraps `await act(...)`). Two consecutive un-awaited `fireEvent` calls open overlapping act scopes that corrupt the NEXT test's render ("overlapping act() calls" → empty trees → `Unable to find seg-staff`). Fix: `await` every `fireEvent.*` — never chain two bare. Documented in [manage-tab.test.tsx](../../../src/components/manage-tab.test.tsx) AC2.
+
+**Device-pending**: jest/RNTL prove behavior through the real data stack (ADR-0006); the segmented-control + form + void/restore interactions on device remain device-confirmed-pending (same posture as #04–#08).
+
+Commit: see `feat(manage): 管理 tab — staff & product CRUD + price revaluation (#09)` (this spec's Stage 2 commit).
