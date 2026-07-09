@@ -27,6 +27,15 @@ export function useStaff(opts?: { search?: string }): UseQueryResult<Staff[]> {
   });
 }
 
+/** Single staff by id — the record form (#6) shows the name; staff detail (#7) reuses it. */
+export function useStaffById(staffId: string): UseQueryResult<Staff | null> {
+  const repos = useRepos();
+  return useQuery<Staff | null>({
+    queryKey: qk.staff.byId(staffId),
+    queryFn: () => repos.staff.getById(staffId),
+  });
+}
+
 export function useProducts(
   opts?: { search?: { text?: string; code?: string; category?: string } },
 ): UseQueryResult<Product[]> {

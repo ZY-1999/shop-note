@@ -16,6 +16,7 @@ export const qk = {
   staff: {
     all: ["staff"] as const,
     list: (opts?: { search?: string }) => ["staff", "list", opts ?? {}] as const,
+    byId: (staffId: string) => ["staff", "byId", staffId] as const,
   },
   products: {
     all: ["products"] as const,

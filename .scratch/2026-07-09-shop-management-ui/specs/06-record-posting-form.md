@@ -1,7 +1,7 @@
 # 记账 tab — record posting form (multi-line items, live amounts, validation)
 
 Type: spec
-Status: ready-for-agent # Gate A approved 2026-07-09 — adversarial review PASS (cfd1fa6), human approved the 9-spec breakdown; entering Stage 2 (/tdd)
+Status: ready-for-human # Stage 2 (/tdd) implemented 2026-07-09 — all ACs GREEN in jest/RNTL, tsc clean; device-visual (native picker, real router back) pending
 Parent: #01
 Blocked by: #5
 
@@ -51,3 +51,24 @@ The core write flow: from a staff row's 入库/出库 button, a form prefilled w
 ## Rework on failure
 
 Isolated to the form screen + `useCreateStockRecord`. The repo's create is already shipped and unchanged; a validation or amount bug lives in the form and cannot corrupt the ledger (the repo re-validates). If the invalidation set is incomplete (a view goes stale), widen the invalidated keys in the mutation — one place.
+
+---
+
+## Stage 2 evidence (implemented 2026-07-09)
+
+`npx jest` → 145 passed / 22 suites (both projects); `npx tsc --noEmit` → exit 0.
+
+- **AC1 (prefill + add line)** → `src/components/record-form.test.tsx` "shows the prefilled staff + direction, and picking a product adds a line" (RNTL + real InMemoryAdapter; direction label + staff name prefill, pick adds a line showing the product title). GREEN.
+- **AC2 (live amount + running total)** → "updates the line amount and total as the operator types a qty" (300¢×4 → line + total both `¥12.00`; edit qty→10 re-derives total to `¥30.00`; amounts derived in render, never stored). `MoneyText` renders `¥` + figure as two children, so the running-total assertion joins `props.children` before matching. GREEN.
+- **AC3 (validation blocks)** → `src/components/record-form-validation.test.ts` (9 unit tests over the pure predicate: staff-missing / no-items / missing-product / non-positive / non-integer / valid); screen-level "blocks submit with no items" + "blocks submit when a line has a non-integer qty" surface the message in `form-error`. Integer->0 rule mirrors the repo's `RangeError`. GREEN.
+- **AC4 (valid submit → record + nav back)** → "posts the record (snapshot at current price) and navigates back" (mock-router asserts `router.back()` on success; the posted item carries the snapshot `title=可乐`, `unit_price=cents(300)`, `qty=4`; serialized via `useCreateStockRecord` → gate → `stockRecords.create`). GREEN.
+- **AC5 (note + backdatable time)** → "defaults note to empty and time to now; carries the note on submit" (`note=单号A1`, `timestamp` within 5s of now) + "lets the operator backdate the time" (the `@expo/ui` DateTimePicker stub's backdate tap → `timestamp=mockBackdateMs` 2020-01-01). GREEN.
+- **AC6 (out over holdings not blocked)** → "posts an out exceeding current holdings (negative / 欠货 allowed)" (no prior `in` → balance 0 → out of 5 still submits; no pre-submit balance check, per PRD). GREEN.
+
+**Route**: `src/app/bookkeeping/record-form.tsx` — a thin adapter reading `useLocalSearchParams<{staff_id; direction}>()` (pushed by #05's 入库/出库 buttons) and passing them as props to the router-agnostic `<RecordForm>` (default import of `DateTimePicker` from `@expo/ui/community/datetime-picker`, per the SDK-57 docs).
+
+**RNTL v14 + React 19 + React Query v5 test mechanics** (the hard part — recording so #7–#9 reuse it): RNTL's `findBy*`/`waitFor` wrap every poll in `act`, which here (a) overlaps the next `fireEvent`'s act so React drops the state update (submit then reads a stale line — qty/note/timestamp empty) and (b) leaks polling timers that, compounded over the 8 tests, corrupt the renderer into empty trees. The suite instead uses a local `waitForSync` (polls on `setTimeout` WITHOUT act — query notifications flush on their own between yields, cosmetic "not wrapped in act" warning only), a `flushPending()` yield after each state-changing `fireEvent` that the next read depends on, and `afterEach` `queryClient.clear()` for isolation. Stable green across repeated runs.
+
+**Device-pending**: jest/RNTL prove behavior through the real data stack (ADR-0006); the native `DateTimePicker` picker UI, real expo-router Stack back, and product-search FlatList perf (1000-product case) remain device-confirmed-pending (same posture as #04/#05).
+
+Commit: see `feat(bookkeeping): record posting form — multi-line + live amounts + validation (#06)` (this spec's Stage 2 commit).
