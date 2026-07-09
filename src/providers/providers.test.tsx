@@ -3,7 +3,7 @@ import { focusManager } from "@tanstack/react-query";
 import { Text } from "react-native";
 import { useStaff } from "@/hooks/reads";
 import { renderWithProviders } from "@/testing/render";
-import { createQueryClient } from "@/app/providers";
+import { createQueryClient } from "@/providers/providers";
 
 /** A minimal consumer that surfaces useStaff()'s data as text — used by AC6 to
  *  observe whether a refetch happens. */

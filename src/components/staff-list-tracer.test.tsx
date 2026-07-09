@@ -1,6 +1,6 @@
 import { describe, expect, it } from "@jest/globals";
 import { fireEvent } from "@testing-library/react-native";
-import { StaffListTracer } from "@/app/staff-list-tracer";
+import { StaffListTracer } from "@/components/staff-list-tracer";
 import { renderWithProviders } from "@/testing/render";
 
 /**

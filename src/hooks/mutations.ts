@@ -1,5 +1,5 @@
 import { useMutation, useQueryClient, type UseMutationResult } from "@tanstack/react-query";
-import { useMutationQueue, useRepos } from "@/app/providers";
+import { useMutationQueue, useRepos } from "@/providers/providers";
 import type { StaffCreateInput, Staff } from "@/data/staff";
 import { qk } from "@/hooks/query-keys";
 

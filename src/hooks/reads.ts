@@ -1,5 +1,5 @@
 import { useQuery, type UseQueryResult } from "@tanstack/react-query";
-import { useRepos } from "@/app/providers";
+import { useRepos } from "@/providers/providers";
 import type { Aggregate, Balance } from "@/data/inventory";
 import type { Product } from "@/data/product";
 import type { Staff } from "@/data/staff";

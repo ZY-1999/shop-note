@@ -3,7 +3,7 @@ import { render, type RenderResult } from "@testing-library/react-native";
 import type { QueryClient } from "@tanstack/react-query";
 import { InMemoryAdapter } from "@/data/in-memory";
 import { setupRepos, type Repos } from "@/data/composition";
-import { AppProviders, createQueryClient } from "@/app/providers";
+import { AppProviders, createQueryClient } from "@/providers/providers";
 
 /**
  * The RNTL test harness (ADR-0006): render a component tree under the real

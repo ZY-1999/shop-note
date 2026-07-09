@@ -1,7 +1,7 @@
 # Production app shell — AppProvider boot/splash/error + 3-tab nav + per-tab Stack + smoke relocation
 
 Type: spec
-Status: ready-for-agent # Gate A approved 2026-07-09 — adversarial review PASS (cfd1fa6), human approved the 9-spec breakdown; entering Stage 2 (/tdd)
+Status: ready-for-human # implemented via /tdd 2026-07-09 (Stage 2). AC3 + AC4(mock-router) RNTL-green; AC1/AC2/AC5 implemented, device-confirmed pending; AC6 inspection-verified. Awaits Stage 3 review.
 Parent: #01
 Blocked by: #3
 
@@ -51,3 +51,17 @@ The production container every shop-management screen lives in: at boot, open th
 ## Rework on failure
 
 If `NativeTabs` cannot host a per-tab Stack, the fallback to stable `Tabs` + nested routes is a navigation-layer swap behind `AppTabs` — `AppProvider` (boot/splash/error) is unaffected. If the splash double-trigger proves racy, collapse both readiness flags into a single `useEffect`-driven gate inside `AppProvider`. The smoke relocation is independent of both and can land regardless.
+
+## Comments
+
+- 2026-07-09 — implemented via /tdd (sdd-flow Stage 2, spec #04). Acceptance criteria → evidence:
+  - AC1 (3 tabs, boots to 记账) → `src/components/app-tabs.tsx` — stable `Tabs` with 记账/汇总/管理, `bookkeeping` listed first (default). Explore + template demo removed (`app/explore.tsx` + `app/index.tsx` deleted). **Device-confirmed pending** (tab bar renders + switches).
+  - AC2 (splash coordination) → `src/app/_layout.tsx` — `AnimatedSplashOverlay` is a **child of `AppProvider`**, which renders children only once the DB is ready; the overlay's `onLayout → SplashScreen.hideAsync()` therefore fires only post-DB-ready (no flag-merging needed). On the error path children never mount, so `onError={() => SplashScreen.hideAsync()}` reveals the error screen. **Device-confirmed pending** (no blank flash, hide timing).
+  - AC3 (error + retry) → `src/providers/app-provider.test.tsx` (2 tests GREEN) — `ExpoSqliteAdapter.open` mocked to reject → error screen with 重试 (`testID="retry"`); press → re-open → success → recovers into app content. `mockOpen` typed `jest.fn<(name:string)=>Promise<unknown>>`.
+  - AC4 (per-tab Stack push) → `src/__tests__/bookkeeping-tab.test.tsx` (GREEN) — mocks `expo-router` `router`, presses the bookkeeping placeholder row, asserts `router.push("/bookkeeping/detail")`. `src/app/bookkeeping/_layout.tsx` = `<Stack/>`. Real stack push/back **device-confirmed pending**.
+  - AC5 (smoke relocated) → `src/components/smoke-entry.tsx` (extracted from old Home) rendered in `src/app/manage/index.tsx` under `__DEV__`. Keeps the dynamic `import('@/data/smoke/run-smoke')` + dedicated `shop_note_smoke.db` (ADR-0004) — production `shop_note.db` untouched. **Device-confirmed pending** (reachable from 管理, runs against smoke db).
+  - AC6 (single `setupRepos`) → `src/providers/app-provider.tsx` calls `setupRepos(adapter)` once on ready; the smoke imports the SAME `setupRepos` from `src/data/composition.ts` — no second wiring. Inspection-verified.
+  - Full suite **18 suites / 116 tests GREEN**; `npx tsc --noEmit` exit 0.
+- 2026-07-09 — **nav decision (flagged, spec-required)**: chose stable `expo-router` `Tabs` over `expo-router/unstable-native-tabs`. SDK57 `NativeTabs`+per-tab-Stack nesting could not be device-verified (docs unreachable; `unstable_` API); the spec sanctions this stable fallback (per-tab Stack via nested `_layout.tsx` directories is guaranteed). Bonus: `Tabs` is cross-platform, so the template's separate `app-tabs.web.tsx` is deleted (one tab bar for native + web). If a later spec wants the native tab-bar feel back, swap `AppTabs`'s `Tabs` for `NativeTabs` — `AppProvider`/routes are unaffected.
+- 2026-07-09 — **relocation (prep, in #04)**: non-route modules were moved OUT of the expo-router `app/` dir so the shell bundles cleanly (only route files — with default exports — belong there): `app/providers.tsx` → `src/providers/providers.tsx`; `app/app-provider.tsx` → `src/providers/app-provider.tsx`; `app/staff-list-tracer.tsx` → `src/components/staff-list-tracer.tsx`; their tests moved alongside. Importers updated (`testing/render.tsx`, `hooks/reads.ts`, `hooks/mutations.ts`). Route-component tests live in `src/__tests__/` (expo-router scans only `app/`).
+- 2026-07-09 — typedRoutes: deleted the stale local `.expo/types/router.d.ts` (gitignored build artifact; it predated the new routes and referenced deleted `/`, `/explore`). With it absent, `Href` falls back to `string | HrefObject` so `router.push("/bookkeeping/detail")` type-checks; the dev server regenerates it with the full route set (stricter, still passing) on first run.
