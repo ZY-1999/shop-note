@@ -1,17 +1,16 @@
-import { StyleSheet, Text, View } from 'react-native';
+import { router } from 'expo-router';
 
-/** 汇总 tab placeholder (spec #04). #8 fills this with the shop aggregate view. */
-export default function SummaryTab() {
+import { SummaryTab } from '@/components/summary-tab';
+
+/**
+ * 汇总 tab route (spec #08). A thin adapter: renders the router-agnostic
+ * `<SummaryTab>` and wires its by-staff tap to push the staff detail route (#07,
+ * lives under the 记账 stack — expo-router resolves the cross-tab push). Keeping
+ * the navigation concern here lets the component be RNTL-testable with no router
+ * context (ADR-0006).
+ */
+export default function SummaryTabRoute() {
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>汇总</Text>
-      <Text style={styles.hint}>占位 — #8 接入店铺/员工汇总</Text>
-    </View>
+    <SummaryTab onOpenStaff={(id) => router.push({ pathname: '/bookkeeping/staff/[id]', params: { id } })} />
   );
 }
-
-const styles = StyleSheet.create({
-  container: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 8 },
-  title: { fontSize: 20, fontWeight: 'bold' },
-  hint: { opacity: 0.6 },
-});

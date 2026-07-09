@@ -1,7 +1,7 @@
 # 汇总 tab — shop overview + daily flow + by-staff / by-product distribution
 
 Type: spec
-Status: ready-for-agent # Gate A approved 2026-07-09 — adversarial review PASS (cfd1fa6), human approved the 9-spec breakdown; entering Stage 2 (/tdd)
+Status: ready-for-human # Stage 2 implemented 2026-07-09 — RED→GREEN via /tdd; evidence below
 Parent: #01
 Blocked by: #3, #4
 
@@ -49,3 +49,25 @@ The supervision / reconciliation tab: four switched views over the derived read 
 ## Rework on failure
 
 Purely read-only — no writes, so a wrong view cannot corrupt data. A stale view = a missing key in some mutation's invalidation set (#6/#7/#9), fixed there. The dailyFlow snapshot-vs-revalue distinction is the one correctness subtlety; it lives in #1's read, asserted there.
+
+---
+
+## Stage 2 evidence (implemented 2026-07-09)
+
+`npx jest` → 162 passed / 25 suites (both projects); `npx tsc --noEmit` → exit 0.
+
+- **AC1 (segmented switcher, four views)** → `src/components/summary-tab.test.tsx` "renders four segments with overview as the default view" (seg-overview/dailyFlow/byStaff/byProduct present; overview default → `view-overview` + product row render) + "switching the segment swaps the active view" (press seg-dailyFlow → `view-dailyFlow` mounts, `view-overview` unmounts). Only the active view is mounted (lazily fetches its read). GREEN.
+- **AC2 (overview: per-product totals + grand total)** → "renders each product's total qty + amount and a grand total" (`useShopAggregate()` → cola net 3/¥9.00, water net 3/¥15.00; grand total 2400¢ = ¥24.00 via `overview-grand-total`). Current-price cost view. GREEN.
+- **AC3 (daily flow, newest-first, frozen snapshot)** → "renders rows of (day × staff) with in/out amounts, newest day first" (two days; the newer `flowrow` precedes the older; in ¥6.00 / out ¥3.00) + "amounts are the frozen snapshot — unchanged by a later price edit" (post cola×4+water×3 → in ¥27.00; raise cola to 999¢ → dailyFlow STILL ¥27.00 — frozen `line_amount`, not current-price-revalued). GREEN.
+- **AC4 (by staff: summary + tap → detail)** → "lists each staff's variety/qty/amount and opens their detail on tap" (`useStaffSummaries()` → 张三 2种/6件/¥24.00; `bystaff-row-${id}` tap → `onOpenStaff(staffId)`). 欠货 row tinted. GREEN.
+- **AC5 (by product: totals + on-demand per-staff drill-down)** → "lists each product's total qty/amount and drills into a per-staff breakdown on tap" (`useShopAggregate()` → cola 6/¥18.00; tap → per-staff `<ProductStaffBalance>` rows each calling `useBalance(staffId, productId)` — alice ¥12.00, bob ¥6.00; one hook per component, mounted only when a product is selected → rules-compliant, no N-calls-per-render). GREEN.
+- **AC6 (cross-view refresh)** → "a post elsewhere refreshes the open 汇总 view without manual refetch" (SummaryTab + a test-only `<Poster>` mounted under one queryClient; posting cola×1 via `useCreateStockRecord` invalidates `qk.inventory` → grand total revalues live ¥24.00 → ¥27.00). GREEN.
+
+**No new read API** — pure composition of `useShopAggregate` / `useStaffSummaries` / `useDailyFlow` / `useBalance` (ADR-0002: derived, never stored). Component `src/components/summary-tab.tsx` (router-agnostic; `onOpenStaff` delegated) + route `src/app/summary/index.tsx` (thin adapter wiring the tap to push `/bookkeeping/staff/[id]`).
+
+**RNTL mechanics** reuse `src/testing/async.ts` (`waitForSync` / `flushPending` / `afterEach queryClient.clear()`, extracted in #07); `MoneyText` two-child output joined before string-match.
+
+**Device-pending**: jest/RNTL prove behavior through the real data stack (ADR-0006); the segmented-control interaction + by-product drill-down on device remain device-confirmed-pending (same posture as #04–#07).
+
+Commit: see `feat(summary): 汇总 tab — overview / daily flow / by-staff / by-product (#08)` (this spec's Stage 2 commit).
+
