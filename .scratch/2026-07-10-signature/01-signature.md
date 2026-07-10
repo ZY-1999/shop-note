@@ -1,7 +1,9 @@
 # 出入库表单签名功能（Stock Record Signature）
 
 Type: prd
-Status: ready-for-agent
+Status: wontfix
+
+> ⚠️ **已废弃（2026-07-11）**：整个"出入库表单签名功能"PRD 作废，不再执行。仅其中 `SignatureModal` 签名弹窗组件被抽离为独立的纯组件 PRD，见 [../2026-07-11-signature-modal/01-signature-modal.md](../2026-07-11-signature-modal/01-signature-modal.md)。下方内容仅作历史设计参考。
 
 ## 问题陈述
 
@@ -110,3 +112,4 @@ Status: ready-for-agent
 
 - 2026-07-10 — 在 `/sdd-flow` 内压缩 grill 起草（用户从 `/route` 进入）。3 个分叉经用户确认：① 选填 ② 全屏 Modal 横向画布（不锁屏、零新方向依赖）③ `react-native-signature-canvas` + `expo-file-system`。设计上优化了文件生命周期：Modal 只回传 base64、提交时才落盘，避免孤儿文件；旧文件在 mutation `onSuccess` 后删除。PRD 内对现有代码的全部断言（`StockRecord` 字段集 / `SCHEMA.stock_record` 列 / `create` 不审计·`update`/`void` 审计 / `auditableRecord()` 投影 / `record-form` CREATE·EDIT 提交 payload / `package.json` 依赖现状：已装 `gesture-handler`+`expo-image`、未装 `file-system`/`svg`/`screen-orientation`）均经本次直接读源码核验。状态 `needs-info` → `ready-for-human`，待 Gate 0。
 - 2026-07-10 — **Gate 0 通过**（用户 reviewed，未要求对抗性复核）。状态 `ready-for-human` → `ready-for-agent`，进入 `/sdd-flow` 执行；本入口 commit 提交 PRD；下一步 `/to-spec` 拆分 specs。
+- 2026-07-11 — **废弃**（用户决定）。整个签名功能 PRD 作废；`SignatureModal` 组件抽离为独立纯组件 PRD（`2026-07-11-signature-modal`）走 `/idea-to-prd` 重做。状态 `ready-for-agent` → `wontfix`，文件保留供追溯。
