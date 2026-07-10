@@ -65,6 +65,7 @@ export const COLUMNS: Record<TableName, readonly ColDef[]> = {
     { name: "direction", type: "TEXT", check: "direction IN ('in', 'out')" },
     { name: "timestamp", type: "INTEGER" },
     { name: "note", type: "TEXT", nullable: true },
+    { name: "unit_price_snapshot", type: "INTEGER", nullable: true },
     { name: "voided_at", type: "INTEGER", nullable: true },
     { name: "created_at", type: "INTEGER" },
     { name: "updated_at", type: "INTEGER" },
@@ -90,6 +91,21 @@ export const COLUMNS: Record<TableName, readonly ColDef[]> = {
     { name: "entity_id", type: "TEXT" },
     { name: "timestamp", type: "INTEGER" },
     { name: "diff", type: "TEXT" },
+  ],
+  topup: [
+    { name: "id", type: "TEXT", pk: true },
+    { name: "staff_id", type: "TEXT" },
+    { name: "amount", type: "INTEGER" },
+    { name: "timestamp", type: "INTEGER" },
+    { name: "note", type: "TEXT", nullable: true },
+    { name: "voided_at", type: "INTEGER", nullable: true },
+    { name: "created_at", type: "INTEGER" },
+    { name: "updated_at", type: "INTEGER" },
+  ],
+  config: [
+    { name: "key", type: "TEXT", pk: true },
+    { name: "value", type: "INTEGER" },
+    { name: "updated_at", type: "INTEGER" },
   ],
 };
 
@@ -132,6 +148,16 @@ const V1_STAFF_DDL =
  * NON-unique: a stock record has many items; the PRD's "唯一索引" = sole index,
  * not a uniqueness constraint). v2 adds `staff.level` (会员等级) with a DEFAULT
  * so existing rows backfill to 普站 (`normal`) and a CHECK guarding the domain.
+ *
+ * v3 (stock-balance-refactor) is a **clear-db rebuild** — data is discarded, so
+ * it DROPs the 5 pre-existing tables and re-CREATEs all 7 (5 old + `topup` +
+ * `config`) from the current `COLUMNS`, rebuilds `idx_item_record_id` (DROP
+ * TABLE wiped it), and seeds the protected `-1` admin row. This is a deliberate
+ * one-off departure from the incremental `ALTER ADD COLUMN` + frozen-CREATE
+ * regimen (see ADR-0008); the slate being cleared, `createTableSql("staff")` is
+ * safe here — the v1-staff-freeze is moot post-DROP. Both a fresh DB
+ * (`user_version=0`, runs v1→v2→v3) and an old DB (`user_version=2`, runs v3)
+ * execute the DROP+rebuild and converge on the same 7-table schema.
  */
 export const MIGRATIONS: ReadonlyArray<{
   readonly version: number;
@@ -152,6 +178,35 @@ export const MIGRATIONS: ReadonlyArray<{
     version: 2,
     statements: [
       "ALTER TABLE staff ADD COLUMN level TEXT NOT NULL DEFAULT 'normal' CHECK(level IN ('normal', 'gold'))",
+    ],
+  },
+  {
+    version: 3,
+    statements: [
+      // Clear-db rebuild (ADR-0008): DROP the 5 pre-existing tables — cascades
+      // idx_item_record_id away. topup/config are new, nothing to drop.
+      "DROP TABLE IF EXISTS staff",
+      "DROP TABLE IF EXISTS product",
+      "DROP TABLE IF EXISTS stock_record",
+      "DROP TABLE IF EXISTS stock_record_item",
+      "DROP TABLE IF EXISTS audit_log",
+      // Re-CREATE all 7 tables from the current COLUMNS. The slate is cleared, so
+      // createTableSql("staff") (full schema, incl level) applies cleanly — the v1
+      // freeze only matters for the incremental ALTER path, not here.
+      createTableSql("staff"),
+      createTableSql("product"),
+      createTableSql("stock_record"),
+      createTableSql("stock_record_item"),
+      createTableSql("audit_log"),
+      createTableSql("topup"),
+      createTableSql("config"),
+      // Rebuild the record_id lookup index (the DROP TABLE above dropped it).
+      "CREATE INDEX IF NOT EXISTS idx_item_record_id ON stock_record_item(record_id)",
+      // Seed the protected '-1' admin row as the restock owner: fixed id, bypassing
+      // StaffRepository.create's random id(). Behavioral guards (filter / void /
+      // direction) live in the repo layer — see spec 02.
+      "INSERT INTO staff (id, name, phone, notes, level, voided_at, created_at, updated_at) " +
+        "VALUES ('-1', '管理员', '', '', 'normal', NULL, 0, 0)",
     ],
   },
 ];

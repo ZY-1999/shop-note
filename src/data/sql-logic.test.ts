@@ -9,9 +9,9 @@ import {
 } from "@/data/sql-logic";
 
 describe("SCHEMA registry", () => {
-  test("covers all 5 tables with their entity column sets; audit_log.diff is the only JSON column", () => {
+  test("covers all 7 tables with their entity column sets; audit_log.diff is the only JSON column", () => {
     expect(Object.keys(SCHEMA).sort()).toEqual(
-      ["audit_log", "product", "staff", "stock_record", "stock_record_item"],
+      ["audit_log", "config", "product", "staff", "stock_record", "stock_record_item", "topup"],
     );
     expect(SCHEMA.staff.columns).toEqual([
       "id", "name", "phone", "notes", "level", "voided_at", "created_at", "updated_at",
@@ -20,7 +20,7 @@ describe("SCHEMA registry", () => {
       "id", "title", "purchase_price", "code", "category", "voided_at", "created_at", "updated_at",
     ]);
     expect(SCHEMA.stock_record.columns).toEqual([
-      "id", "staff_id", "direction", "timestamp", "note", "voided_at", "created_at", "updated_at",
+      "id", "staff_id", "direction", "timestamp", "note", "unit_price_snapshot", "voided_at", "created_at", "updated_at",
     ]);
     expect(SCHEMA.stock_record_item.columns).toEqual([
       "id", "record_id", "product_id", "title", "unit_price", "qty", "line_amount",
@@ -28,6 +28,12 @@ describe("SCHEMA registry", () => {
     expect(SCHEMA.audit_log.columns).toEqual([
       "id", "actor", "action", "entity_type", "entity_id", "timestamp", "diff",
     ]);
+    // topup (stock-balance-refactor): member top-up ledger — amount is Cents, no items.
+    expect(SCHEMA.topup.columns).toEqual([
+      "id", "staff_id", "amount", "timestamp", "note", "voided_at", "created_at", "updated_at",
+    ]);
+    // config (stock-balance-refactor): generic key-value store, first key unit_price.
+    expect(SCHEMA.config.columns).toEqual(["key", "value", "updated_at"]);
 
     // Only audit_log.diff is a JSON column — the registry flags it so serialize/deserialize
     // and the DDL (spec #02) all share one source of truth.
@@ -36,6 +42,8 @@ describe("SCHEMA registry", () => {
     expect(SCHEMA.stock_record.jsonColumns).toEqual([]);
     expect(SCHEMA.stock_record_item.jsonColumns).toEqual([]);
     expect(SCHEMA.audit_log.jsonColumns).toEqual(["diff"]);
+    expect(SCHEMA.topup.jsonColumns).toEqual([]);
+    expect(SCHEMA.config.jsonColumns).toEqual([]);
   });
 });
 

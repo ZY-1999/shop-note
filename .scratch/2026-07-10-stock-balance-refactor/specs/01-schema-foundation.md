@@ -1,7 +1,7 @@
 # Schema 地基 + 清库迁移 + 新 ADR
 
 Type: spec
-Status: ready-for-agent
+Status: ready-for-human
 Parent: #01 (01-stock-balance-refactor.md)
 Blocked by: None — can start immediately
 
@@ -50,3 +50,18 @@ Blocked by: None — can start immediately
 ## Rework on failure
 
 迁移独立可重做——重跑 DROP+CREATE 幂等无副作用；失败只需 redo 本 spec（schema + ADR），不波及 repo/UI。
+
+## Comments
+
+- 2026-07-10 — implemented via `/tdd`（4 个垂直切片：topup+config 表 schema → stock_record `unit_price_snapshot` 列 → MIGRATIONS v3 清库重建 → ADR-0008）。AC → 测试：
+  - createTableSql(topup) 含全部新列（Cents amount / nullable note·voided_at）— `src/data/expo-sqlite-migration.test.ts::createTableSql(topup) reproduces the top-up ledger schema`
+  - createTableSql(config) key-value（key PK，无 id）— `::createTableSql(config) reproduces the generic key-value config schema`
+  - drift-guard 对 7 表生效（COLUMNS 列名 == SCHEMA 列名）— `::COLUMNS names match SCHEMA columns for every table (single-source drift guard)`；`src/data/sql-logic.test.ts::covers all 7 tables with their entity column sets`
+  - stock_record 含 `unit_price_snapshot`（nullable，out 冻结/in null）— `::stock_record carries unit_price_snapshot (nullable Cents; frozen on out, null on in)`
+  - MIGRATIONS v3 序列正确（DROP 5 既有 + CREATE 7 + 重建 idx + seed `'-1'`；staff CREATE 用当前完整 schema 含 level；14 条语句）— `::MIGRATIONS v3: clear-db rebuild — DROP 5 existing tables, CREATE all 7, rebuild idx, seed staff '-1'`
+  - runMigrations 签名未变（`(db) => Promise<void>`，arity 1）— `::runMigrations is still (db) => Promise<void> — v3 added without changing the executor contract`
+  - ADR-0008 记录 DROP+重建偏离 — `docs/adr/0008-clear-db-rebuild-migration.md`
+  - **[手动/发布门]** 全新库（user_version=0）与老库（user_version=2）跑 v3 后结构等价 + 7 表存在 + staff 含 `-1` + unit_price_snapshot 落位 —— 真实 SQLite 仅设备 smoke 覆盖（ADR-0004，发布前手跑：老库升级数据清空 + 全新库建表）；Jest 侧由 v3 语句序列断言（AC2）+ drift-guard（AC5）间接保证。
+- 波及（已同步，保持构建绿）：`sql-logic.test.ts` SCHEMA keys 5→7、stock_record 列清单加 `unit_price_snapshot`；`expo-sqlite-migration.test.ts` TABLES 扩到 7 表、MIGRATIONS length 2→3。
+- Test run: `npx jest --colors=false --forceExit` → 223 passed, 0 failed（28 suites）；`npx tsc --noEmit` clean。
+- Codemap / CONTEXT.md 术语更新延后到 `/sdd-flow` Stage 4（per PRD Further Notes + handoff：新术语实现落地后再写）。

@@ -10,13 +10,15 @@
  * No `expo-sqlite` import, no I/O, no state.
  */
 
-/** The five domain tables the adapter persists. */
+/** The domain tables the adapter persists. */
 export type TableName =
   | "staff"
   | "product"
   | "stock_record"
   | "stock_record_item"
-  | "audit_log";
+  | "audit_log"
+  | "topup"
+  | "config";
 
 /** Per-table column metadata. `jsonColumns` are stringified on write, parsed on read. */
 export interface TableSchema {
@@ -39,7 +41,7 @@ export const SCHEMA: Record<TableName, TableSchema> = {
     jsonColumns: [],
   },
   stock_record: {
-    columns: ["id", "staff_id", "direction", "timestamp", "note", "voided_at", "created_at", "updated_at"],
+    columns: ["id", "staff_id", "direction", "timestamp", "note", "unit_price_snapshot", "voided_at", "created_at", "updated_at"],
     jsonColumns: [],
   },
   stock_record_item: {
@@ -50,6 +52,14 @@ export const SCHEMA: Record<TableName, TableSchema> = {
     columns: ["id", "actor", "action", "entity_type", "entity_id", "timestamp", "diff"],
     // FieldDiff[] — a nested array the port stores as a flat JSON text column (ADR-0003).
     jsonColumns: ["diff"],
+  },
+  topup: {
+    columns: ["id", "staff_id", "amount", "timestamp", "note", "voided_at", "created_at", "updated_at"],
+    jsonColumns: [],
+  },
+  config: {
+    columns: ["key", "value", "updated_at"],
+    jsonColumns: [],
   },
 };
 
