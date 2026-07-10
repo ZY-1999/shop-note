@@ -12,7 +12,7 @@ Key decisions live in [docs/adr/](docs/adr/); the code terrain is mapped in [doc
 
 | Term | Meaning | Notes |
 |---|---|---|
-| **员工 Staff** | A shop operator; the owner stock records are attributed to (`staff_id`). | Soft-deleted via `voided_at`. |
+| **会员 Staff** | A shop member — stock records are attributed via `staff_id`; carries a 手动会员等级 `level` (`normal`=普站 / `gold`=金站, single-source `STAFF_LEVELS` registry; lists sort 金站-first). Display word renamed from 「员工」 on 2026-07-10 — code identifier `Staff`/`staff_id` unchanged (cf. the 出库→出单 precedent). | Soft-deleted via `voided_at`. |
 | **商品 Product** | Anything that can be moved in/out of stock. Fields: `title`, `code`, `category`, `purchase_price`. | Soft-deleted via `voided_at`. |
 | **进价 purchase_price** | A product's current purchase price, in `Cents`. | Drives cost revaluation; stored on the product, not the record. |
 | **库存记录 Stock Record** | One in/out event (`direction: "in" \| "out"`), attributed to a staff, carrying one or more **条目**. | `create` is not audited; `edit`/`void` are. |
@@ -50,6 +50,7 @@ The data layer is consumed by a thin UI layer (the system PRD calls UI a "thin c
 - **导航** — three tabs: 记账 (bookkeeping, home) → 汇总 (summary) → 管理 (manage). 记账 is staff-centric (search a staff → post in/out); the `dailyFlow` report lives under 汇总.
 - **样式** — RN `StyleSheet` + extended `theme.ts` semantic tokens (success/danger/warning/border/inputBg/accent); no NativeWind / component library. Native inputs (TextField/Picker/SegmentedControl) use the already-installed `@expo/ui` where it helps.
 - **页面优化重构 (2026-07-10)** — 记账 / 员工详情 / 汇总三屏 UX 重构（管理页另算）：`direction: out` 的展示词由「出库」改「出单」（数据层 enum `out` 不变）；日期统一 `YYYY/MM/DD`（datetime 控件用 `YYYY/MM/DD HH:mm`）；长列表（员工详情历史 / 汇总流水）按天倒序 + **UI 级分批渲染**（[ADR-0007](docs/adr/0007-list-batched-rendering.md)）；汇总屏抛弃四段切换，改为时间段选择 + 库存卡 + 按天×员工流水。**口径区分**：库存卡金额 = as-of-now 现价快照（不受时间段影响），流水段金额 = 选定时间段内的历史快照 `line_amount`（与 [ADR-0002](docs/adr/0002-derived-inventory-never-stored.md) 一致）。
+- **会员化改名 + 会员等级 (2026-07-10)** — 全局展示词「员工」→「会员」（代码标识符 `Staff`/`staff_id`/`staff` 表/路由不动，复刻「出库→出单」先例）；`Staff` 增手动 `level` 字段（`normal`=普站 / `gold`=金站，单源 `STAFF_LEVELS`），仓储列表金站优先排序，管理表单提供等级选择器（默认普站、可手动改），列表行/`staff-row`/会员详情展示等级徽标（金站 accent、普站省略）。`level` 走既有审计；schema 加列 + v2 迁移 `ALTER ... DEFAULT 'normal'` 回填老会员为普站（v1 staff DDL 冻结为历史字面量以规避动态 DDL 的 duplicate-column 陷阱，`ColDef.default` 使 `createTableSql` 与 ALTER 的 DEFAULT 对称）。
 
 UI testing ([ADR-0006](docs/adr/0006-ui-component-testing-rntl.md)): derived pure logic (`dailyFlow` etc.) is Jest-covered against `InMemoryAdapter`; **screens / hooks / user-behavior flows are covered by React Native Testing Library component tests** using the real `InMemoryAdapter` (no Repos mocking), driven from user actions (search → post → observe). Real SQL execution stays with the [ADR-0004](docs/adr/0004-adapter-verification-device-smoke.md) device smoke; dark-mode / feel stay manual.
 
