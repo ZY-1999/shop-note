@@ -88,6 +88,10 @@ describe("ManageTab — staff create (spec #09 AC2)", () => {
 
     await fireEvent.press(view.getByTestId("staff-create"));
     await waitForSync(() => view.getByTestId("staff-name-input"));
+    // form fields are labeled; phone/notes are marked optional (manage UI polish)
+    expect(view.getByText("姓名")).toBeTruthy();
+    expect(view.getByText("电话（可选）")).toBeTruthy();
+    expect(view.getByText("备注（可选）")).toBeTruthy();
     // RNTL v14's fireEvent.* are async (each wraps `await act(...)`). Awaiting
     // every one — and never chaining two bare — keeps act scopes from overlapping,
     // which is what leaked across tests and corrupted the next render (#09).
@@ -123,7 +127,7 @@ describe("ManageTab — staff void/restore (spec #09 AC2)", () => {
 
     // void via the row action — soft-delete (voided_at), never erased
     await fireEvent.press(view.getByTestId(`staff-void-${staffId}`));
-    await waitForSync(() => view.getByText("已作废"));
+    await waitForSync(() => view.getByText("已删除"));
 
     const voided = await repos.staff.getById(staffId);
     expect(voided?.voided_at).not.toBeNull();
@@ -133,10 +137,42 @@ describe("ManageTab — staff void/restore (spec #09 AC2)", () => {
 
     // restore — clears voided_at, reappears in selectors
     await fireEvent.press(view.getByTestId(`staff-restore-${staffId}`));
-    await waitForSync(() => expect(() => view.getByText("已作废")).toThrow());
+    await waitForSync(() => expect(() => view.getByText("已删除")).toThrow());
 
     const restored = await repos.staff.getById(staffId);
     expect(restored?.voided_at).toBeNull();
+  });
+});
+
+describe("ManageTab — staff edit via row tap (manage UI polish)", () => {
+  it("tapping a staff row opens a preloaded edit form; saving persists the change", async () => {
+    const { repos, staffId } = await seed(); // 张三 / phone 138
+    const { view } = await renderManage(<ManageTab />, { repos });
+    await waitForSync(() => view.getByTestId(`manage-staff-${staffId}`));
+
+    // tap the row → edit form opens, preloaded with the staff's current name
+    await fireEvent.press(view.getByTestId(`manage-staff-${staffId}`));
+    await waitForSync(() => view.getByTestId("staff-name-input"));
+    expect(view.getByDisplayValue("张三")).toBeTruthy();
+
+    // rename + save
+    await fireEvent.changeText(view.getByTestId("staff-name-input"), "张三改");
+    await fireEvent.press(view.getByTestId("staff-submit"));
+
+    // back to list; renamed staff appears, repo reflects the update (not a new staff)
+    await waitForSync(() => view.getByText("张三改"));
+    const updated = await repos.staff.getById(staffId);
+    expect(updated?.name).toBe("张三改");
+  });
+});
+
+describe("ManageTab — staff row shows '--' when phone is empty (manage UI polish)", () => {
+  it("shows '--' in place of an empty phone", async () => {
+    const repos = setupRepos(new InMemoryAdapter());
+    const noPhone = await repos.staff.create({ name: "无名电话", phone: "", notes: "" });
+    const { view } = await renderManage(<ManageTab />, { repos });
+    await waitForSync(() => view.getByTestId(`manage-staff-${noPhone.id}`));
+    expect(view.getByText("--")).toBeTruthy();
   });
 });
 
@@ -164,16 +200,22 @@ describe("ManageTab — product list + search + create (spec #09 AC1/AC3)", () =
 
     await fireEvent.press(view.getByTestId("product-create"));
     await waitForSync(() => view.getByTestId("product-title-input"));
+    // code/category inputs were removed from the form (manage UI polish);
+    // the data fields stay (nullable) — only title + price are user-editable.
+    expect(() => view.getByTestId("product-code-input")).toThrow();
+    expect(() => view.getByTestId("product-category-input")).toThrow();
+    // form fields are labeled (manage UI polish)
+    expect(view.getByText("名称")).toBeTruthy();
+    expect(view.getByText("单价（元）")).toBeTruthy();
     await fireEvent.changeText(view.getByTestId("product-title-input"), "雪碧");
     await fireEvent.changeText(view.getByTestId("product-price-input"), "2.5");
-    await fireEvent.changeText(view.getByTestId("product-code-input"), "C002");
     await fireEvent.press(view.getByTestId("product-submit"));
 
     await waitForSync(() => view.getByText("雪碧"));
     const created = (await repos.products.list()).find((p) => p.title === "雪碧");
     expect(created).toBeTruthy();
     expect(created?.purchase_price).toBe(cents(250)); // 2.50 元 → 250 分
-    expect(created?.code).toBe("C002");
+    expect(created?.code).toBeNull(); // no code input → stored as null
   });
 
   it("blocks product create when the title is empty", async () => {
@@ -226,8 +268,8 @@ describe("ManageTab — product price edit revalues inventory (spec #09 AC4)", (
     await waitForSync(() => view.getByTestId(`manage-product-${colaId}`));
     await waitForSync(() => view.getByText("qty:4")); // balance loaded: 4 units
 
-    // open the product's edit form and change its price 300¢ → 700¢
-    await fireEvent.press(view.getByTestId(`product-edit-${colaId}`));
+    // open the product's edit form via row tap, change its price 300¢ → 700¢
+    await fireEvent.press(view.getByTestId(`manage-product-${colaId}`));
     await waitForSync(() => view.getByTestId("product-price-input"));
     await fireEvent.changeText(view.getByTestId("product-price-input"), "7");
     await fireEvent.press(view.getByTestId("product-submit"));
@@ -258,7 +300,7 @@ describe("ManageTab — product void/restore + snapshot preservation (spec #09 A
 
     // void — soft-delete; drops from active product reads (pickers)
     await fireEvent.press(view.getByTestId(`product-void-${colaId}`));
-    await waitForSync(() => view.getByText("已作废"));
+    await waitForSync(() => view.getByText("已删除"));
     const voided = await repos.products.getById(colaId);
     expect(voided?.voided_at).not.toBeNull();
     const active = await repos.products.list();
@@ -271,7 +313,7 @@ describe("ManageTab — product void/restore + snapshot preservation (spec #09 A
 
     // restore — re-selectable
     await fireEvent.press(view.getByTestId(`product-restore-${colaId}`));
-    await waitForSync(() => expect(() => view.getByText("已作废")).toThrow());
+    await waitForSync(() => expect(() => view.getByText("已删除")).toThrow());
     const restored = await repos.products.getById(colaId);
     expect(restored?.voided_at).toBeNull();
   });
