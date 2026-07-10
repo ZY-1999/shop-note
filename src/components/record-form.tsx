@@ -16,7 +16,7 @@ import type { Product } from '@/data/product';
 
 /**
  * The record form — the UI's only write path into the movement ledger. In CREATE
- * mode (opened from a 记账 row's 入库/出单 button) it posts a new record; in EDIT
+ * mode (opened from a 记账 row's 入库/出库 button) it posts a new record; in EDIT
  * mode (embedded in RecordDetail) it is preloaded with the record's existing
  * lines and calls update instead.
  *
@@ -70,7 +70,7 @@ export interface RecordFormProps {
   onSaved?: () => void;
 }
 
-const DIRECTION_LABEL: Record<Direction, string> = { in: '入库', out: '出单' };
+const DIRECTION_LABEL: Record<Direction, string> = { in: '入库', out: '出库' };
 
 /** Parsed integer qty (floored; empty/non-numeric → 0) for stepper math. */
 function qtyInt(qty: string): number {

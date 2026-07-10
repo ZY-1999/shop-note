@@ -4,7 +4,7 @@ import { id, now } from "@/data/primitives";
 
 /**
  * Member level (display word: 「会员等级」). Stored as a stable English code so
- * rebranding the label (cf. the 出库→出单 precedent for `direction`) needs no
+ * rebranding the label (cf. the direction display-label rename precedent — 出库↔出单, enum unchanged) needs no
  * data migration; the Chinese label lives only in {@link STAFF_LEVELS}. Two
  * tiers today (普站 / 金站); the registry is the single source for both UI
  * labels and the gold-first list sort, so adding a tier is one row here.

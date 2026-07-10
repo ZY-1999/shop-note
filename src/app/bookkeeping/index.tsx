@@ -9,7 +9,7 @@ import { useTheme } from '@/hooks/use-theme';
 /**
  * 记账 tab home — the operator's primary landing. A searchable list of active
  * staff, each row showing that staff's current holding summary (the one-pass
- * `staffSummaries()` rollup, joined by staff_id), with 入库/出单 jumping into the
+ * `staffSummaries()` rollup, joined by staff_id), with 入库/出库 jumping into the
  * prefilled record form and a row tap opening staff detail.
  *
  * All active staff render — including zero-record / zero-inventory staff — so a

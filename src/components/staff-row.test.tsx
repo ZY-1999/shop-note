@@ -7,8 +7,8 @@ import type { Staff } from "@/data/staff";
 /**
  * Spec #02 (page-refactor) — StaffRow's merged inventory line (AC1:
  * `库存：m件/n种 金额` on one line, replacing the old two-line variety/qty +
- * amount layout), the 出单 out-action label (AC2), and 欠货 surfacing + that
- * 入库/出单/row taps still carry the staff id (AC5 — no regression). The row
+ * amount layout), the 出库 out-action label (AC2), and 欠货 surfacing + that
+ * 入库/出库/row taps still carry the staff id (AC5 — no regression). The row
  * stays a pure, RNTL-testable presentational piece; the screen wires the
  * callbacks to the router.
  *
@@ -44,13 +44,13 @@ describe("StaffRow — merged inventory line (spec #02 AC1)", () => {
   });
 });
 
-describe("StaffRow — 出单 label + 欠货 surfacing (spec #02 AC2/AC5)", () => {
-  it("renders the out-action as 出单 (not 出库)", async () => {
+describe("StaffRow — 出库 label + 欠货 surfacing (spec #02 AC2/AC5)", () => {
+  it("renders the out-action as 出库 (not 出单)", async () => {
     const view = await render(
       <StaffRow staff={staff} onIn={jest.fn()} onOut={jest.fn()} onOpen={jest.fn()} />,
     );
-    expect(view.getByText("出单")).toBeTruthy();
-    expect(view.queryByText("出库")).toBeNull();
+    expect(view.getByText("出库")).toBeTruthy();
+    expect(view.queryByText("出单")).toBeNull();
   });
 
   it("shows a 欠货 badge + danger MoneyText when has_negative", async () => {
@@ -67,7 +67,7 @@ describe("StaffRow — 出单 label + 欠货 surfacing (spec #02 AC2/AC5)", () =
 });
 
 describe("StaffRow — action callbacks carry the staff id (spec #02 AC5)", () => {
-  it("入库 / 出单 / row each call back with the staff id", async () => {
+  it("入库 / 出库 / row each call back with the staff id", async () => {
     const onIn = jest.fn();
     const onOut = jest.fn();
     const onOpen = jest.fn();

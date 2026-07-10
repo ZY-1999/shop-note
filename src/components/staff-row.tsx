@@ -11,7 +11,7 @@ import type { Staff } from '@/data/staff';
  * One staff row in the 记账 list. Shows the staff's per-staff holding summary as
  * a single merged line `库存：{qty}件/{variety}种` + the amount via `MoneyText`
  * (spec #02 / page-refactor — denser than the old two-line layout); a 欠货 badge
- * + danger-tinted row when any product balance is negative; and 入库 / 出单
+ * + danger-tinted row when any product balance is negative; and 入库 / 出库
  * affordances that carry the staff id to the form. The row body taps through to
  * staff detail.
  *
@@ -70,7 +70,7 @@ export function StaffRow({ staff, summary, onIn, onOut, onOpen }: StaffRowProps)
           testID={`out-${staff.id}`}
           onPress={() => onOut(staff.id)}
           style={[styles.btn, { backgroundColor: theme.danger }]}>
-          <Text style={styles.btnText}>出单</Text>
+          <Text style={styles.btnText}>出库</Text>
         </Pressable>
       </View>
     </Pressable>

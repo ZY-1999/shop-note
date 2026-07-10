@@ -49,7 +49,7 @@ import { useTheme } from "@/hooks/use-theme";
  * (`onOpenStaff` / `onOpenRecord`); the route wires the router, so the tab is
  * RNTL-testable.
  */
-const DIRECTION_LABEL: Record<Direction, string> = { in: "入库", out: "出单" };
+const DIRECTION_LABEL: Record<Direction, string> = { in: "入库", out: "出库" };
 
 /** Initial days rendered, and how many more each reveal (onEndReached / footer) adds. */
 const INITIAL_DAYS = 5;
@@ -165,7 +165,7 @@ export function SummaryTab({
           </Text>
           <Text style={{ color: theme.success }}>入库</Text>
           <MoneyText cents={cents(item.dayIn)} />
-          <Text style={{ color: theme.danger }}>出单</Text>
+          <Text style={{ color: theme.danger }}>出库</Text>
           <MoneyText cents={cents(item.dayOut)} />
           <Ionicons
             name={dayOpen ? "chevron-up" : "chevron-down"}
@@ -362,7 +362,7 @@ export function SummaryTab({
           >
             <Text style={{ color: theme.success }}>入库</Text>
             <MoneyText testID="flow-in-total" cents={cents(inTotal)} />
-            <Text style={{ color: theme.danger }}>出单</Text>
+            <Text style={{ color: theme.danger }}>出库</Text>
             <MoneyText testID="flow-out-total" cents={cents(outTotal)} />
           </View>
         </View>

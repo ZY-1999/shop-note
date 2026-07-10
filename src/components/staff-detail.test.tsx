@@ -13,7 +13,7 @@ import { flushPending, waitForSync } from "@/testing/async";
 /**
  * Spec #04 (page-refactor) — staff-detail through the real data stack (ADR-0006:
  * InMemoryAdapter, no mocked Repos). Reshape: 持仓→库存 (collapsible, default
- * collapsed, with a header total), a `共 N 条 / 入库 / 出单` record summary, history
+ * collapsed, with a header total), a `共 N 条 / 入库 / 出库` record summary, history
  * grouped by local day with a per-day separator, and ADR-0007 day-batched
  * rendering driven by `onEndReached` (+ a `加载更多` footer that calls the same
  * reveal, for discoverability and a stable test seam). Async mechanics
@@ -80,7 +80,7 @@ describe("StaffDetail — 库存 section (collapsible + total) (spec #04 AC1)", 
   });
 });
 
-describe("StaffDetail — record summary 共 N 条 / 入库 / 出单 (spec #04 AC2)", () => {
+describe("StaffDetail — record summary 共 N 条 / 入库 / 出库 (spec #04 AC2)", () => {
   it("summarizes the record count + direction totals from the loaded records", async () => {
     const { repos, staffId, productId } = await seedStaffProduct();
     // in 4 @ 300¢ = 1200¢ (¥12.00) + out 2 @ 300¢ = 600¢ (¥6.00)
@@ -123,7 +123,7 @@ describe("StaffDetail — day section collapsible: default collapsed, tap to tog
 });
 
 describe("StaffDetail — history grouped by local day, newest first (spec #04 AC3/AC5)", () => {
-  it("groups records under per-day separators (newest day first), labels out as 出单, and opens a record on tap", async () => {
+  it("groups records under per-day separators (newest day first), labels out as 出库, and opens a record on tap", async () => {
     const { repos, staffId, productId } = await seedStaffProduct();
     const older = await repos.stockRecords.create({
       staff_id: staffId, direction: "in",
@@ -148,11 +148,11 @@ describe("StaffDetail — history grouped by local day, newest first (spec #04 A
     await fireEvent.press(view.getByTestId("day-2026/06/10"));
     await flushPending();
 
-    // The out record is labeled 出单 (not 出库) and carries its HH:mm time.
-    // "出单" appears both in the day separator (the day's out-total label) and on
+    // The out record is labeled 出库 (not 出单) and carries its HH:mm time.
+    // "出库" appears both in the day separator (the day's out-total label) and on
     // the out record row — assert presence (≥1), not uniqueness.
-    expect(view.getAllByText("出单").length).toBeGreaterThan(0);
-    expect(view.queryByText("出库")).toBeNull();
+    expect(view.getAllByText("出库").length).toBeGreaterThan(0);
+    expect(view.queryByText("出单")).toBeNull();
     expect(view.getByText("14:30")).toBeTruthy();
 
     // Tapping a record row opens its detail.

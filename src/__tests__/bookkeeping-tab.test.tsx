@@ -20,7 +20,7 @@ import { flushPending, waitForSync } from "@/testing/async";
  * visible without searching. This reverses the original AC3 ("hide zero-inventory
  * in the default view"); AC4's "first 入库 is reachable" guarantee now holds in
  * the default list directly. Search still narrows by name; each row is the merged
- * `库存：m件/n种 金额` line (AC1); the out-action is 出单 (AC2/AC5). The one-pass
+ * `库存：m件/n种 金额` line (AC1); the out-action is 出库 (AC2/AC5). The one-pass
  * `staffSummaries()` rollup is consumed unchanged; StaffRow renders
  * `库存：0件/0种 ¥0.00` when there is no summary.
  */
@@ -157,7 +157,7 @@ describe("记账 screen — merged row from the one-pass rollup (spec #02 AC1)",
   });
 });
 
-describe("记账 screen — 入库/出单 carry staff_id + direction (spec #02 AC5)", () => {
+describe("记账 screen — 入库/出库 carry staff_id + direction (spec #02 AC5)", () => {
   it("pushes the record form prefilled with the staff + direction", async () => {
     let staffId = "";
     const { view } = await renderBook(<BookkeepingTab />, {

@@ -352,12 +352,12 @@ describe("RecordForm — chip pick + stepper (spec #03 AC1/AC2)", () => {
   });
 });
 
-describe("RecordForm — 出单 label + 备注 field (spec #03 AC2/AC3)", () => {
-  it("renders the out-direction as 出单 (not 出库)", async () => {
+describe("RecordForm — 出库 label + 备注 field (spec #03 AC2/AC3)", () => {
+  it("renders the out-direction as 出库 (not 出单)", async () => {
     const { repos, staffId } = await seed();
     const { view } = await renderForm(<RecordForm staffId={staffId} direction="out" />, { repos });
-    expect(await waitForSync(() => view.getByText("出单"))).toBeTruthy();
-    expect(view.queryByText("出库")).toBeNull();
+    expect(await waitForSync(() => view.getByText("出库"))).toBeTruthy();
+    expect(view.queryByText("出单")).toBeNull();
   });
 
   it("renders 备注 as a label:input field", async () => {

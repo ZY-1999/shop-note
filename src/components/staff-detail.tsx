@@ -16,10 +16,10 @@ import type { Direction, StockItem } from '@/data/stock-record';
  * border wraps its header + expanded children, height grows with `gap`):
  *  1. 库存 — a collapsible card (per-product holdings + their current-price
  *     total, `holdingsOpen` default collapsed).
- *  2. 记录 — a `共 N 条 / 入库 / 出单` summary + a movement history grouped by
+ *  2. 记录 — a `共 N 条 / 入库 / 出库` summary + a movement history grouped by
  *     local day (newest-first). Each day is itself a collapsible card
  *     (`openDays` set, default collapsed): the day header carries that day's
- *     入库 / 出单 totals + a chevron; record rows render inside the card only
+ *     入库 / 出库 totals + a chevron; record rows render inside the card only
  *     when the day is open. Each record row still taps through to its detail.
  *
  * Spec #04 (page-refactor) reshaped this from a flat `ScrollView` into a day-
@@ -35,7 +35,7 @@ import type { Direction, StockItem } from '@/data/stock-record';
  * view; record amounts are the frozen `line_amount` snapshot (ADR-0002).
  * Navigation is delegated (`onOpenRecord`); the route wires the router.
  */
-const DIRECTION_LABEL: Record<Direction, string> = { in: '入库', out: '出单' };
+const DIRECTION_LABEL: Record<Direction, string> = { in: '入库', out: '出库' };
 
 /** Initial days rendered, and how many more each reveal (onEndReached / footer) adds. */
 const INITIAL_DAYS = 5;
@@ -121,7 +121,7 @@ export function StaffDetail({ staffId, onOpenRecord }: StaffDetailProps) {
           <Text style={[styles.dayDate, { color: theme.text }]}>{item.date}</Text>
           <Text style={{ color: theme.success }}>入库</Text>
           <MoneyText cents={cents(item.dayIn)} />
-          <Text style={{ color: theme.danger }}>出单</Text>
+          <Text style={{ color: theme.danger }}>出库</Text>
           <MoneyText cents={cents(item.dayOut)} />
           <Ionicons name={dayOpen ? 'chevron-up' : 'chevron-down'} size={14} color={theme.textSecondary} />
         </Pressable>
@@ -203,7 +203,7 @@ export function StaffDetail({ staffId, onOpenRecord }: StaffDetailProps) {
             <Text style={{ color: theme.text }}>共 {recordCount} 条</Text>
             <Text style={{ color: theme.success }}>入库</Text>
             <MoneyText testID="record-in-total" cents={cents(inTotal)} />
-            <Text style={{ color: theme.danger }}>出单</Text>
+            <Text style={{ color: theme.danger }}>出库</Text>
             <MoneyText testID="record-out-total" cents={cents(outTotal)} />
           </View>
         </View>
