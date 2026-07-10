@@ -1,7 +1,7 @@
 import DateTimePicker, { type DateTimePickerChangeEvent } from '@expo/ui/community/datetime-picker';
 import { router } from 'expo-router';
 import { useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { MoneyText } from '@/components/money-text';
 import { validateRecordForm } from '@/components/record-form-validation';
@@ -89,6 +89,13 @@ export function RecordForm({ staffId, direction, edit, onSaved }: RecordFormProp
   );
   const [note, setNote] = useState(edit?.note ?? '');
   const [timestamp, setTimestamp] = useState(edit?.timestamp ?? Date.now());
+  // Android renders the picker as a Material dialog (@expo/ui default
+  // presentation='dialog'): mount opens it, and the caller must unmount on
+  // confirm (onValueChange) or cancel (onDismiss) — leaving it mounted leaves
+  // OK/Cancel half-wired (the #06 Android bug). iOS ignores `presentation`
+  // (always inline, no OK/Cancel), so it stays mounted and fires onValueChange
+  // per nudge. See @expo/ui community/datetime-picker types.
+  const [showTime, setShowTime] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const linesWithAmount = lines.map((l) => ({ ...l, amount: lineAmount(l) }));
@@ -199,12 +206,35 @@ export function RecordForm({ staffId, direction, edit, onSaved }: RecordFormProp
       />
       <View style={styles.timeRow}>
         <Text style={[styles.timeLabel, { color: theme.textSecondary }]}>时间</Text>
-        <DateTimePicker
-          testID="record-time"
-          mode="datetime"
-          value={new Date(timestamp)}
-          onValueChange={(_e: DateTimePickerChangeEvent, date: Date) => setTimestamp(date.getTime())}
-        />
+        {/* Android: dialog picker — tap the timestamp to mount it; unmount on
+            confirm (onValueChange) or cancel (onDismiss) per the dialog contract.
+            iOS: inline picker stays mounted, nudges fire onValueChange directly. */}
+        {Platform.OS === 'android' ? (
+          <>
+            <Pressable testID="record-time" onPress={() => setShowTime(true)}>
+              <Text style={{ color: theme.text }}>{new Date(timestamp).toLocaleString()}</Text>
+            </Pressable>
+            {showTime && (
+              <DateTimePicker
+                testID="record-time-picker"
+                mode="datetime"
+                value={new Date(timestamp)}
+                onValueChange={(_e: DateTimePickerChangeEvent, date: Date) => {
+                  setTimestamp(date.getTime());
+                  setShowTime(false);
+                }}
+                onDismiss={() => setShowTime(false)}
+              />
+            )}
+          </>
+        ) : (
+          <DateTimePicker
+            testID="record-time"
+            mode="datetime"
+            value={new Date(timestamp)}
+            onValueChange={(_e: DateTimePickerChangeEvent, date: Date) => setTimestamp(date.getTime())}
+          />
+        )}
       </View>
 
       {error && (

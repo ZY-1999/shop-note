@@ -2,6 +2,7 @@ import type { ReactElement } from "react";
 import { afterEach, beforeEach, describe, expect, it, jest } from "@jest/globals";
 import type { QueryClient } from "@tanstack/react-query";
 import { fireEvent } from "@testing-library/react-native";
+import { Platform } from "react-native";
 
 import { RecordForm } from "@/components/record-form";
 import { InMemoryAdapter } from "@/data/in-memory";
@@ -33,10 +34,23 @@ jest.mock("@expo/ui/community/datetime-picker", () => {
   const { View, Text, Pressable } = jest.requireActual("react-native") as typeof import("react-native");
   return {
     __esModule: true,
-    default: ({ value, testID, onValueChange }: { value: Date; testID: string; onValueChange?: (e: unknown, date: Date) => void }) =>
+    // Handlers are spread onto the View's props so tests can fireEvent them
+    // directly. The Android dialog-contract suite below drives onValueChange and
+    // onDismiss this way; the iOS suite still uses the `${testID}-backdate` press.
+    default: ({
+      value,
+      testID,
+      onValueChange,
+      onDismiss,
+    }: {
+      value: Date;
+      testID: string;
+      onValueChange?: (e: unknown, date: Date) => void;
+      onDismiss?: () => void;
+    }) =>
       React.createElement(
         View,
-        { testID },
+        { testID, onValueChange, onDismiss },
         React.createElement(Text, null, value ? new Date(value).toISOString() : ""),
         React.createElement(
           Pressable,
@@ -237,5 +251,54 @@ describe("RecordForm — out over holdings is not blocked (spec #06 AC6)", () =>
     const [posted] = await repos.stockRecords.list();
     expect(posted.record.direction).toBe("out");
     expect(posted.items[0].qty).toBe(5);
+  });
+});
+
+describe("RecordForm — Android dialog picker contract (spec #06 Android fix)", () => {
+  // Android renders the picker as a mount-on-demand Material dialog (@expo/ui
+  // default presentation='dialog'): tap the timestamp trigger to mount it, then
+  // the caller MUST unmount on confirm (onValueChange) or cancel (onDismiss).
+  // The prior code left it permanently mounted with no onDismiss, so Cancel was
+  // unwired — these pin the contract so it can't regress. jest-expo defaults to
+  // iOS (covered by the backdate test above); this suite flips Platform.OS.
+  const originalOS = Platform.OS;
+  beforeEach(() => {
+    Platform.OS = "android";
+  });
+  afterEach(() => {
+    Platform.OS = originalOS;
+  });
+
+  it("mounts the picker on tap, confirms via onValueChange, and unmounts", async () => {
+    const { repos, view } = await renderPicked("in", "1");
+    // dialog not mounted until the trigger is tapped
+    expect(() => view.getByTestId("record-time-picker")).toThrow();
+    fireEvent.press(view.getByTestId("record-time"));
+    const picker = view.getByTestId("record-time-picker");
+    // OK → new timestamp + the dialog unmounts
+    fireEvent(
+      picker,
+      "onValueChange",
+      { nativeEvent: { timestamp: mockBackdateMs, utcOffset: 0 } },
+      new Date(mockBackdateMs),
+    );
+    expect(() => view.getByTestId("record-time-picker")).toThrow();
+    await flushPending(); // let setTimestamp commit before submit reads it
+    fireEvent.press(view.getByTestId("submit"));
+    const [posted] = await waitForSync(async () => (await repos.stockRecords.list())[0]);
+    expect(posted.record.timestamp).toBe(mockBackdateMs);
+  });
+
+  it("cancel via onDismiss unmounts without writing a new time", async () => {
+    const { repos, view } = await renderPicked("in", "1");
+    fireEvent.press(view.getByTestId("record-time"));
+    fireEvent(view.getByTestId("record-time-picker"), "onDismiss");
+    // Cancel unmounts the dialog…
+    expect(() => view.getByTestId("record-time-picker")).toThrow();
+    // …and writes nothing — submit carries the default (~now), not a dialog value.
+    await flushPending();
+    fireEvent.press(view.getByTestId("submit"));
+    const [posted] = await waitForSync(async () => (await repos.stockRecords.list())[0]);
+    expect(posted.record.timestamp).toBeGreaterThan(Date.now() - 5000);
   });
 });
