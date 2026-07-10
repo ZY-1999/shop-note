@@ -1,7 +1,7 @@
 # 记账首页 — 员工行合并 + 出单按钮 + 有库存才列
 
 Type: spec
-Status: ready-for-agent
+Status: ready-for-human # Stage 2 (/tdd) implemented 2026-07-10 — all ACs GREEN in jest/RNTL, tsc clean; 出单文案/默认隐藏零库存/搜索可找零库存员工 全覆盖
 Parent: #01
 Blocked by: None — can start immediately
 
@@ -41,3 +41,22 @@ Blocked by: None — can start immediately
 ## Rework on failure
 
 隔离在 staff-row + bookkeeping index；纯展示 + 列表过滤，无数据层风险。
+
+---
+
+## Stage 2 evidence (implemented 2026-07-10)
+
+`npx jest` → 28 suites / 197 passed（含本 spec 改动的 staff-row 单元 + bookkeeping 集成）；`npx tsc --noEmit` → exit 0。
+
+- **AC1（员工行合并单行 `库存：{qty}件/{variety}种` + 内联金额）** → `src/components/staff-row.test.tsx` "shows 库存：{qty}件/{variety}种 + the amount on one line when a summary is present"（`库存：12件/3种` + `¥12.00` 同行）+ `src/__tests__/bookkeeping-tab.test.tsx` "renders 库存：{qty}件/{variety}种 + amount on the row"（端到端：seed 可乐×4 in → `库存：4件/1种` + `¥12.00`，经 `staffSummaries()` one-pass rollup）。GREEN。
+- **AC1（无 summary → `库存：0件/0种 ¥0.00`，非「无记录」）** → staff-row.test.tsx "shows 库存：0件/0种 ¥0.00 when there is no summary"。GREEN。
+- **AC2（出库 → 出单，配色不变）** → staff-row.test.tsx "renders the out-action as 出单 (not 出库)"（`getByText("出单")` + `queryByText("出库")` null；按钮仍 `theme.danger` 底色）。GREEN。
+- **AC3（默认列表只列有非零库存员工）** → bookkeeping-tab.test.tsx "hides a no-record staff in the default (no-search) view"（张三有库存显示、李四无记录隐藏）+ "also hides a staff whose balance nets to zero"（王五 in3/out3 净零——`staffSummaries()` 仍返回零值行，被屏幕谓词 `total_qty!==0||variety>0` 过滤；以有库存的李六为锚点证明列表已渲染再做负向断言）。GREEN。
+- **AC4（搜索可找零库存员工做首笔入库）** → bookkeeping-tab.test.tsx "reveals a no-movement staff on search and exposes their 入库 button"（默认张三隐藏 → 输入「张」→ `useStaff({search})` 不过滤 → 张三重现 `库存：0件/0种 ¥0.00` + `in-${id}` 按钮可达）。GREEN。
+- **AC5（欠货 badge + danger 底色 + 行点击/入库/出单导航无回归）** → staff-row.test.tsx "shows a 欠货 badge + danger MoneyText when has_negative"（`欠货` badge + `欠货 ¥5.00`）+ "入库 / 出单 / row each call back with the staff id" + bookkeeping-tab.test.tsx "pushes the record form prefilled with the staff + direction"（in/out → `/bookkeeping/record-form` 携 staff_id+direction）+ "shows every inventory staff, then narrows by name"（搜索按名收窄无回归）。GREEN。
+
+**改动范围**：`src/components/staff-row.tsx`（sub 行 + MoneyText 折进 `meta` 单行；`summary?.x ?? 0` 兜底无 summary；出库→出单）+ `src/app/bookkeeping/index.tsx`（`search === ''` 时按 `summaryById.get(id) && (total_qty!==0||variety>0)` 过滤；搜索分支不过滤）。`<StaffRow .../>` 签名不变；`useStaffSummaries` 读模型未动（过滤是屏幕职责，不进 hook——spec deep-module note）。
+
+**测试力学**：bookkeeping 集成套件改用 ADR-0006 的 `waitForSync`/`flushPending`（替代 RNTL 的 `findBy*`/`waitFor`，避免 act 重叠/定时器泄漏）+ `afterEach queryClient.clear()`；负向断言用 `waitForSync(() => expect(() => getByText(...)).toThrow())`，且先正向等到有库存锚点证明列表已渲染，再做缺席断言（避免 loading 空窗假阳性）。
+
+Commit: see `feat(bookkeeping): 员工行合并 + 出单 + 默认有库存才列 (#02)` (this spec's Stage 2 commit).

@@ -7,11 +7,16 @@ import type { StaffSummary } from '@/data/inventory';
 import type { Staff } from '@/data/staff';
 
 /**
- * One staff row in the 记账 list (spec #05). Shows the staff's per-staff holding
- * summary (variety / total qty / total amount via `MoneyText`) computed by the
- * one-pass `staffSummaries()` rollup; a 欠货 badge + danger-tinted row when any
- * product balance is negative; and 入库 / 出库 affordances that carry the staff id
- * to the form (#6). The row body taps through to staff detail (#7).
+ * One staff row in the 记账 list. Shows the staff's per-staff holding summary as
+ * a single merged line `库存：{qty}件/{variety}种` + the amount via `MoneyText`
+ * (spec #02 / page-refactor — denser than the old two-line layout); a 欠货 badge
+ * + danger-tinted row when any product balance is negative; and 入库 / 出单
+ * affordances that carry the staff id to the form. The row body taps through to
+ * staff detail.
+ *
+ * `summary` may be `undefined` — a staff surfaced via search (spec #02 AC4) can
+ * have no movements yet, so the row renders zeros rather than a sentinel. The
+ * default list hides such staff (AC3); that filter lives in the screen, not here.
  *
  * Navigation is delegated (`onIn` / `onOut` / `onOpen`) so the row is a pure,
  * RNTL-testable presentational piece; the screen wires these to the router.
@@ -27,6 +32,9 @@ export interface StaffRowProps {
 export function StaffRow({ staff, summary, onIn, onOut, onOpen }: StaffRowProps) {
   const theme = useTheme();
   const negative = summary?.has_negative === true;
+  const qty = summary?.total_qty ?? 0;
+  const variety = summary?.variety ?? 0;
+  const amount = summary?.total_amount ?? 0;
   return (
     <Pressable
       testID={`row-${staff.id}`}
@@ -41,10 +49,12 @@ export function StaffRow({ staff, summary, onIn, onOut, onOpen }: StaffRowProps)
             </Text>
           )}
         </View>
-        <Text style={[styles.sub, { color: theme.textSecondary }]}>
-          {summary ? `${summary.variety}种 / ${summary.total_qty}件` : '无记录'}
-        </Text>
-        {summary && <MoneyText cents={cents(summary.total_amount)} />}
+        <View style={styles.meta}>
+          <Text style={[styles.sub, { color: theme.textSecondary }]}>
+            库存：{qty}件/{variety}种
+          </Text>
+          <MoneyText cents={cents(amount)} />
+        </View>
       </View>
       <View style={styles.actions}>
         <Pressable
@@ -57,7 +67,7 @@ export function StaffRow({ staff, summary, onIn, onOut, onOpen }: StaffRowProps)
           testID={`out-${staff.id}`}
           onPress={() => onOut(staff.id)}
           style={[styles.btn, { backgroundColor: theme.danger }]}>
-          <Text style={styles.btnText}>出库</Text>
+          <Text style={styles.btnText}>出单</Text>
         </Pressable>
       </View>
     </Pressable>
@@ -68,6 +78,7 @@ const styles = StyleSheet.create({
   row: { flexDirection: 'row', alignItems: 'center', padding: 12, borderWidth: 1, gap: 12 },
   main: { flex: 1, gap: 2 },
   header: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  meta: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   name: { fontSize: 16, fontWeight: '600' },
   badge: { fontSize: 12, borderWidth: 1, paddingHorizontal: 6, paddingVertical: 1, borderRadius: 4 },
   sub: { fontSize: 13 },
