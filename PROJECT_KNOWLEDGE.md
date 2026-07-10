@@ -22,6 +22,14 @@
 - **适用边界**：当版本契约（reanimated / worklets / Expo Go / RN / React）全部对齐却仍崩，**优先怀疑缓存而非版本**。这是首选、最低成本的排查动作。
 - **验证**：清缓存重建后启动成功（用户复测）。
 
+### 跑 UI 测试用 `--forceExit`，别用 `| tail`
+
+- **事实**：React Query `notifyManager` 的残留 `setTimeout(0)` 会让 jest 跑完 UI 测试后进程不退出（[codemap Risk Areas](docs/codemap/project.md) 已记录该 timer，但未给运行实践）。`| tail` 等 stdin EOF 会永久阻塞 → 命令挂死、输出不刷新。
+- **推荐命令**：`npx jest <pattern> --colors=false --forceExit > /tmp/out.txt 2>&1` 后读文件，单文件约 3–10s 完成。
+- **来源**：2026-07 manage-ui 优化，`npx jest manage-tab` 多次挂起，加 `--forceExit` + 重定向后秒级完成。
+- **适用边界**：ui project（jest-expo + RNTL + react-query）。data project（ts-jest，无 React Query）不需要。
+- **验证**：manage-tab 单文件 3.9s 退出；全量 27 suites 正常退出。
+
 ## 依赖
 
 ### `@expo/vector-icons` 需显式安装（expo 57 不再传递依赖）
