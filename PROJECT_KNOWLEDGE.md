@@ -51,3 +51,13 @@
   - **`ios.icon` 用普通 PNG，不用 `.icon` bundle**：bundle 需矢量 SVG 才能发挥 iOS 18 自动渐变/着色/半透明效果，位图用不上；原 bundle 已删除，要恢复 iOS 18 tinted/dark 需提供 Z 的矢量 SVG 重新生成 bundle。
   - 验证图标以 Pillow 像素采样为准（视觉模型会把浅色/透明背景误判为"黑色"）。
 - **验证**：`icon.png` 四边 8 点全 `#E6F4FE`、0 透明像素；前景/单色透明背景 + Z 居中 66%。
+
+## 数据层 / 迁移
+
+### 给既有表加列必须冻结历史版本的 CREATE 字面量
+
+- **事实**：本项目的 DDL 由 `COLUMNS`（[src/data/expo-sqlite-migration.ts](src/data/expo-sqlite-migration.ts)）经 `createTableSql` **动态生成**；`MIGRATIONS` 版本化、按 `PRAGMA user_version` 门控（`runMigrations` 只跑 `version > current`）。给**既有表加列**时，若把新列加进 `COLUMNS`（drift-guard 要求 `COLUMNS` 列名 == `SCHEMA` 列名，必须同步加），则**全新库**的 v1 `CREATE TABLE` 已含该列；而**老库**需靠新版本 `ALTER TABLE ADD COLUMN` 补列——SQLite `ALTER ADD COLUMN` **无 `IF NOT EXISTS`**，于是全新库跑到该 `ALTER` 会 `duplicate column` 失败。解法：把已发布版本里该表的 `CREATE` **冻结为加列前的历史字面量**（如 `V1_STAFF_DDL`），新版本迁移用 `ALTER ... DEFAULT <回填值>` 给新老两路都补列，两路径都收敛到带新列的表。
+- **来源**：会员等级 feature（2026-07-10，`member-rename-level`）给 `staff` 加 `level` 列——spec #01 + 提交 `35bdb9f`；Stage 3 双轴评审确认。配套：给 `ColDef` 加 `default?: string`、`colSql` 发 `DEFAULT <v>`，使 `createTableSql` 产出的新列与 `ALTER` 的 `DEFAULT` **对称**（唯一"无 DEFAULT"的 DDL 是冻结的历史字面量，因其早于该列）。
+- **适用边界 / 踩坑**：**任何给 5 张既有表（staff/product/stock_record/stock_record_item/audit_log）加列**都适用——这是默认要走的路，不是特例。冻结的是**已发布的历史版本**该表的 `CREATE` 字面量；`COLUMNS`/`SCHEMA` 仍含新列（drift-guard 绑定的是这两者，**不**覆盖 `MIGRATIONS` 字面量，所以冻结合法）。**不要**在已发布迁移里直接留 `createTableSql(table)`——`COLUMNS` 一旦加列它就漂移、会和 `ALTER` 撞列。替代方案（给 `runMigrations` 加列存在性 guard、跑到 `ALTER` 前先 `PRAGMA table_info` 判存）更重、要改 `runMigrations` 签名，未采纳。
+- **验证**：[src/data/expo-sqlite-migration.test.ts](src/data/expo-sqlite-migration.test.ts) 断言 v1 staff 字面量 `!== createTableSql("staff")`、`MIGRATIONS.length === 2`、v2 `ALTER ... DEFAULT 'normal' CHECK(...)` 语句正确；`createTableSql('staff')` 快照含 `level TEXT NOT NULL DEFAULT 'normal' CHECK (level IN ('normal','gold'))`。真实 `ALTER` 执行仅靠**设备 smoke**（ADR-0004，Jest 不覆盖），发布前须手跑：老库升级 existing 行得回填默认值、全新库建表+迁移后列存在。
+- **关联**：ADR-0003（DDL 与 registry 共用单源）、ADR-0004（真实 SQL → device smoke）。CONTEXT.md「会员化改名 + 会员等级」条目亦有概述。
