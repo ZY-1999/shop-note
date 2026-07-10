@@ -1,9 +1,11 @@
 import { AuditProvider } from "@/data/audit";
 import { DailyFlow } from "@/data/daily-flow";
 import { Inventory } from "@/data/inventory";
+import { MemberBalance } from "@/data/member-balance";
 import { ProductRepository } from "@/data/product";
 import { StaffRepository } from "@/data/staff";
 import { StockRecordRepository } from "@/data/stock-record";
+import { TopupRepository } from "@/data/topup";
 import type { StoragePort } from "@/data/port";
 
 /**
@@ -22,6 +24,8 @@ export interface Repos {
   stockRecords: StockRecordRepository;
   inventory: Inventory;
   dailyFlow: DailyFlow;
+  topups: TopupRepository;
+  memberBalance: MemberBalance;
 }
 
 /** Build a fresh repo set over `storage` — identical wiring for Expo and InMemory. */
@@ -32,5 +36,7 @@ export function setupRepos(storage: StoragePort): Repos {
   const stockRecords = new StockRecordRepository(storage, products, audit);
   const inventory = new Inventory(stockRecords, products);
   const dailyFlow = new DailyFlow(stockRecords);
-  return { storage, audit, products, staff, stockRecords, inventory, dailyFlow };
+  const topups = new TopupRepository(storage, audit);
+  const memberBalance = new MemberBalance(topups, stockRecords);
+  return { storage, audit, products, staff, stockRecords, inventory, dailyFlow, topups, memberBalance };
 }

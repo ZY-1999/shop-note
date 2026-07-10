@@ -37,4 +37,13 @@ export const qk = {
     all: ["dailyFlow"] as const,
     flow: (filter?: DailyFlowFilter) => ["dailyFlow", "flow", filter ?? {}] as const,
   },
+  topups: {
+    all: ["topups"] as const,
+    list: (filter?: { staff_id?: string }) => ["topups", "list", filter ?? {}] as const,
+    byId: (topupId: string) => ["topups", "byId", topupId] as const,
+  },
+  balance: {
+    all: ["balance"] as const,
+    byStaff: (staffId: string) => ["balance", "byStaff", staffId] as const,
+  },
 } as const;

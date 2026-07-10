@@ -52,19 +52,51 @@ async function seedStaffProduct() {
   return { repos, staffId: staff.id, productId: product.id };
 }
 
-describe("StaffDetail — record summary 共 N 条 / 入库 / 出库 (spec #04 AC2)", () => {
-  it("summarizes the record count + direction totals from the loaded records", async () => {
+describe("StaffDetail — 余额 partition + summary (balance-domain)", () => {
+  it("shows the derived 余额 (Σ topup − Σ out) + the 充值/出库 summary totals", async () => {
     const { repos, staffId, productId } = await seedStaffProduct();
-    // A member's records are all 'out' (restock 'in' lives under admin -1):
-    // out 4 @ 300¢ = 1200¢ (¥12.00) + out 2 @ 300¢ = 600¢ (¥6.00).
-    await repos.stockRecords.create({ staff_id: staffId, direction: "out", items: [{ product_id: productId, qty: 4 }] });
-    await repos.stockRecords.create({ staff_id: staffId, direction: "out", items: [{ product_id: productId, qty: 2 }] });
+    await repos.topups.create({ staff_id: staffId, amount: cents(10000) }); // ¥100
+    await repos.stockRecords.create({ staff_id: staffId, direction: "out", items: [{ product_id: productId, qty: 10 }] }); // ¥30
 
     const { view } = await renderDetail(<StaffDetail staffId={staffId} onOpenRecord={jest.fn()} />, { repos });
-    await waitForSync(() => view.getByTestId("record-summary"));
+    await waitForSync(() => view.getByTestId("balance-section"));
+    expect(moneyText(view.getByTestId("balance-total"))).toBe("¥70.00"); // 100 − 30
     expect(view.getByText("共 2 条")).toBeTruthy();
-    expect(moneyText(view.getByTestId("record-in-total"))).toBe("¥0.00"); // members have no 'in'
-    expect(moneyText(view.getByTestId("record-out-total"))).toBe("¥18.00"); // 1200 + 600
+    expect(moneyText(view.getByTestId("record-topup-total"))).toBe("¥100.00");
+    expect(moneyText(view.getByTestId("record-out-total"))).toBe("¥30.00");
+  });
+
+  it("marks a negative 余额 as 欠款 (out > topup)", async () => {
+    const { repos, staffId, productId } = await seedStaffProduct();
+    await repos.topups.create({ staff_id: staffId, amount: cents(1000) }); // ¥10
+    await repos.stockRecords.create({ staff_id: staffId, direction: "out", items: [{ product_id: productId, qty: 10 }] }); // ¥30 → −¥20
+
+    const { view } = await renderDetail(<StaffDetail staffId={staffId} onOpenRecord={jest.fn()} />, { repos });
+    await waitForSync(() => view.getByTestId("balance-section"));
+    expect(moneyText(view.getByTestId("balance-total"))).toBe("欠款 ¥20.00");
+  });
+});
+
+describe("StaffDetail — 充值 history + 作废 (balance-domain US11)", () => {
+  it("lists top-ups in the day history and voiding one recovers the balance", async () => {
+    const { repos, staffId, productId } = await seedStaffProduct();
+    await repos.topups.create({ staff_id: staffId, amount: cents(10000), note: "首充", timestamp: new Date(2026, 5, 10, 9, 0).getTime() });
+    await repos.stockRecords.create({ staff_id: staffId, direction: "out", items: [{ product_id: productId, qty: 10 }], timestamp: new Date(2026, 5, 10, 10, 0).getTime() });
+
+    const { view } = await renderDetail(<StaffDetail staffId={staffId} onOpenRecord={jest.fn()} />, { repos });
+    await waitForSync(() => view.getByTestId("day-2026/06/10"));
+    await fireEvent.press(view.getByTestId("day-2026/06/10"));
+    await flushPending();
+
+    // the top-up row carries a 作废 affordance; balance starts at ¥70 (100 − 30).
+    expect(moneyText(view.getByTestId("balance-total"))).toBe("¥70.00");
+    const [topup] = await repos.topups.list({ staff_id: staffId });
+    await fireEvent.press(view.getByTestId(`topup-void-${topup.id}`));
+    await fireEvent.press(view.getByTestId(`topup-confirm-${topup.id}`));
+
+    // voiding the ¥100 top-up → balance recomputes to −¥30 (only the out remains).
+    await waitForSync(() => expect(moneyText(view.getByTestId("balance-total"))).toBe("欠款 ¥30.00"));
+    expect((await repos.topups.list({ staff_id: staffId }))).toHaveLength(0); // voided → excluded
   });
 });
 

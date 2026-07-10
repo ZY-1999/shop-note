@@ -1,8 +1,10 @@
 import { useQuery, type UseQueryResult } from "@tanstack/react-query";
 import { useRepos } from "@/providers/providers";
 import type { Aggregate } from "@/data/inventory";
+import type { Balance } from "@/data/member-balance";
 import type { Product } from "@/data/product";
 import type { Staff } from "@/data/staff";
+import type { Topup } from "@/data/topup";
 import type { DailyFlowRow } from "@/data/daily-flow";
 import type { DailyFlowFilter } from "@/data/daily-flow";
 import type { RecordFilter, RecordWithItems } from "@/data/stock-record";
@@ -90,5 +92,23 @@ export function useDailyFlow(filter?: DailyFlowFilter): UseQueryResult<DailyFlow
   return useQuery<DailyFlowRow[]>({
     queryKey: qk.dailyFlow.flow(filter),
     queryFn: () => repos.dailyFlow.flow(filter),
+  });
+}
+
+/** A member's top-up history (voided excluded), optional staff_id filter. */
+export function useTopups(filter?: { staff_id?: string }): UseQueryResult<Topup[]> {
+  const repos = useRepos();
+  return useQuery<Topup[]>({
+    queryKey: qk.topups.list(filter),
+    queryFn: () => repos.topups.list(filter),
+  });
+}
+
+/** A member's derived money balance (never stored; negative = 欠款). */
+export function useMemberBalance(staffId: string): UseQueryResult<Balance> {
+  const repos = useRepos();
+  return useQuery<Balance>({
+    queryKey: qk.balance.byStaff(staffId),
+    queryFn: () => repos.memberBalance.balance(staffId),
   });
 }

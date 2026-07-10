@@ -11,6 +11,7 @@ import type {
   StockRecordUpdatePatch,
   RecordWithItems,
 } from "@/data/stock-record";
+import type { Topup, TopupCreateInput } from "@/data/topup";
 import { qk } from "@/hooks/query-keys";
 
 /**
@@ -169,6 +170,7 @@ export function useCreateStockRecord(): UseMutationResult<RecordWithItems, Error
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: qk.records.all });
       void queryClient.invalidateQueries({ queryKey: qk.inventory.all });
+      void queryClient.invalidateQueries({ queryKey: qk.balance.all });
       void queryClient.invalidateQueries({ queryKey: qk.dailyFlow.all });
     },
   });
@@ -195,6 +197,7 @@ export function useUpdateStockRecord(): UseMutationResult<
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: qk.records.all });
       void queryClient.invalidateQueries({ queryKey: qk.inventory.all });
+      void queryClient.invalidateQueries({ queryKey: qk.balance.all });
       void queryClient.invalidateQueries({ queryKey: qk.dailyFlow.all });
     },
   });
@@ -215,7 +218,42 @@ export function useVoidStockRecord(): UseMutationResult<RecordWithItems, Error, 
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: qk.records.all });
       void queryClient.invalidateQueries({ queryKey: qk.inventory.all });
+      void queryClient.invalidateQueries({ queryKey: qk.balance.all });
       void queryClient.invalidateQueries({ queryKey: qk.dailyFlow.all });
+    },
+  });
+}
+
+/**
+ * Top up a member (stock-balance-refactor). Money-in is audited; onSuccess
+ * invalidates the member's balance + the top-up history so 记账 / staff-detail
+ * re-read immediately. `qk.dailyFlow` is NOT invalidated here — dailyFlow does
+ * not include top-ups until spec 05 extends it, so the invalidate would be a
+ * no-op now and lands with spec 05.
+ */
+export function useCreateTopup(): UseMutationResult<Topup, Error, TopupCreateInput> {
+  const repos = useRepos();
+  const queue = useMutationQueue();
+  const queryClient = useQueryClient();
+  return useMutation<Topup, Error, TopupCreateInput>({
+    mutationFn: (input) => queue.run(() => repos.topups.create(input)),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: qk.topups.all });
+      void queryClient.invalidateQueries({ queryKey: qk.balance.all });
+    },
+  });
+}
+
+/** Void a top-up (soft-delete + audit); balance recomputes on the next read. */
+export function useVoidTopup(): UseMutationResult<Topup, Error, string> {
+  const repos = useRepos();
+  const queue = useMutationQueue();
+  const queryClient = useQueryClient();
+  return useMutation<Topup, Error, string>({
+    mutationFn: (topupId) => queue.run(() => repos.topups.void(topupId)),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: qk.topups.all });
+      void queryClient.invalidateQueries({ queryKey: qk.balance.all });
     },
   });
 }

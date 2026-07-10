@@ -5,30 +5,30 @@ import { Ionicons } from '@expo/vector-icons';
 import { MoneyText } from '@/components/money-text';
 import { LevelBadge } from '@/components/level-badge';
 import { formatDate, formatTime } from '@/components/date-format';
-import { useStaffById, useStockRecords } from '@/hooks/reads';
+import { useMemberBalance, useStaffById, useStockRecords, useTopups } from '@/hooks/reads';
+import { useVoidTopup } from '@/hooks/mutations';
 import { useTheme } from '@/hooks/use-theme';
 import { cents } from '@/data/primitives';
 import type { Direction, StockItem } from '@/data/stock-record';
 
 /**
- * The member look-back screen (stock-balance-refactor placeholder skeleton).
+ * The member look-back screen (stock-balance-refactor balance-domain).
  *
- * Members no longer hold stock, so the old per-staff 「库存」 holdings card
- * (`useStaffInventory`) is gone; its slot is reserved for spec 03's 余额分区 +
- * 充值历史. What remains is the movement history: a `共 N 条 / 入库 / 出库`
- * summary + a day-grouped history (newest-first). Under the new model a member's
- * records are all `out` (checkouts) — `in` restock lives under the admin `-1` —
- * so a member's 入库 total is typically 0; the day grouping + frozen line_amount
- * snapshot display are unchanged.
+ * Two regions:
+ *  1. 余额 — the derived member money balance (`useMemberBalance`: Σ topup − Σ out
+ *     line_amount), with a 欠款 mark when negative.
+ *  2. 综合历史 — a merged day-grouped timeline of the member's checkouts (`out`
+ *     records) and top-ups, newest day first. Each day is a collapsible card
+ *     (default collapsed); a top-up row carries a 作废 affordance (confirm →
+ *     `useVoidTopup`), the operator-action close that lets a mis-keyed top-up be
+ *     corrected and the balance recompute (US11). Checkout rows tap through to
+ *     record detail.
  *
- * Each day is a collapsible card (`openDays` set, default collapsed): the day
- * header carries that day's 入库 / 出库 totals + a chevron; record rows render
- * inside only when open. Each FlatList item is one whole DAY SECTION, so
- * `visibleDays` caps how many days render and a batch boundary can never split a
- * day. Record amounts are the frozen `line_amount` snapshot (ADR-0002).
+ * Under the new model a member's records are all `out` (restock `in` is admin -1),
+ * so the day separator shows 出库 + 充值 totals (no 入库). Day-batched rendering
+ * (ADR-0007); record amounts are frozen `line_amount` snapshots (ADR-0002).
  * Navigation is delegated (`onOpenRecord`); the route wires the router.
  */
-const DIRECTION_LABEL: Record<Direction, string> = { in: '入库', out: '出库' };
 
 /** Initial days rendered, and how many more each reveal (onEndReached / footer) adds. */
 const INITIAL_DAYS = 5;
@@ -39,106 +39,163 @@ export interface StaffDetailProps {
   onOpenRecord: (recordId: string) => void;
 }
 
-/** One FlatList item = one local calendar day: its separator totals + record rows. */
+type EventKind = 'record' | 'topup';
+
+/** One merged history event (a checkout or a top-up) inside a day section. */
+interface HistoryEvent {
+  id: string;
+  kind: EventKind;
+  timestamp: number;
+  amount: number; // frozen line_amount (record) or top-up amount, in cents
+  direction?: Direction; // record only
+  items?: StockItem[]; // record only
+  note?: string | null; // topup only
+}
+
+/** One FlatList item = one local calendar day: its separator totals + events. */
 interface DaySection {
   date: string; // YYYY/MM/DD via formatDate
-  dayIn: number; // Σ in-direction line_amount that day (cents)
-  dayOut: number; // Σ out-direction line_amount that day (cents)
-  records: { recordId: string; timestamp: number; direction: Direction; items: StockItem[]; amount: number }[];
+  dayTopup: number; // Σ top-up amount that day (cents)
+  dayOut: number; // Σ out line_amount that day (cents)
+  events: HistoryEvent[];
 }
 
 export function StaffDetail({ staffId, onOpenRecord }: StaffDetailProps) {
   const theme = useTheme();
   const staff = useStaffById(staffId);
   const records = useStockRecords({ staff_id: staffId });
-  // Per-day collapse: empty set = every day collapsed. A day header tap toggles
-  // its date in the set; record rows render only when open.
+  const topups = useTopups({ staff_id: staffId });
+  const balance = useMemberBalance(staffId);
+  const voidTopup = useVoidTopup();
   const [openDays, setOpenDays] = useState<Set<string>>(new Set());
   const [visibleDays, setVisibleDays] = useState(INITIAL_DAYS);
+  const [voidingTopupId, setVoidingTopupId] = useState<string | null>(null);
 
-  // Group records by local calendar day (newest-first), folding each item's frozen
-  // line_amount into the day + section totals. Pure derived shape — never stored.
-  const { sections, totalDays, inTotal, outTotal } = useMemo(() => {
+  // Merge checkouts + top-ups into a day-grouped timeline (newest-first). Pure
+  // derived shape — never stored.
+  const { sections, totalDays, outTotal, topupTotal } = useMemo(() => {
     const byDay = new Map<string, DaySection>();
-    let inT = 0;
     let outT = 0;
-    for (const rw of records.data ?? []) {
-      const date = formatDate(rw.record.timestamp);
+    let topupT = 0;
+    const ensure = (date: string): DaySection => {
       let day = byDay.get(date);
       if (!day) {
-        day = { date, dayIn: 0, dayOut: 0, records: [] };
+        day = { date, dayTopup: 0, dayOut: 0, events: [] };
         byDay.set(date, day);
       }
+      return day;
+    };
+    for (const rw of records.data ?? []) {
+      const date = formatDate(rw.record.timestamp);
+      const day = ensure(date);
       const amt = rw.items.reduce((s, i) => s + i.line_amount, 0);
-      if (rw.record.direction === 'in') {
-        day.dayIn += amt;
-        inT += amt;
-      } else {
+      // a member's records are all 'out'; direction is tracked so an 'in' (if any)
+      // wouldn't be mislabeled, but only 'out' feeds the balance/separator.
+      if (rw.record.direction === 'out') {
         day.dayOut += amt;
         outT += amt;
       }
-      day.records.push({
-        recordId: rw.record.id,
+      day.events.push({
+        id: rw.record.id,
+        kind: 'record',
         timestamp: rw.record.timestamp,
+        amount: amt,
         direction: rw.record.direction,
         items: rw.items,
-        amount: amt,
       });
     }
-    // Days newest-first; within a day, records newest-first too.
+    for (const t of topups.data ?? []) {
+      const date = formatDate(t.timestamp);
+      const day = ensure(date);
+      day.dayTopup += t.amount;
+      topupT += t.amount;
+      day.events.push({
+        id: t.id,
+        kind: 'topup',
+        timestamp: t.timestamp,
+        amount: t.amount,
+        note: t.note,
+      });
+    }
     const all = [...byDay.values()].sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
-    for (const day of all) day.records.sort((a, b) => b.timestamp - a.timestamp);
-    return { sections: all, totalDays: all.length, inTotal: inT, outTotal: outT };
-  }, [records.data]);
+    for (const day of all) day.events.sort((a, b) => b.timestamp - a.timestamp);
+    return { sections: all, totalDays: all.length, outTotal: outT, topupTotal: topupT };
+  }, [records.data, topups.data]);
 
-  // Day-batched slice (ADR-0007): render the first `visibleDays` whole day
-  // sections. Because each section carries its own separator + records, slicing
-  // at a day boundary can never split a day — no limit/offset on the read.
   const visible = sections.slice(0, visibleDays);
+  const recordCount = (records.data ?? []).length + (topups.data ?? []).length;
+  const balanceAmount = balance.data?.amount ?? 0;
 
-  const recordCount = (records.data ?? []).length;
+  const confirmVoid = (topupId: string) => {
+    voidTopup.mutate(topupId, { onSettled: () => setVoidingTopupId(null) });
+  };
 
   const renderDay = ({ item }: { item: DaySection }) => {
     const dayOpen = openDays.has(item.date);
     return (
       <View style={[styles.card, { borderColor: theme.border }]}>
-        <Pressable
-          testID={`day-${item.date}`}
-          onPress={() => toggleDay(item.date)}
-          style={styles.cardHead}>
+        <Pressable testID={`day-${item.date}`} onPress={() => toggleDay(item.date)} style={styles.cardHead}>
           <Text style={[styles.dayDate, { color: theme.text }]}>{item.date}</Text>
-          <Text style={{ color: theme.success }}>入库</Text>
-          <MoneyText cents={cents(item.dayIn)} />
+          <Text style={{ color: theme.success }}>充值</Text>
+          <MoneyText cents={cents(item.dayTopup)} />
           <Text style={{ color: theme.danger }}>出库</Text>
           <MoneyText cents={cents(item.dayOut)} />
           <Ionicons name={dayOpen ? 'chevron-up' : 'chevron-down'} size={14} color={theme.textSecondary} />
         </Pressable>
         {dayOpen &&
-          item.records.map((r) => (
-            <Pressable
-              key={r.recordId}
-              testID={`history-${r.recordId}`}
-              onPress={() => onOpenRecord(r.recordId)}
-              style={[styles.subRow, { borderColor: theme.border }]}>
-              <Text style={{ color: r.direction === 'in' ? theme.success : theme.danger }}>{DIRECTION_LABEL[r.direction]}</Text>
-              <Text style={{ color: theme.textSecondary }}>{formatTime(r.timestamp)}</Text>
-              <Text style={[styles.title, { color: theme.text }]}>
-                {r.items.map((i) => `${i.title} ×${i.qty}`).join('、')}
-              </Text>
-              <MoneyText cents={cents(r.amount)} />
-            </Pressable>
-          ))}
+          item.events.map((e) =>
+            e.kind === 'record' ? (
+              <Pressable
+                key={e.id}
+                testID={`history-${e.id}`}
+                onPress={() => onOpenRecord(e.id)}
+                style={[styles.subRow, { borderColor: theme.border }]}>
+                <Text style={{ color: e.direction === 'in' ? theme.success : theme.danger }}>
+                  {e.direction === 'in' ? '入库' : '出库'}
+                </Text>
+                <Text style={{ color: theme.textSecondary }}>{formatTime(e.timestamp)}</Text>
+                <Text style={[styles.title, { color: theme.text }]}>
+                  {e.items?.map((i) => `${i.title} ×${i.qty}`).join('、')}
+                </Text>
+                <MoneyText cents={cents(e.amount)} />
+              </Pressable>
+            ) : (
+              <View key={e.id} testID={`topup-${e.id}`} style={[styles.subRow, { borderColor: theme.border }]}>
+                <Text style={{ color: theme.success }}>充值</Text>
+                <Text style={{ color: theme.textSecondary }}>{formatTime(e.timestamp)}</Text>
+                <Text style={[styles.title, { color: theme.text }]}>{e.note || '—'}</Text>
+                <MoneyText cents={cents(e.amount)} />
+                {voidingTopupId === e.id ? (
+                  <>
+                    <Pressable
+                      testID={`topup-confirm-${e.id}`}
+                      onPress={() => confirmVoid(e.id)}
+                      style={[styles.rowAction, { borderColor: theme.danger }]}>
+                      <Text style={{ color: theme.danger }}>确认作废</Text>
+                    </Pressable>
+                    <Pressable
+                      testID={`topup-cancel-${e.id}`}
+                      onPress={() => setVoidingTopupId(null)}
+                      style={[styles.rowAction, { borderColor: theme.border }]}>
+                      <Text style={{ color: theme.text }}>取消</Text>
+                    </Pressable>
+                  </>
+                ) : (
+                  <Pressable
+                    testID={`topup-void-${e.id}`}
+                    onPress={() => setVoidingTopupId(e.id)}
+                    style={[styles.rowAction, { borderColor: theme.danger }]}>
+                    <Text style={{ color: theme.danger }}>作废</Text>
+                  </Pressable>
+                )}
+              </View>
+            ),
+          )}
       </View>
     );
   };
 
-  // Reveal the next batch of whole days. onEndReached drives it for users who
-  // scroll; the `加载更多` footer (ListFooterComponent) is the same reveal via an
-  // explicit tap — more discoverable, a graceful fallback when onEndReached
-  // doesn't fire on short lists, and the stable seam the batch test presses.
   const revealMore = () => setVisibleDays((n) => Math.min(n + DAYS_PER_BATCH, totalDays));
-
-  // Toggle one day's collapse without mutating the current set (rules-of-react).
   const toggleDay = (date: string) =>
     setOpenDays((prev) => {
       const next = new Set(prev);
@@ -168,10 +225,17 @@ export function StaffDetail({ staffId, onOpenRecord }: StaffDetailProps) {
           <Text style={[styles.name, { color: theme.text }]}>{staff.data?.name ?? '加载中'}</Text>
           {staff.data && <LevelBadge level={staff.data.level} />}
 
+          <View testID="balance-section" style={[styles.card, { borderColor: theme.border }]}>
+            <View style={styles.cardHead}>
+              <Text style={[styles.cardTitle, { color: theme.text }]}>余额</Text>
+              <MoneyText testID="balance-total" cents={cents(balanceAmount)} negativeLabel="欠款" />
+            </View>
+          </View>
+
           <View testID="record-summary" style={[styles.summary, { borderColor: theme.border }]}>
             <Text style={{ color: theme.text }}>共 {recordCount} 条</Text>
-            <Text style={{ color: theme.success }}>入库</Text>
-            <MoneyText testID="record-in-total" cents={cents(inTotal)} />
+            <Text style={{ color: theme.success }}>充值</Text>
+            <MoneyText testID="record-topup-total" cents={cents(topupTotal)} />
             <Text style={{ color: theme.danger }}>出库</Text>
             <MoneyText testID="record-out-total" cents={cents(outTotal)} />
           </View>
@@ -191,7 +255,7 @@ const styles = StyleSheet.create({
   summary: { flexDirection: 'row', alignItems: 'center', gap: 8, borderWidth: 1, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10 },
   subRow: { flexDirection: 'row', alignItems: 'center', gap: 8, borderWidth: 1, borderRadius: 8, paddingHorizontal: 16, paddingVertical: 8, marginLeft: 12 },
   title: { flex: 1, fontSize: 15 },
-  qty: { fontSize: 15 },
   dayDate: { flex: 1, fontSize: 13, fontWeight: '600' },
+  rowAction: { borderWidth: 1, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6 },
   loadMore: { alignItems: 'center', paddingVertical: 12 },
 });

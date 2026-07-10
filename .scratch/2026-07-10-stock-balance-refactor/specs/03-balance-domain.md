@@ -1,7 +1,7 @@
 # 余额域: 充值 + 会员余额 + 记账 tab + staff-detail 余额重接
 
 Type: spec
-Status: ready-for-agent
+Status: ready-for-human
 Parent: #01 (01-stock-balance-refactor.md)
 Blocked by: #02
 
@@ -54,3 +54,20 @@ Blocked by: #02
 ## Rework on failure
 
 余额域自包含——失败 redo 本 spec（topup/memberBalance + 记账/staff-detail 余额重接）；不波及库存/单价域。
+
+## Comments
+
+- 2026-07-11 — implemented via `/tdd`（数据层 → 流层 → UI，全量双绿）。AC → 测试：
+  - 充值 ¥100 → balance cents(10000)；out ¥30 → cents(7000) — `src/data/member-balance.test.ts::balance = Σ topup − Σ out line_amount`
+  - out > 余额 → 负（欠款），不拦截；记账行「欠款 ¥X」danger 色 — `::out exceeding top-up → negative balance`；`src/components/staff-row.test.tsx::shows a 欠款 marker when the balance is negative`
+  - 作废充值 → 余额回落；作废出库 → 余额回升（operator-action 闭环）— `member-balance.test.ts::voiding a top-up` / `::voiding an 'out' record`；UI 闭环 `staff-detail.test.tsx::lists top-ups ... voiding one recovers the balance`
+  - 记账行显示「余额 ¥X」替代占位；充值/出库后自动刷新（invalidate qk.balance）— `staff-row.test.tsx::renders the member's derived 余额` / `::充值 form: amount + submit → balance increases`
+  - staff-detail 余额分区 + 综合（出库+充值）历史按天、可展开 — `staff-detail.test.tsx::shows the derived 余额 + 充值/出库 summary` / day-collapse / history / day-batched（既有用例随新结构同步）
+  - `tsc --noEmit` 通过；`jest` 全绿 235 passed（30 suites）
+- 数据层：`topup.ts` TopupRepository（create/void 审计 + list 排除 voided + getById 含 voided，仿 product 模板）；`member-balance.ts` MemberBalance（派生 `Σ topup − Σ out line_amount`，负=欠款，从不存储）；`composition.ts` 接入 `topups` + `memberBalance`。
+- 流层：`query-keys` 加 `qk.topups`/`qk.balance`；`reads` 加 `useTopups`/`useMemberBalance`；`mutations` 加 `useCreateTopup`/`useVoidTopup`（invalidate topups+balance；dailyFlow invalidate 留 spec 05）；`useCreateStockRecord`/`useUpdateStockRecord`/`useVoidStockRecord` 加 invalidate `qk.balance`。
+- UI：`staff-row.tsx` 填 `useMemberBalance` + 内联充值表单（元→Cents）+ `negativeLabel='欠款'`；`staff-detail.tsx` 加余额分区 + 综合历史（合并出库+充值按天）+ 充值作废入口（确认 → useVoidTopup）；`money-text.tsx` 加 `negativeLabel` prop（默认「欠货」，余额用「欠款」）。
+- 与库存解耦：restock（admin -1 in）不影响会员余额（`member-balance.test.ts::restock under admin -1 does NOT affect ...`）。
+- **[手动/发布门]** 真实 SQLite 下 topup 表 + 余额派生的运行时行为仅设备 smoke 覆盖（ADR-0004，发布前手跑）。
+- Codemap / CONTEXT.md 术语更新延后到 `/sdd-flow` Stage 4。
+
