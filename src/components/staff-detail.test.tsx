@@ -95,6 +95,33 @@ describe("StaffDetail — record summary 共 N 条 / 入库 / 出单 (spec #04 A
   });
 });
 
+describe("StaffDetail — day section collapsible: default collapsed, tap to toggle (containment AC)", () => {
+  it("hides a day's records by default, reveals them on tap, hides again on second tap", async () => {
+    const { repos, staffId, productId } = await seedStaffProduct();
+    const rec = await repos.stockRecords.create({
+      staff_id: staffId, direction: "in",
+      timestamp: new Date(2026, 5, 10, 10, 0).getTime(), // 2026-06-10
+      items: [{ product_id: productId, qty: 2 }],
+    });
+
+    const { view } = await renderDetail(<StaffDetail staffId={staffId} onOpenRecord={jest.fn()} />, { repos });
+    await waitForSync(() => view.getByTestId("day-2026/06/10"));
+
+    // collapsed by default → the day's record row isn't rendered yet.
+    expect(() => view.getByTestId(`history-${rec.record.id}`)).toThrow();
+
+    // tap the day header → expands → the record row appears.
+    await fireEvent.press(view.getByTestId("day-2026/06/10"));
+    await flushPending();
+    expect(view.getByTestId(`history-${rec.record.id}`)).toBeTruthy();
+
+    // tap the same header again → collapses → the record row disappears.
+    await fireEvent.press(view.getByTestId("day-2026/06/10"));
+    await flushPending();
+    expect(() => view.getByTestId(`history-${rec.record.id}`)).toThrow();
+  });
+});
+
 describe("StaffDetail — history grouped by local day, newest first (spec #04 AC3/AC5)", () => {
   it("groups records under per-day separators (newest day first), labels out as 出单, and opens a record on tap", async () => {
     const { repos, staffId, productId } = await seedStaffProduct();
@@ -116,6 +143,10 @@ describe("StaffDetail — history grouped by local day, newest first (spec #04 A
     // Two per-day separators, newest day (06/10) before older (06/09).
     const allDays = view.getAllByTestId(/^day-/);
     expect(allDays.indexOf(view.getByTestId("day-2026/06/10"))).toBeLessThan(allDays.indexOf(view.getByTestId("day-2026/06/09")));
+
+    // day sections are collapsed by default (containment spec) → expand 06/10 to reach its records.
+    await fireEvent.press(view.getByTestId("day-2026/06/10"));
+    await flushPending();
 
     // The out record is labeled 出单 (not 出库) and carries its HH:mm time.
     // "出单" appears both in the day separator (the day's out-total label) and on

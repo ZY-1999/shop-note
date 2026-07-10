@@ -10,23 +10,28 @@ import { cents } from '@/data/primitives';
 import type { Direction, StockItem } from '@/data/stock-record';
 
 /**
- * The staff look-back screen. Two read-only sections over the derived read
- * models: a collapsible 库存 section (per-product holdings + their current-price
- * total), and a movement history grouped by local day (newest-first), each day
- * prefixed with a separator line carrying that day's 入库 / 出单 totals. Each
- * record row still taps through to its detail (edit / void live there).
+ * The staff look-back screen. Two read-only regions over the derived read
+ * models, both rendered as **container cards** mirroring the 库存卡 (the card
+ * border wraps its header + expanded children, height grows with `gap`):
+ *  1. 库存 — a collapsible card (per-product holdings + their current-price
+ *     total, `holdingsOpen` default collapsed).
+ *  2. 记录 — a `共 N 条 / 入库 / 出单` summary + a movement history grouped by
+ *     local day (newest-first). Each day is itself a collapsible card
+ *     (`openDays` set, default collapsed): the day header carries that day's
+ *     入库 / 出单 totals + a chevron; record rows render inside the card only
+ *     when the day is open. Each record row still taps through to its detail.
  *
  * Spec #04 (page-refactor) reshaped this from a flat `ScrollView` into a day-
- * grouped `FlatList`: 持仓→库存 with a header total + a collapse toggle (default
- * collapsed), a `共 N 条 / 入库 / 出单` record-section summary derived from the
- * loaded records, and ADR-0007 day-batched rendering. Each FlatList item is one
- * whole DAY SECTION (the separator + that day's record rows nested together), so
- * `visibleDays` caps how many days render and a batch boundary can never split a
- * day's separator from its records — the wholeness invariant is structural, not
- * enforced by slice arithmetic. `onEndReached` reveals the next days; a `加载更多`
- * footer is the same reveal via an explicit tap (more discoverable, a fallback
- * when onEndReached doesn't fire on short lists). Holdings are the current-price
- * cost view; record amounts are the frozen `line_amount` snapshot (ADR-0002).
+ * grouped `FlatList`; the containment spec later wrapped both regions in cards
+ * and made day sections collapsible (default collapsed), reusing summary-tab's
+ * `card`/`cardHead`/`cardTitle`/`subRow` styles + `openDays` model. Each FlatList
+ * item is one whole DAY SECTION (the day card + its record rows nested together),
+ * so `visibleDays` caps how many days render and a batch boundary can never split
+ * a day — the wholeness invariant is structural, not enforced by slice
+ * arithmetic. `onEndReached` reveals the next days; a `加载更多` footer is the
+ * same reveal via an explicit tap (more discoverable, a fallback when
+ * onEndReached doesn't fire on short lists). Holdings are the current-price cost
+ * view; record amounts are the frozen `line_amount` snapshot (ADR-0002).
  * Navigation is delegated (`onOpenRecord`); the route wires the router.
  */
 const DIRECTION_LABEL: Record<Direction, string> = { in: '入库', out: '出单' };
@@ -54,6 +59,9 @@ export function StaffDetail({ staffId, onOpenRecord }: StaffDetailProps) {
   const holdings = useStaffInventory(staffId);
   const records = useStockRecords({ staff_id: staffId });
   const [holdingsOpen, setHoldingsOpen] = useState(false); // default collapsed
+  // Per-day collapse (containment spec): empty set = every day collapsed. A day
+  // header tap toggles its date in the set; record rows render only when open.
+  const [openDays, setOpenDays] = useState<Set<string>>(new Set());
   const [visibleDays, setVisibleDays] = useState(INITIAL_DAYS);
 
   const holdingsList = holdings.data ?? [];
@@ -101,37 +109,54 @@ export function StaffDetail({ staffId, onOpenRecord }: StaffDetailProps) {
 
   const recordCount = (records.data ?? []).length;
 
-  const renderDay = ({ item }: { item: DaySection }) => (
-    <View>
-      <View testID={`day-${item.date}`} style={[styles.dayHeader, { borderColor: theme.border }]}>
-        <Text style={[styles.dayDate, { color: theme.text }]}>{item.date}</Text>
-        <Text style={{ color: theme.success }}>入库</Text>
-        <MoneyText cents={cents(item.dayIn)} />
-        <Text style={{ color: theme.danger }}>出单</Text>
-        <MoneyText cents={cents(item.dayOut)} />
-      </View>
-      {item.records.map((r) => (
+  const renderDay = ({ item }: { item: DaySection }) => {
+    const dayOpen = openDays.has(item.date);
+    return (
+      <View style={[styles.card, { borderColor: theme.border }]}>
         <Pressable
-          key={r.recordId}
-          testID={`history-${r.recordId}`}
-          onPress={() => onOpenRecord(r.recordId)}
-          style={[styles.row, { borderColor: theme.border }]}>
-          <Text style={{ color: r.direction === 'in' ? theme.success : theme.danger }}>{DIRECTION_LABEL[r.direction]}</Text>
-          <Text style={{ color: theme.textSecondary }}>{formatTime(r.timestamp)}</Text>
-          <Text style={[styles.title, { color: theme.text }]}>
-            {r.items.map((i) => `${i.title} ×${i.qty}`).join('、')}
-          </Text>
-          <MoneyText cents={cents(r.amount)} />
+          testID={`day-${item.date}`}
+          onPress={() => toggleDay(item.date)}
+          style={styles.cardHead}>
+          <Text style={[styles.dayDate, { color: theme.text }]}>{item.date}</Text>
+          <Text style={{ color: theme.success }}>入库</Text>
+          <MoneyText cents={cents(item.dayIn)} />
+          <Text style={{ color: theme.danger }}>出单</Text>
+          <MoneyText cents={cents(item.dayOut)} />
+          <Ionicons name={dayOpen ? 'chevron-up' : 'chevron-down'} size={14} color={theme.textSecondary} />
         </Pressable>
-      ))}
-    </View>
-  );
+        {dayOpen &&
+          item.records.map((r) => (
+            <Pressable
+              key={r.recordId}
+              testID={`history-${r.recordId}`}
+              onPress={() => onOpenRecord(r.recordId)}
+              style={[styles.subRow, { borderColor: theme.border }]}>
+              <Text style={{ color: r.direction === 'in' ? theme.success : theme.danger }}>{DIRECTION_LABEL[r.direction]}</Text>
+              <Text style={{ color: theme.textSecondary }}>{formatTime(r.timestamp)}</Text>
+              <Text style={[styles.title, { color: theme.text }]}>
+                {r.items.map((i) => `${i.title} ×${i.qty}`).join('、')}
+              </Text>
+              <MoneyText cents={cents(r.amount)} />
+            </Pressable>
+          ))}
+      </View>
+    );
+  };
 
   // Reveal the next batch of whole days. onEndReached drives it for users who
   // scroll; the `加载更多` footer (ListFooterComponent) is the same reveal via an
   // explicit tap — more discoverable, a graceful fallback when onEndReached
   // doesn't fire on short lists, and the stable seam the batch test presses.
   const revealMore = () => setVisibleDays((n) => Math.min(n + DAYS_PER_BATCH, totalDays));
+
+  // Toggle one day's collapse without mutating the current set (rules-of-react).
+  const toggleDay = (date: string) =>
+    setOpenDays((prev) => {
+      const next = new Set(prev);
+      if (next.has(date)) next.delete(date);
+      else next.add(date);
+      return next;
+    });
 
   return (
     <FlatList
@@ -153,22 +178,24 @@ export function StaffDetail({ staffId, onOpenRecord }: StaffDetailProps) {
         <View style={styles.header}>
           <Text style={[styles.name, { color: theme.text }]}>{staff.data?.name ?? '加载中'}</Text>
 
-          <Pressable
-            testID="holdings-toggle"
-            onPress={() => setHoldingsOpen((v) => !v)}
-            style={[styles.sectionHeader, { borderColor: theme.border }]}>
-            <Text style={[styles.sectionLabel, { color: theme.text }]}>库存</Text>
-            <MoneyText testID="holdings-total" cents={cents(holdingsTotal)} />
-            <Ionicons name={holdingsOpen ? 'chevron-up' : 'chevron-down'} size={16} color={theme.textSecondary} />
-          </Pressable>
-          {holdingsOpen &&
-            holdingsList.map((h) => (
-              <View key={h.product.id} testID={`holding-${h.product.id}`} style={[styles.row, { borderColor: theme.border }]}>
-                <Text style={[styles.title, { color: theme.text }]}>{h.product.title}</Text>
-                <Text style={[styles.qty, { color: theme.text }]}>{h.qty}件</Text>
-                <MoneyText cents={cents(h.cost_amount)} />
-              </View>
-            ))}
+          <View style={[styles.card, { borderColor: theme.border }]}>
+            <Pressable
+              testID="holdings-toggle"
+              onPress={() => setHoldingsOpen((v) => !v)}
+              style={styles.cardHead}>
+              <Text style={[styles.cardTitle, { color: theme.text }]}>库存</Text>
+              <MoneyText testID="holdings-total" cents={cents(holdingsTotal)} />
+              <Ionicons name={holdingsOpen ? 'chevron-up' : 'chevron-down'} size={16} color={theme.textSecondary} />
+            </Pressable>
+            {holdingsOpen &&
+              holdingsList.map((h) => (
+                <View key={h.product.id} testID={`holding-${h.product.id}`} style={[styles.subRow, { borderColor: theme.border }]}>
+                  <Text style={[styles.title, { color: theme.text }]}>{h.product.title}</Text>
+                  <Text style={[styles.qty, { color: theme.text }]}>{h.qty}件</Text>
+                  <MoneyText cents={cents(h.cost_amount)} />
+                </View>
+              ))}
+          </View>
 
           <View testID="record-summary" style={[styles.summary, { borderColor: theme.border }]}>
             <Text style={{ color: theme.text }}>共 {recordCount} 条</Text>
@@ -187,13 +214,13 @@ const styles = StyleSheet.create({
   content: { padding: 12, gap: 8 },
   header: { gap: 8, paddingBottom: 4 },
   name: { fontSize: 20, fontWeight: '700', paddingVertical: 4 },
-  sectionHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, borderWidth: 1, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10 },
-  sectionLabel: { flex: 1, fontSize: 15, fontWeight: '600' },
+  card: { borderWidth: 1, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10, gap: 8 },
+  cardHead: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  cardTitle: { flex: 1, fontSize: 15, fontWeight: '600' },
   summary: { flexDirection: 'row', alignItems: 'center', gap: 8, borderWidth: 1, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10 },
-  row: { flexDirection: 'row', alignItems: 'center', gap: 8, borderWidth: 1, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10 },
+  subRow: { flexDirection: 'row', alignItems: 'center', gap: 8, borderWidth: 1, borderRadius: 8, paddingHorizontal: 16, paddingVertical: 8, marginLeft: 12 },
   title: { flex: 1, fontSize: 15 },
   qty: { fontSize: 15 },
-  dayHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, borderWidth: 1, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 6 },
-  dayDate: { fontSize: 13, fontWeight: '600' },
+  dayDate: { flex: 1, fontSize: 13, fontWeight: '600' },
   loadMore: { alignItems: 'center', paddingVertical: 12 },
 });

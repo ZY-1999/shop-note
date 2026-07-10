@@ -242,6 +242,10 @@ describe("RecordDetail — cross-view refresh (spec #07 AC5)", () => {
     await fireEvent.press(view.getByTestId("holdings-toggle"));
     await flushPending();
     await waitForSync(() => view.getByTestId(`holding-${productId}`));
+    // Spec containment made day sections collapsed-by-default — expand the day
+    // holding this record (one day here) to surface its history row.
+    await fireEvent.press(view.getAllByTestId(/^day-/)[0]);
+    await flushPending();
     expect(view.getByTestId(`history-${recordId}`)).toBeTruthy();
 
     // void via the record detail
