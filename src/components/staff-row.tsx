@@ -14,9 +14,10 @@ import type { Staff } from '@/data/staff';
  * affordances that carry the staff id to the form. The row body taps through to
  * staff detail.
  *
- * `summary` may be `undefined` — a staff surfaced via search (spec #02 AC4) can
- * have no movements yet, so the row renders zeros rather than a sentinel. The
- * default list hides such staff (AC3); that filter lives in the screen, not here.
+ * `summary` may be `undefined` — a staff with no movements yet renders zeros
+ * rather than a sentinel. Such staff now surface in the default list too (spec
+ * #02 AC3, revised 2026-07-10); this row is purely presentational, so the list
+ * composition lives in the screen, not here.
  *
  * Navigation is delegated (`onIn` / `onOut` / `onOpen`) so the row is a pure,
  * RNTL-testable presentational piece; the screen wires these to the router.

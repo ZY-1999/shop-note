@@ -12,13 +12,12 @@ import { useTheme } from '@/hooks/use-theme';
  * `staffSummaries()` rollup, joined by staff_id), with 入库/出单 jumping into the
  * prefilled record form and a row tap opening staff detail.
  *
- * Default vs search (spec #02 / page-refactor): with no search text the list
- * shows only staff who actually hold something (`total_qty !== 0 || variety > 0`)
- * — zero-inventory staff don't clutter the landing view. Search is *not*
- * zero-filtered, so a brand-new (zero-stock) staff can still be found by name to
- * receive a first 入库. This filter is a screen-level concern; the read model
- * (`useStaffSummaries`) stays general. The summaries query is shared across all
- * rows (one invalidate refreshes every row — ADR-0005).
+ * All active staff render — including zero-record / zero-inventory staff — so a
+ * brand-new employee is visible without searching (spec #02 AC3/AC4, revised
+ * 2026-07-10: reverses the original "hide zero-inventory in the default view").
+ * `useStaff({ search })` narrows by name when searching; StaffRow renders
+ * `库存：0件/0种 ¥0.00` for a staff with no summary. The summaries query is shared
+ * across all rows (one invalidate refreshes every row — ADR-0005).
  */
 export default function BookkeepingTab() {
   const theme = useTheme();
@@ -27,15 +26,9 @@ export default function BookkeepingTab() {
   const summaries = useStaffSummaries();
   const summaryById = new Map((summaries.data ?? []).map((s) => [s.staff_id, s]));
 
-  // Default view: keep only staff with non-zero inventory. Search view: keep all
-  // matches so a zero-stock staff is reachable for a first 入库 (spec #02 AC3/AC4).
-  const allStaff = staff.data ?? [];
-  const rows = search === ''
-    ? allStaff.filter((s) => {
-        const sum = summaryById.get(s.id);
-        return sum !== undefined && (sum.total_qty !== 0 || sum.variety > 0);
-      })
-    : allStaff;
+  // All active staff render (zero-record staff included — see header). Search
+  // narrows via useStaff({ search }); no screen-level inventory filter remains.
+  const rows = staff.data ?? [];
 
   return (
     <View style={[styles.container, { backgroundColor: theme.background }]}>

@@ -15,10 +15,14 @@ import { flushPending, waitForSync } from "@/testing/async";
  * flushPending / QueryClient clear) live in [testing/async.ts](../testing/async.ts).
  * `expo-router` is the one thing mocked — the push is a navigation concern.
  *
- * New in #02: the default list shows only staff with non-zero inventory (AC3);
- * search still reveals zero-inventory staff so an operator can give them a first
- * 入库 (AC4); each row is the merged `库存：m件/n种 金额` line (AC1); the out-action
- * is 出单 (AC2/AC5). The one-pass `staffSummaries()` rollup is consumed unchanged.
+ * Revised (2026-07-10, post-Stage-3): the default list now shows ALL active staff
+ * — including zero-record / zero-inventory staff — so a brand-new employee is
+ * visible without searching. This reverses the original AC3 ("hide zero-inventory
+ * in the default view"); AC4's "first 入库 is reachable" guarantee now holds in
+ * the default list directly. Search still narrows by name; each row is the merged
+ * `库存：m件/n种 金额` line (AC1); the out-action is 出单 (AC2/AC5). The one-pass
+ * `staffSummaries()` rollup is consumed unchanged; StaffRow renders
+ * `库存：0件/0种 ¥0.00` when there is no summary.
  */
 const mockPush = jest.fn<(href: unknown) => void>();
 jest.mock("expo-router", () => ({
@@ -53,39 +57,37 @@ async function seedProduct(repos: Repos): Promise<string> {
   return p.id;
 }
 
-describe("记账 screen — default list shows only staff with inventory (spec #02 AC3)", () => {
-  it("hides a no-record staff in the default (no-search) view", async () => {
+describe("记账 screen — default list shows ALL active staff, including zero-record (spec #02 AC3, revised)", () => {
+  it("shows a no-record staff in the default (no-search) view with zeros, not hidden", async () => {
     const { view } = await renderBook(<BookkeepingTab />, {
       seed: async (repos) => {
         const pid = await seedProduct(repos);
         const zhang = await repos.staff.create({ name: "张三", phone: "138", notes: "" });
-        await repos.staff.create({ name: "李四", phone: "139", notes: "" }); // no records
+        await repos.staff.create({ name: "李四", phone: "139", notes: "" }); // no records at all
         await repos.stockRecords.create({ staff_id: zhang.id, direction: "in", items: [{ product_id: pid, qty: 2 }] });
       },
     });
-    await waitForSync(() => view.getByText("张三")); // 张三 has inventory → present
-    await waitForSync(() => expect(() => view.getByText("李四")).toThrow()); // 李四 → hidden
+    await waitForSync(() => view.getByText("张三")); // has inventory → present
+    await waitForSync(() => view.getByText("李四")); // no records → still present (revised: no longer hidden)
+    expect(view.getByText("库存：0件/0种")).toBeTruthy(); // renders zeros, not filtered out
   });
 
-  it("also hides a staff whose balance nets to zero (records exist but variety/qty are 0)", async () => {
+  it("also shows a staff whose balance nets to zero (records exist but qty nets to 0)", async () => {
     const { view } = await renderBook(<BookkeepingTab />, {
       seed: async (repos) => {
         const pid = await seedProduct(repos);
         const wang = await repos.staff.create({ name: "王五", phone: "137", notes: "" });
-        const li = await repos.staff.create({ name: "李六", phone: "136", notes: "" });
-        // 王五 in 3 / out 3 → net zero (staffSummaries still returns a zero row); 李六 is the inventory anchor.
+        // 王五 in 3 / out 3 → net zero (staffSummaries still returns a zero-qty row).
         await repos.stockRecords.create({ staff_id: wang.id, direction: "in", items: [{ product_id: pid, qty: 3 }] });
         await repos.stockRecords.create({ staff_id: wang.id, direction: "out", items: [{ product_id: pid, qty: 3 }] });
-        await repos.stockRecords.create({ staff_id: li.id, direction: "in", items: [{ product_id: pid, qty: 5 }] });
       },
     });
-    await waitForSync(() => view.getByText("李六")); // anchor → list rendered & queries resolved
-    await waitForSync(() => expect(() => view.getByText("王五")).toThrow()); // zero balance → hidden
+    await waitForSync(() => view.getByText("王五")); // net-zero balance → still shown (revised)
   });
 });
 
-describe("记账 screen — search reveals zero-inventory staff for a first 入库 (spec #02 AC4)", () => {
-  it("reveals a no-movement staff on search and exposes their 入库 button", async () => {
+describe("记账 screen — zero-record staff's 入库 is reachable in the default list (spec #02 AC4, revised)", () => {
+  it("shows a no-record staff by default and exposes their 入库 button (no search needed)", async () => {
     let zhangId = "";
     const { view } = await renderBook(<BookkeepingTab />, {
       seed: async (repos) => {
@@ -96,16 +98,11 @@ describe("记账 screen — search reveals zero-inventory staff for a first 入�
         zhangId = zhang.id;
       },
     });
-    // Default view: anchor renders, 张三 (zero inventory) hidden.
-    await waitForSync(() => view.getByText("李六"));
-    await waitForSync(() => expect(() => view.getByText("张三")).toThrow());
-
-    // Search → useStaff({ search }) result is NOT zero-filtered → 张三 reappears.
-    await fireEvent.changeText(view.getByTestId("staff-search"), "张");
+    // Default view (no search): 张三 shows with zeros and a reachable 入库 button.
     await waitForSync(() => view.getByText("张三"));
     expect(view.getByText("库存：0件/0种")).toBeTruthy();
     expect(view.getByText("¥0.00")).toBeTruthy();
-    expect(view.getByTestId(`in-${zhangId}`)).toBeTruthy(); // first 入库 reachable
+    expect(view.getByTestId(`in-${zhangId}`)).toBeTruthy(); // first 入库 reachable without searching
   });
 });
 
@@ -155,7 +152,6 @@ describe("记账 screen — 入库/出单 carry staff_id + direction (spec #02 A
         const pid = await seedProduct(repos);
         const s = await repos.staff.create({ name: "张三", phone: "138", notes: "" });
         staffId = s.id;
-        // Give 张三 stock so the row shows in the default (zero-inventory-filtered) list.
         await repos.stockRecords.create({ staff_id: s.id, direction: "in", items: [{ product_id: pid, qty: 2 }] });
       },
     });
