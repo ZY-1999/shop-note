@@ -38,3 +38,16 @@
 - **来源**：nav-tweak 图标化 tab bar（2026-07-10）—— 首次引入图标时 `require.resolve` 失败；查 `expo/package.json` 确认它不在 `dependencies`。
 - **适用边界**：项目里需要矢量图标（Ionicons / FontAwesome 等）时直接 `import`，不必再装；新增图标库走 `npx expo install <pkg>` 让 Expo 选 SDK 兼容版（勿裸 `pnpm add`，以免版本与 SDK 错配）。装完按上文规则 `expo start --clear`。
 - **验证**：`expo install @expo/vector-icons` 后 `require.resolve` 成功；`tab-config.ts` 的 `Ionicons` 类型解析与运行时 import 均正常。
+
+## 资源 / 图标
+
+### 应用图标：Z logo + 关键约束
+
+- **事实**：全套应用图标（`icon` / Android 前景·背景·单色 / `favicon` / `splash-icon`）为蓝色渐变 Z logo，主图标合成 `#E6F4FE` 品牌色背景（与 adaptive icon 背景统一）。源素材在本机 `~/Pictures/z-logo`（透明背景的 Z）。生成方式：`uv run --no-project --with Pillow` 写一次性脚本处理（项目无 sharp/PIL 依赖，勿装；脚本为一次性，未入库）。
+- **来源**：2026-07-10 应用图标替换任务。
+- **适用边界 / 踩坑**：
+  - **iOS 主图标不能有透明**（透明区域被系统填黑）→ `icon.png` 必须不透明。
+  - **Android adaptive icon 前景需 66% safe-zone**（Z 居中占画布 66%，否则圆形/squircle mask 裁掉尖端）。
+  - **`ios.icon` 用普通 PNG，不用 `.icon` bundle**：bundle 需矢量 SVG 才能发挥 iOS 18 自动渐变/着色/半透明效果，位图用不上；原 bundle 已删除，要恢复 iOS 18 tinted/dark 需提供 Z 的矢量 SVG 重新生成 bundle。
+  - 验证图标以 Pillow 像素采样为准（视觉模型会把浅色/透明背景误判为"黑色"）。
+- **验证**：`icon.png` 四边 8 点全 `#E6F4FE`、0 透明像素；前景/单色透明背景 + Z 居中 66%。
