@@ -1,7 +1,7 @@
 # 会员化改名 — 用户可见「员工」→「会员」（展示词 only）
 
 Type: spec
-Status: ready-for-agent
+Status: ready-for-human # implemented via /tdd 2026-07-10 — awaits Stage 3 review
 Parent: #01
 Blocked by: None — can start immediately
 
@@ -40,3 +40,16 @@ Blocked by: None — can start immediately
 ## Rework on failure
 
 失败隔离到文案。若某处「员工」遗漏或某测试断言未同步，仅补该处；无架构性回退点。
+
+## Comments
+
+- 2026-07-10 — implemented via `/tdd`（先改 2 处测试断言 RED，再改全部源串+注释 GREEN）。改动的源串（用户可见 + 注释）：
+  - 管理页 `manage-tab.tsx`：分段「会员」/ 占位「搜索会员姓名或电话」/ 按钮「新增会员」（3 处）
+  - 记账首页 `bookkeeping/index.tsx`：占位「搜索会员姓名或电话」
+  - `bookkeeping/_layout.tsx`：Stack 标题「会员详情」（+ 注释同步）
+  - `record-form-validation.ts`：「请选择会员」（+ `record-form.tsx` 注释同步）
+  - `staff-list-tracer.tsx`：默认名「新会员」
+  - `inventory.ts`：注释「不对每会员单独算」
+- AC → 测试：`record-form-validation.test.ts::flags a missing staff`（请选择会员）、`staff-list-tracer.test.tsx::firing useCreateStaff...`（新会员）。其余串为源内文案，由 `grep 员工 src/` → NONE + 全量测试绿共同证明。
+- 代码标识符未改（`Staff`/`staff_id`/`staff` 表/`staff/[id]`/`qk.staff`/`useStaff*`/组件名保留）：tsc clean + 211 tests green 为代理证据（diff 仅文本/注释）。
+- Test run: `npx jest --colors=false --forceExit` → 211 passed, 0 failed；`npx tsc --noEmit` clean；`grep -rn 员工 src/` → 无。

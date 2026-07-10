@@ -9,7 +9,7 @@ import { validateRecordForm } from "@/components/record-form-validation";
  */
 describe("validateRecordForm — spec #06 AC3", () => {
   it("flags a missing staff", () => {
-    expect(validateRecordForm("", [{ productId: "p1", qty: "3" }])).toBe("请选择员工");
+    expect(validateRecordForm("", [{ productId: "p1", qty: "3" }])).toBe("请选择会员");
   });
 
   it("flags zero items", () => {

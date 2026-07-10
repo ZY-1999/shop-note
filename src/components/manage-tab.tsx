@@ -43,7 +43,7 @@ export function ManageTab() {
           testID="seg-staff"
           onPress={() => setDomain('staff')}
           style={[styles.segment, domain === 'staff' && { backgroundColor: theme.backgroundSelected }]}>
-          <Text style={[styles.segmentText, { color: domain === 'staff' ? theme.text : theme.textSecondary }]}>员工</Text>
+          <Text style={[styles.segmentText, { color: domain === 'staff' ? theme.text : theme.textSecondary }]}>会员</Text>
         </Pressable>
         <Pressable
           testID="seg-product"
@@ -88,7 +88,7 @@ function StaffManage() {
       <TextInput
         testID="staff-search"
         style={[styles.searchInput, { backgroundColor: theme.inputBg, borderColor: theme.border, color: theme.text }]}
-        placeholder="搜索员工姓名或电话"
+        placeholder="搜索会员姓名或电话"
         placeholderTextColor={theme.textSecondary}
         value={search}
         onChangeText={setSearch}
@@ -97,7 +97,7 @@ function StaffManage() {
         testID="staff-create"
         onPress={() => setCreating(true)}
         style={[styles.createBtn, { backgroundColor: theme.success }]}>
-        <Text style={styles.createBtnText}>新增员工</Text>
+        <Text style={styles.createBtnText}>新增会员</Text>
       </Pressable>
       {rows.map((item) => {
         const voided = item.voided_at != null;

@@ -26,7 +26,7 @@ export function StaffListTracer() {
       />
       <Button
         title="add-staff"
-        onPress={() => createStaff.mutate({ name: "新员工", phone: "", notes: "" })}
+        onPress={() => createStaff.mutate({ name: "新会员", phone: "", notes: "" })}
       />
     </View>
   );

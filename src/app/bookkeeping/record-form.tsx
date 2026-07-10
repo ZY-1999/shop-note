@@ -14,7 +14,7 @@ import { recordFormTitle } from '@/navigation/tab-config';
  *
  * `direction` arrives as a string param; narrow to the `Direction` union (the
  * only two values the buttons ever push). `staff_id` is passed through; if it
- * were ever missing the form's own validation surfaces "请选择员工".
+ * were ever missing the form's own validation surfaces "请选择会员".
  *
  * The top header title is dynamic (nav-tweak #2): 入库 / 出库, driven by the
  * direction param via `recordFormTitle()` and set on the Stack header through

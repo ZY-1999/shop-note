@@ -35,7 +35,7 @@ export default function BookkeepingTab() {
       <TextInput
         testID="staff-search"
         style={[styles.search, { backgroundColor: theme.inputBg, borderColor: theme.border, color: theme.text }]}
-        placeholder="搜索员工姓名或电话"
+        placeholder="搜索会员姓名或电话"
         placeholderTextColor={theme.textSecondary}
         value={search}
         onChangeText={setSearch}

@@ -18,7 +18,7 @@ export interface DraftLine {
  * Staff missing → no items → a line missing a product → a line with bad qty, in order.
  */
 export function validateRecordForm(staffId: string, lines: DraftLine[]): string | null {
-  if (!staffId) return "请选择员工";
+  if (!staffId) return "请选择会员";
   if (lines.length === 0) return "至少添加一项商品";
   for (const line of lines) {
     if (!line.productId) return "每项都需要选择商品";

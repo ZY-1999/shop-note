@@ -83,7 +83,7 @@ export class Inventory {
    * unvoided move by staff_id → product_id → net qty, then per staff compute
    * variety / total_qty / total_amount (joining the current price, as
    * `shopAggregate` does) / has_negative. N staff without N scans — the PRD's
-   * "不对每员工单独算 N 次". Pure, never stored.
+   * "不对每会员单独算 N 次". Pure, never stored.
    */
   async staffSummaries(): Promise<StaffSummary[]> {
     const records = await this.stockRecords.list(); // voided excluded by default

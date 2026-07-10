@@ -39,6 +39,6 @@ describe("StaffListTracer — write→invalidate→refresh loop (spec #03 AC2)",
     // refetches useStaff → the new name appears with no caller-side refetch.
     fireEvent.press(view.getByText("add-staff"));
 
-    expect(await view.findByText("新员工")).toBeTruthy();
+    expect(await view.findByText("新会员")).toBeTruthy();
   });
 });
