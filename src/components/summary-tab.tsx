@@ -1,13 +1,23 @@
-import { useMemo, useState } from 'react';
-import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons } from "@expo/vector-icons";
+import { useMemo, useState } from "react";
+import { FlatList, Pressable, StyleSheet, Text, View } from "react-native";
 
-import { MoneyText } from '@/components/money-text';
-import { formatDate, formatTime, rangeFor, type RangePreset } from '@/components/date-format';
-import { useDailyFlow, useShopAggregate, useStaff, useStockRecords } from '@/hooks/reads';
-import { useTheme } from '@/hooks/use-theme';
-import { cents } from '@/data/primitives';
-import type { Direction } from '@/data/stock-record';
+import {
+  formatDate,
+  formatTime,
+  rangeFor,
+  type RangePreset,
+} from "@/components/date-format";
+import { MoneyText } from "@/components/money-text";
+import { cents } from "@/data/primitives";
+import type { Direction } from "@/data/stock-record";
+import {
+  useDailyFlow,
+  useShopAggregate,
+  useStaff,
+  useStockRecords,
+} from "@/hooks/reads";
+import { useTheme } from "@/hooks/use-theme";
 
 /**
  * The 汇总 tab (rewritten, spec #05 / page-refactor) — a single time-range-scoped
@@ -28,21 +38,25 @@ import type { Direction } from '@/data/stock-record';
  * Each FlatList item is one whole DAY SECTION (the day separator + its staff
  * rows nested together), so `visibleDays` caps how many days render and a batch
  * boundary can never split a day (ADR-0007; same structural-wholeness trick as
- * staff-detail #04). `onEndReached` reveals more days; a `加载更多` footer is the
- * same reveal via an explicit tap. Navigation is delegated (`onOpenStaff` /
- * `onOpenRecord`); the route wires the router, so the tab is RNTL-testable.
+ * staff-detail #04). Each day header is itself a collapsible card (day-collapse
+ * spec): `openDays` holds the expanded dateDash set (default empty = all
+ * collapsed), the header tap toggles membership, and staff rows render only when
+ * the day is open — same collapse pattern as the 库存卡 above. `onEndReached`
+ * reveals more days; a `加载更多` footer is the same reveal via an explicit tap.
+ * Navigation is delegated (`onOpenStaff` / `onOpenRecord`); the route wires the
+ * router, so the tab is RNTL-testable.
  */
-const DIRECTION_LABEL: Record<Direction, string> = { in: '入库', out: '出单' };
+const DIRECTION_LABEL: Record<Direction, string> = { in: "入库", out: "出单" };
 
 /** Initial days rendered, and how many more each reveal (onEndReached / footer) adds. */
 const INITIAL_DAYS = 5;
 const DAYS_PER_BATCH = 5;
 
 const PRESETS: Array<{ key: RangePreset; label: string; testID: string }> = [
-  { key: 'thisMonth', label: '本月', testID: 'range-thisMonth' },
-  { key: 'lastMonth', label: '上月', testID: 'range-lastMonth' },
-  { key: 'thisWeek', label: '本周', testID: 'range-thisWeek' },
-  { key: 'lastWeek', label: '上周', testID: 'range-lastWeek' },
+  { key: "thisMonth", label: "本月", testID: "range-thisMonth" },
+  { key: "lastMonth", label: "上月", testID: "range-lastMonth" },
+  { key: "thisWeek", label: "本周", testID: "range-thisWeek" },
+  { key: "lastWeek", label: "上周", testID: "range-lastWeek" },
 ];
 
 export interface SummaryTabProps {
@@ -62,11 +76,18 @@ interface DaySection {
   staffRows: { staffId: string; inAmount: number; outAmount: number }[];
 }
 
-export function SummaryTab({ onOpenStaff, onOpenRecord, now = Date.now() }: SummaryTabProps) {
+export function SummaryTab({
+  onOpenStaff,
+  onOpenRecord,
+  now = Date.now(),
+}: SummaryTabProps) {
   const theme = useTheme();
-  const [preset, setPreset] = useState<RangePreset>('thisMonth');
+  const [preset, setPreset] = useState<RangePreset>("thisMonth");
   const [inventoryOpen, setInventoryOpen] = useState(false);
   const [expandedStaffDay, setExpandedStaffDay] = useState<string | null>(null);
+  // Per-day collapse (day-collapse spec): empty set = every day collapsed. A day
+  // header tap toggles its dateDash in the set; staff rows render only when open.
+  const [openDays, setOpenDays] = useState<Set<string>>(new Set());
   const [visibleDays, setVisibleDays] = useState(INITIAL_DAYS);
 
   const range = useMemo(() => rangeFor(preset, now), [preset, now]);
@@ -74,10 +95,16 @@ export function SummaryTab({ onOpenStaff, onOpenRecord, now = Date.now() }: Summ
   const flow = useDailyFlow({ date_range: range });
   const records = useStockRecords({ date_range: range }); // drill-down for staff-row expand
   const staff = useStaff();
-  const staffName = useMemo(() => new Map((staff.data ?? []).map((s) => [s.id, s.name])), [staff.data]);
+  const staffName = useMemo(
+    () => new Map((staff.data ?? []).map((s) => [s.id, s.name])),
+    [staff.data],
+  );
 
   const aggregateRows = aggregate.data ?? [];
-  const inventoryTotal = aggregateRows.reduce((sum, r) => sum + r.total_cost, 0);
+  const inventoryTotal = aggregateRows.reduce(
+    (sum, r) => sum + r.total_cost,
+    0,
+  );
 
   // Group the (already newest-first) dailyFlow rows by day, folding each row into
   // the day + section totals. Pure derived shape — never stored.
@@ -88,79 +115,153 @@ export function SummaryTab({ onOpenStaff, onOpenRecord, now = Date.now() }: Summ
     for (const row of flow.data ?? []) {
       let day = byDay.get(row.date);
       if (!day) {
-        day = { dateDash: row.date, dateSlash: row.date.replace(/-/g, '/'), dayIn: 0, dayOut: 0, staffRows: [] };
+        day = {
+          dateDash: row.date,
+          dateSlash: row.date.replace(/-/g, "/"),
+          dayIn: 0,
+          dayOut: 0,
+          staffRows: [],
+        };
         byDay.set(row.date, day);
       }
       day.dayIn += row.in_amount;
       day.dayOut += row.out_amount;
       inT += row.in_amount;
       outT += row.out_amount;
-      day.staffRows.push({ staffId: row.staff_id, inAmount: row.in_amount, outAmount: row.out_amount });
+      day.staffRows.push({
+        staffId: row.staff_id,
+        inAmount: row.in_amount,
+        outAmount: row.out_amount,
+      });
     }
     // flow returns newest-first; Map preserves first-seen order, so sections stay newest-first.
     const all = [...byDay.values()];
-    return { sections: all, totalDays: all.length, inTotal: inT, outTotal: outT };
+    return {
+      sections: all,
+      totalDays: all.length,
+      inTotal: inT,
+      outTotal: outT,
+    };
   }, [flow.data]);
 
   // Day-batched slice (ADR-0007): each section is a whole day, so slicing at a day
   // boundary can never split a day's separator from its staff rows.
   const visible = sections.slice(0, visibleDays);
 
-  const renderDay = ({ item }: { item: DaySection }) => (
-    <View>
-      <View testID={`day-${item.dateSlash}`} style={[styles.dayHeader, { borderColor: theme.border }]}>
-        <Text style={[styles.dayDate, { color: theme.text }]}>{item.dateSlash}</Text>
-        <Text style={{ color: theme.success }}>入库</Text>
-        <MoneyText cents={cents(item.dayIn)} />
-        <Text style={{ color: theme.danger }}>出单</Text>
-        <MoneyText cents={cents(item.dayOut)} />
+  const renderDay = ({ item }: { item: DaySection }) => {
+    const dayOpen = openDays.has(item.dateDash);
+    return (
+      <View>
+        <Pressable
+          testID={`day-${item.dateSlash}`}
+          onPress={() => toggleDay(item.dateDash)}
+          style={[styles.dayHeader, { borderColor: theme.border }]}
+        >
+          <Text style={[styles.dayDate, { color: theme.text }]}>
+            {item.dateSlash}
+          </Text>
+          <Text style={{ color: theme.success }}>入库</Text>
+          <MoneyText cents={cents(item.dayIn)} />
+          <Text style={{ color: theme.danger }}>出单</Text>
+          <MoneyText cents={cents(item.dayOut)} />
+          <Ionicons
+            name={dayOpen ? "chevron-up" : "chevron-down"}
+            size={14}
+            color={theme.textSecondary}
+          />
+        </Pressable>
+        {dayOpen &&
+          item.staffRows.map((sr) => {
+            const key = `${item.dateDash}|${sr.staffId}`;
+            const expanded = expandedStaffDay === key;
+            return (
+              <View key={key}>
+                <Pressable
+                  testID={`staff-row-${item.dateDash}-${sr.staffId}`}
+                  onPress={() =>
+                    setExpandedStaffDay((cur) => (cur === key ? null : key))
+                  }
+                  onLongPress={() => onOpenStaff(sr.staffId)}
+                  style={[styles.staffRow, { borderColor: theme.border }]}
+                >
+                  <Text style={[styles.title, { color: theme.text }]}>
+                    {staffName.get(sr.staffId) ?? sr.staffId}
+                  </Text>
+                  <Text style={{ color: theme.success }}>入</Text>
+                  <MoneyText
+                    testID={`staff-in-${item.dateDash}-${sr.staffId}`}
+                    cents={cents(sr.inAmount)}
+                  />
+                  <Text style={{ color: theme.danger }}>出</Text>
+                  <MoneyText
+                    testID={`staff-out-${item.dateDash}-${sr.staffId}`}
+                    cents={cents(sr.outAmount)}
+                  />
+                  <Ionicons
+                    name={expanded ? "chevron-up" : "chevron-down"}
+                    size={14}
+                    color={theme.textSecondary}
+                  />
+                </Pressable>
+                {expanded &&
+                  (records.data ?? [])
+                    .filter(
+                      (rw) =>
+                        rw.record.staff_id === sr.staffId &&
+                        formatDate(rw.record.timestamp) === item.dateSlash,
+                    )
+                    .map((rw) => {
+                      const amt = rw.items.reduce(
+                        (s, i) => s + i.line_amount,
+                        0,
+                      );
+                      return (
+                        <Pressable
+                          key={rw.record.id}
+                          testID={`flow-record-${rw.record.id}`}
+                          onPress={() => onOpenRecord?.(rw.record.id)}
+                          style={[styles.subRow, { borderColor: theme.border }]}
+                        >
+                          <Text
+                            style={{
+                              color:
+                                rw.record.direction === "in"
+                                  ? theme.success
+                                  : theme.danger,
+                            }}
+                          >
+                            {DIRECTION_LABEL[rw.record.direction]}
+                          </Text>
+                          <Text style={{ color: theme.textSecondary }}>
+                            {formatTime(rw.record.timestamp)}
+                          </Text>
+                          <Text style={[styles.title, { color: theme.text }]}>
+                            {rw.items
+                              .map((i) => `${i.title} ×${i.qty}`)
+                              .join("、")}
+                          </Text>
+                          <MoneyText cents={cents(amt)} />
+                        </Pressable>
+                      );
+                    })}
+              </View>
+            );
+          })}
       </View>
-      {item.staffRows.map((sr) => {
-        const key = `${item.dateDash}|${sr.staffId}`;
-        const expanded = expandedStaffDay === key;
-        return (
-          <View key={key}>
-            <Pressable
-              testID={`staff-row-${item.dateDash}-${sr.staffId}`}
-              onPress={() => setExpandedStaffDay((cur) => (cur === key ? null : key))}
-              onLongPress={() => onOpenStaff(sr.staffId)}
-              style={[styles.staffRow, { borderColor: theme.border }]}>
-              <Text style={[styles.title, { color: theme.text }]}>{staffName.get(sr.staffId) ?? sr.staffId}</Text>
-              <Text style={{ color: theme.success }}>入</Text>
-              <MoneyText testID={`staff-in-${item.dateDash}-${sr.staffId}`} cents={cents(sr.inAmount)} />
-              <Text style={{ color: theme.danger }}>出</Text>
-              <MoneyText testID={`staff-out-${item.dateDash}-${sr.staffId}`} cents={cents(sr.outAmount)} />
-              <Ionicons name={expanded ? 'chevron-up' : 'chevron-down'} size={14} color={theme.textSecondary} />
-            </Pressable>
-            {expanded &&
-              (records.data ?? [])
-                .filter((rw) => rw.record.staff_id === sr.staffId && formatDate(rw.record.timestamp) === item.dateSlash)
-                .map((rw) => {
-                  const amt = rw.items.reduce((s, i) => s + i.line_amount, 0);
-                  return (
-                    <Pressable
-                      key={rw.record.id}
-                      testID={`flow-record-${rw.record.id}`}
-                      onPress={() => onOpenRecord?.(rw.record.id)}
-                      style={[styles.subRow, { borderColor: theme.border }]}>
-                      <Text style={{ color: rw.record.direction === 'in' ? theme.success : theme.danger }}>
-                        {DIRECTION_LABEL[rw.record.direction]}
-                      </Text>
-                      <Text style={{ color: theme.textSecondary }}>{formatTime(rw.record.timestamp)}</Text>
-                      <Text style={[styles.title, { color: theme.text }]}>
-                        {rw.items.map((i) => `${i.title} ×${i.qty}`).join('、')}
-                      </Text>
-                      <MoneyText cents={cents(amt)} />
-                    </Pressable>
-                  );
-                })}
-          </View>
-        );
-      })}
-    </View>
-  );
+    );
+  };
 
-  const revealMore = () => setVisibleDays((n) => Math.min(n + DAYS_PER_BATCH, totalDays));
+  const revealMore = () =>
+    setVisibleDays((n) => Math.min(n + DAYS_PER_BATCH, totalDays));
+
+  // Toggle one day's collapse without mutating the current set (rules-of-react).
+  const toggleDay = (dateDash: string) =>
+    setOpenDays((prev) => {
+      const next = new Set(prev);
+      if (next.has(dateDash)) next.delete(dateDash);
+      else next.add(dateDash);
+      return next;
+    });
 
   return (
     <FlatList
@@ -172,14 +273,58 @@ export function SummaryTab({ onOpenStaff, onOpenRecord, now = Date.now() }: Summ
       onEndReachedThreshold={0.2}
       ListFooterComponent={
         visibleDays < totalDays ? (
-          <Pressable testID="load-more-days" onPress={revealMore} style={styles.loadMore}>
+          <Pressable
+            testID="load-more-days"
+            onPress={revealMore}
+            style={styles.loadMore}
+          >
             <Text style={{ color: theme.textSecondary }}>加载更多</Text>
           </Pressable>
         ) : null
       }
-      contentContainerStyle={[styles.content, { backgroundColor: theme.background }]}
+      contentContainerStyle={[
+        styles.content,
+        { backgroundColor: theme.background },
+      ]}
       ListHeaderComponent={
         <View style={styles.header}>
+          {/* 库存卡 — as-of-now snapshot, range-independent. 「当前」 flags the caliber. */}
+          <Pressable
+            testID="inventory-toggle"
+            onPress={() => setInventoryOpen((v) => !v)}
+            style={[styles.card, { borderColor: theme.border }]}
+          >
+            <View style={styles.cardHead}>
+              <Text style={[styles.cardTitle, { color: theme.text }]}>
+                库存（当前）
+              </Text>
+              <MoneyText
+                testID="inventory-total"
+                cents={cents(inventoryTotal)}
+              />
+              <Ionicons
+                name={inventoryOpen ? "chevron-up" : "chevron-down"}
+                size={16}
+                color={theme.textSecondary}
+              />
+            </View>
+            {inventoryOpen &&
+              aggregateRows.map((r) => (
+                <View
+                  key={r.product.id}
+                  testID={`inventory-product-${r.product.id}`}
+                  style={[styles.subRow, { borderColor: theme.border }]}
+                >
+                  <Text style={[styles.title, { color: theme.text }]}>
+                    {r.product.title}
+                  </Text>
+                  <Text style={{ color: theme.textSecondary }}>
+                    {r.total_qty}件
+                  </Text>
+                  <MoneyText cents={cents(r.total_cost)} />
+                </View>
+              ))}
+          </Pressable>
           {/* 时间段 selector — drives the flow region's date_range */}
           <View style={[styles.presets, { borderColor: theme.border }]}>
             {PRESETS.map((p) => {
@@ -189,35 +334,26 @@ export function SummaryTab({ onOpenStaff, onOpenRecord, now = Date.now() }: Summ
                   key={p.key}
                   testID={p.testID}
                   onPress={() => setPreset(p.key)}
-                  style={[styles.preset, active && { backgroundColor: theme.backgroundSelected }]}>
-                  <Text style={{ color: active ? theme.text : theme.textSecondary }}>{p.label}</Text>
+                  style={[
+                    styles.preset,
+                    active && { backgroundColor: theme.backgroundSelected },
+                  ]}
+                >
+                  <Text
+                    style={{ color: active ? theme.text : theme.textSecondary }}
+                  >
+                    {p.label}
+                  </Text>
                 </Pressable>
               );
             })}
           </View>
 
-          {/* 库存卡 — as-of-now snapshot, range-independent. 「当前」 flags the caliber. */}
-          <Pressable
-            testID="inventory-toggle"
-            onPress={() => setInventoryOpen((v) => !v)}
-            style={[styles.card, { borderColor: theme.border }]}>
-            <View style={styles.cardHead}>
-              <Text style={[styles.cardTitle, { color: theme.text }]}>库存（当前）</Text>
-              <MoneyText testID="inventory-total" cents={cents(inventoryTotal)} />
-              <Ionicons name={inventoryOpen ? 'chevron-up' : 'chevron-down'} size={16} color={theme.textSecondary} />
-            </View>
-            {inventoryOpen &&
-              aggregateRows.map((r) => (
-                <View key={r.product.id} testID={`inventory-product-${r.product.id}`} style={[styles.subRow, { borderColor: theme.border }]}>
-                  <Text style={[styles.title, { color: theme.text }]}>{r.product.title}</Text>
-                  <Text style={{ color: theme.textSecondary }}>{r.total_qty}件</Text>
-                  <MoneyText cents={cents(r.total_cost)} />
-                </View>
-              ))}
-          </Pressable>
-
           {/* 流水 region header — the range's in/out totals (frozen line_amount, ADR-0002) */}
-          <View testID="flow-summary" style={[styles.summary, { borderColor: theme.border }]}>
+          <View
+            testID="flow-summary"
+            style={[styles.summary, { borderColor: theme.border }]}
+          >
             <Text style={{ color: theme.success }}>入库</Text>
             <MoneyText testID="flow-in-total" cents={cents(inTotal)} />
             <Text style={{ color: theme.danger }}>出单</Text>
@@ -232,16 +368,60 @@ export function SummaryTab({ onOpenStaff, onOpenRecord, now = Date.now() }: Summ
 const styles = StyleSheet.create({
   content: { padding: 12, gap: 8 },
   header: { gap: 8, paddingBottom: 4 },
-  presets: { flexDirection: 'row', borderWidth: 1, borderRadius: 8, overflow: 'hidden' },
-  preset: { flex: 1, paddingVertical: 10, alignItems: 'center' },
-  card: { borderWidth: 1, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10, gap: 8 },
-  cardHead: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  cardTitle: { flex: 1, fontSize: 15, fontWeight: '600' },
-  summary: { flexDirection: 'row', alignItems: 'center', gap: 8, borderWidth: 1, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10 },
-  dayHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, borderWidth: 1, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 6 },
-  dayDate: { fontSize: 13, fontWeight: '600' },
-  staffRow: { flexDirection: 'row', alignItems: 'center', gap: 8, borderWidth: 1, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10 },
-  subRow: { flexDirection: 'row', alignItems: 'center', gap: 8, borderWidth: 1, borderRadius: 8, paddingHorizontal: 16, paddingVertical: 8, marginLeft: 12 },
+  presets: {
+    flexDirection: "row",
+    borderWidth: 1,
+    borderRadius: 8,
+    overflow: "hidden",
+  },
+  preset: { flex: 1, paddingVertical: 10, alignItems: "center" },
+  card: {
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    gap: 8,
+  },
+  cardHead: { flexDirection: "row", alignItems: "center", gap: 8 },
+  cardTitle: { flex: 1, fontSize: 15, fontWeight: "600" },
+  summary: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  dayHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  dayDate: { flex: 1, fontSize: 13, fontWeight: "600" },
+  staffRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  subRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    marginLeft: 12,
+  },
   title: { flex: 1, fontSize: 15 },
-  loadMore: { alignItems: 'center', paddingVertical: 12 },
+  loadMore: { alignItems: "center", paddingVertical: 12 },
 });

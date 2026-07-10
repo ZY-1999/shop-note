@@ -132,9 +132,60 @@ describe("SummaryTab — flow grouped by day × staff, newest first (spec #05 AC
     const allDays = view.getAllByTestId(/^day-/);
     expect(allDays.indexOf(view.getByTestId("day-2026/07/09"))).toBeLessThan(allDays.indexOf(view.getByTestId("day-2026/07/08")));
 
+    // day sections are collapsed by default (day-collapse spec) → expand July 8 to reach its staff row.
+    await fireEvent.press(view.getByTestId("day-2026/07/08"));
+    await flushPending();
+
     // a per-staff row on July 8 carries its in amount (cola×2 × 300¢ = ¥6.00).
     expect(view.getByTestId(`staff-row-2026-07-08-${staffId}`)).toBeTruthy();
     expect(money(view.getByTestId(`staff-in-2026-07-08-${staffId}`))).toMatch(/6\.00/);
+  });
+});
+
+describe("SummaryTab — day section collapsible: default collapsed, tap to toggle (day-collapse AC1–AC3)", () => {
+  it("hides a day's staff rows by default, reveals them on tap, hides again on second tap", async () => {
+    const { repos, staffId, colaId } = await setup();
+    await repos.stockRecords.create({
+      staff_id: staffId, direction: "in", timestamp: DAY(9, 10),
+      items: [{ product_id: colaId, qty: 2 }],
+    });
+
+    const { view } = await renderTab(<SummaryTab now={NOW} onOpenStaff={jest.fn()} />, { repos });
+    await waitForSync(() => view.getByTestId("day-2026/07/09"));
+
+    // collapsed by default → the day's staff row isn't rendered yet.
+    expect(() => view.getByTestId(`staff-row-2026-07-09-${staffId}`)).toThrow();
+
+    // tap the day header → expands → the staff row appears.
+    await fireEvent.press(view.getByTestId("day-2026/07/09"));
+    await flushPending();
+    expect(view.getByTestId(`staff-row-2026-07-09-${staffId}`)).toBeTruthy();
+
+    // tap the same header again → collapses → the staff row disappears.
+    await fireEvent.press(view.getByTestId("day-2026/07/09"));
+    await flushPending();
+    expect(() => view.getByTestId(`staff-row-2026-07-09-${staffId}`)).toThrow();
+  });
+
+  it("keeps each day's expand state independent (two days can be open at once)", async () => {
+    const { repos, staffId, colaId } = await setup();
+    await repos.stockRecords.create({ staff_id: staffId, direction: "in", timestamp: DAY(8, 10), items: [{ product_id: colaId, qty: 1 }] });
+    await repos.stockRecords.create({ staff_id: staffId, direction: "in", timestamp: DAY(9, 10), items: [{ product_id: colaId, qty: 1 }] });
+
+    const { view } = await renderTab(<SummaryTab now={NOW} onOpenStaff={jest.fn()} />, { repos });
+    await waitForSync(() => view.getByTestId("day-2026/07/09"));
+
+    // open July 9 only → July 8 staff row still hidden.
+    await fireEvent.press(view.getByTestId("day-2026/07/09"));
+    await flushPending();
+    expect(view.getByTestId(`staff-row-2026-07-09-${staffId}`)).toBeTruthy();
+    expect(() => view.getByTestId(`staff-row-2026-07-08-${staffId}`)).toThrow();
+
+    // open July 8 too → both days' staff rows present (independent toggles).
+    await fireEvent.press(view.getByTestId("day-2026/07/08"));
+    await flushPending();
+    expect(view.getByTestId(`staff-row-2026-07-08-${staffId}`)).toBeTruthy();
+    expect(view.getByTestId(`staff-row-2026-07-09-${staffId}`)).toBeTruthy();
   });
 });
 
@@ -145,12 +196,16 @@ describe("SummaryTab — staff-row expand → records → record detail (spec #0
 
     const onOpenRecord = jest.fn();
     const { view } = await renderTab(<SummaryTab now={NOW} onOpenStaff={jest.fn()} onOpenRecord={onOpenRecord} />, { repos });
-    await waitForSync(() => view.getByTestId(`staff-row-2026-07-09-${staffId}`));
+    await waitForSync(() => view.getByTestId("day-2026/07/09"));
 
-    // collapsed by default → the record row isn't rendered yet.
+    // day collapsed by default (day-collapse spec) → expand July 9 to reach its staff row.
+    await fireEvent.press(view.getByTestId("day-2026/07/09"));
+    await flushPending();
+
+    // staff row collapsed by default → the record row isn't rendered yet.
     expect(() => view.getByTestId(`flow-record-${rec.record.id}`)).toThrow();
 
-    // expand → the record row appears with its HH:mm time + items×qty.
+    // expand the staff row → the record row appears with its HH:mm time + items×qty.
     await fireEvent.press(view.getByTestId(`staff-row-2026-07-09-${staffId}`));
     await flushPending();
     expect(view.getByTestId(`flow-record-${rec.record.id}`)).toBeTruthy();
