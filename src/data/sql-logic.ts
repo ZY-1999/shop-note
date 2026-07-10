@@ -58,7 +58,7 @@ export const SCHEMA: Record<TableName, TableSchema> = {
     jsonColumns: [],
   },
   config: {
-    columns: ["key", "value", "updated_at"],
+    columns: ["id", "value", "updated_at"],
     jsonColumns: [],
   },
 };

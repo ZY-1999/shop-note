@@ -14,8 +14,9 @@ import {
   useVoidProduct,
   useRestoreProduct,
   useCreateStockRecord,
+  useUpdateUnitPrice,
 } from '@/hooks/mutations';
-import { useStaff, useProducts } from '@/hooks/reads';
+import { useStaff, useProducts, useUnitPrice } from '@/hooks/reads';
 import { useRepos } from '@/providers/providers';
 import { useTheme } from '@/hooks/use-theme';
 import { cents, type Cents } from '@/data/primitives';
@@ -33,7 +34,7 @@ import { ADMIN_STAFF_ID, DEFAULT_STAFF_LEVEL, STAFF_LEVELS, type StaffLevel } fr
  * history/snapshots are never erased (PRD: no hard delete). The dev-only smoke
  * entry (#4) stays put below the CRUD region.
  */
-type Domain = 'staff' | 'product' | 'restock';
+type Domain = 'staff' | 'product' | 'restock' | 'config';
 
 export function ManageTab() {
   const theme = useTheme();
@@ -60,11 +61,73 @@ export function ManageTab() {
           style={[styles.segment, domain === 'restock' && { backgroundColor: theme.backgroundSelected }]}>
           <Text style={[styles.segmentText, { color: domain === 'restock' ? theme.text : theme.textSecondary }]}>补货</Text>
         </Pressable>
+        <Pressable
+          testID="seg-config"
+          onPress={() => setDomain('config')}
+          style={[styles.segment, domain === 'config' && { backgroundColor: theme.backgroundSelected }]}>
+          <Text style={[styles.segmentText, { color: domain === 'config' ? theme.text : theme.textSecondary }]}>配置</Text>
+        </Pressable>
       </View>
 
-      {domain === 'staff' ? <StaffManage /> : domain === 'product' ? <ProductManage /> : <RestockManage />}
+      {domain === 'staff' ? <StaffManage /> : domain === 'product' ? <ProductManage /> : domain === 'restock' ? <RestockManage /> : <ConfigManage />}
 
       {__DEV__ && <SmokeEntry />}
+    </View>
+  );
+}
+
+/**
+ * 配置 (config) — the global unit price (stock-balance-refactor). The operator
+ * enters the per-bundle price in 元; on save it is parsed to Cents and posted
+ * via `useUpdateUnitPrice`. New checkouts freeze this price; existing records
+ * keep their own snapshots. (spec 04)
+ */
+function ConfigManage() {
+  const theme = useTheme();
+  const unitPrice = useUnitPrice();
+  const updateUnitPrice = useUpdateUnitPrice();
+  const current = unitPrice.data ?? 0;
+  const [price, setPrice] = useState((current / 100).toString());
+  const [error, setError] = useState<string | null>(null);
+
+  const submit = () => {
+    const yuan = parseFloat(price);
+    if (!isFinite(yuan) || yuan < 0) {
+      setError('请输入有效单价');
+      return;
+    }
+    setError(null);
+    updateUnitPrice.mutate(cents(Math.round(yuan * 100)));
+  };
+
+  return (
+    <View testID="view-config" style={styles.form}>
+      <Text style={[styles.label, { color: theme.textSecondary }]}>
+        全局单价（每单 元）—— 出库时按此拆分单数 + 零售
+      </Text>
+      <View style={styles.field}>
+        <Text style={[styles.label, { color: theme.textSecondary }]}>单价（元）</Text>
+        <TextInput
+          testID="config-price-input"
+          style={[styles.input, { backgroundColor: theme.inputBg, borderColor: theme.border, color: theme.text }]}
+          value={price}
+          onChangeText={setPrice}
+          keyboardType="decimal-pad"
+        />
+      </View>
+      <Text testID="config-current" style={{ color: theme.textSecondary }}>
+        当前：{(current / 100).toFixed(2)} 元/单
+      </Text>
+      {error && (
+        <Text testID="config-error" style={{ color: theme.danger }}>{error}</Text>
+      )}
+      <Pressable
+        testID="config-submit"
+        onPress={submit}
+        disabled={updateUnitPrice.isPending}
+        style={[styles.createBtn, { backgroundColor: theme.success }]}>
+        <Text style={styles.createBtnText}>{updateUnitPrice.isPending ? '保存中…' : '保存单价'}</Text>
+      </Pressable>
     </View>
   );
 }

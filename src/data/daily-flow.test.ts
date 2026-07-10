@@ -3,6 +3,7 @@ import { InMemoryAdapter } from "@/data/in-memory";
 import { AuditProvider } from "@/data/audit";
 import { ProductRepository } from "@/data/product";
 import { StaffRepository, ADMIN_STAFF_ID } from "@/data/staff";
+import { ConfigRepository } from "@/data/config";
 import { StockRecordRepository } from "@/data/stock-record";
 import { DailyFlow } from "@/data/daily-flow";
 import { cents } from "@/data/primitives";
@@ -12,7 +13,8 @@ function setup() {
   const audit = new AuditProvider(storage);
   const products = new ProductRepository(storage, audit);
   const staff = new StaffRepository(storage, audit);
-  const stockRecords = new StockRecordRepository(storage, products, audit);
+  const config = new ConfigRepository(storage, audit);
+  const stockRecords = new StockRecordRepository(storage, products, audit, config);
   const dailyFlow = new DailyFlow(stockRecords);
   return { storage, audit, products, staff, stockRecords, dailyFlow };
 }

@@ -32,10 +32,10 @@ describe("migration DDL", () => {
     );
   });
 
-  test("createTableSql(config) reproduces the generic key-value config schema (key PK, no id)", () => {
+  test("createTableSql(config) reproduces the generic key-value config schema (id PK — id is the config key)", () => {
     expect(createTableSql("config")).toBe(
       "CREATE TABLE IF NOT EXISTS config " +
-        "(key TEXT PRIMARY KEY NOT NULL, value INTEGER NOT NULL, updated_at INTEGER NOT NULL)",
+        "(id TEXT PRIMARY KEY NOT NULL, value INTEGER NOT NULL, updated_at INTEGER NOT NULL)",
     );
   });
 

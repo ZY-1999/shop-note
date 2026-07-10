@@ -169,6 +169,33 @@ describe("RecordDetail — void (spec #07 AC4)", () => {
   });
 });
 
+describe("RecordDetail — 出库 单数/零售 split (stock-balance-refactor US9)", () => {
+  it("an 'out' record shows 快照单价 / 单数 / 零售 derived from its own snapshot", async () => {
+    const repos = setupRepos(new InMemoryAdapter());
+    const staff = await repos.staff.create({ name: "张三", phone: "", notes: "" });
+    const product = await repos.products.create({ title: "可乐", purchase_price: cents(1200), category: "" });
+    await repos.config.setUnitPrice(cents(2400)); // ¥24.00/unit — frozen on the checkout below
+    const { record } = await repos.stockRecords.create({
+      staff_id: staff.id, direction: "out", timestamp: 1_700_000_000_000,
+      items: [{ product_id: product.id, qty: 6 }], // line_amount 1200 × 6 = 7200¢ = ¥72.00
+    });
+
+    const { view } = await renderDetail(<RecordDetail recordId={record.id} />, { repos });
+    await waitForSync(() => view.getByTestId("bundle-split"));
+    expect(view.getByTestId("snapshot-unit-price")).toBeTruthy();
+    // 7200¢ ÷ 2400¢ = 3 单, 0 零售
+    expect(view.getByTestId("bundle-count").props.children).toContain(3);
+    expect(view.getByTestId("bundle-retail")).toBeTruthy();
+  });
+
+  it("a restock 'in' record does NOT show the 单数/零售 region", async () => {
+    const { repos, recordId } = await seedRecord({ direction: "in" }); // restock under admin -1
+    const { view } = await renderDetail(<RecordDetail recordId={recordId} />, { repos });
+    await waitForSync(() => view.getByText("入库"));
+    expect(view.queryByTestId("bundle-split")).toBeNull();
+  });
+});
+
 describe("RecordDetail — edit resnapshot-merge (spec #07 AC3)", () => {
   it("resnapshots touched lines at the current price; untouched lines keep their frozen snapshot", async () => {
     const repos = setupRepos(new InMemoryAdapter());

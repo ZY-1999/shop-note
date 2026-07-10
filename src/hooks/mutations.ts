@@ -12,6 +12,7 @@ import type {
   RecordWithItems,
 } from "@/data/stock-record";
 import type { Topup, TopupCreateInput } from "@/data/topup";
+import type { Cents } from "@/data/primitives";
 import { qk } from "@/hooks/query-keys";
 
 /**
@@ -254,6 +255,23 @@ export function useVoidTopup(): UseMutationResult<Topup, Error, string> {
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: qk.topups.all });
       void queryClient.invalidateQueries({ queryKey: qk.balance.all });
+    },
+  });
+}
+
+/**
+ * Update the global unit price (stock-balance-refactor). Audited; invalidates
+ * qk.config so `useUnitPrice` refetches. New checkouts freeze the new price;
+ * existing records keep their own snapshots (snapshot铁律 — no re-freeze).
+ */
+export function useUpdateUnitPrice(): UseMutationResult<void, Error, Cents> {
+  const repos = useRepos();
+  const queue = useMutationQueue();
+  const queryClient = useQueryClient();
+  return useMutation<void, Error, Cents>({
+    mutationFn: (amount) => queue.run(() => repos.config.setUnitPrice(amount)),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: qk.config.all });
     },
   });
 }

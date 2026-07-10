@@ -6,6 +6,8 @@ import { RecordForm } from '@/components/record-form';
 import { useVoidStockRecord } from '@/hooks/mutations';
 import { useStaffById, useStockRecordById } from '@/hooks/reads';
 import { useTheme } from '@/hooks/use-theme';
+import { cents } from '@/data/primitives';
+import { splitBundleRetail } from '@/data/split-bundle';
 import type { Direction } from '@/data/stock-record';
 
 /**
@@ -98,6 +100,20 @@ export function RecordDetail({ recordId }: RecordDetailProps) {
           </View>
         </View>
       ))}
+
+      {record.direction === 'out' && record.unit_price_snapshot != null && record.unit_price_snapshot > 0 && (() => {
+        const total = items.reduce((s, i) => s + i.line_amount, 0);
+        const { bundles, retail } = splitBundleRetail(total, record.unit_price_snapshot);
+        return (
+          <View testID="bundle-split" style={[styles.line, { borderColor: theme.border }]}>
+            <Text style={[styles.amountLabel, { color: theme.textSecondary }]}>快照单价 </Text>
+            <MoneyText cents={record.unit_price_snapshot} testID="snapshot-unit-price" />
+            <Text style={[styles.qty, { color: theme.text }]} testID="bundle-count"> {bundles} 单</Text>
+            <Text style={[styles.amountLabel, { color: theme.textSecondary }]}> 零售 </Text>
+            <MoneyText cents={cents(retail)} testID="bundle-retail" />
+          </View>
+        );
+      })()}
 
       {!voided && (
         <View style={styles.actions}>

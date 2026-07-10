@@ -46,4 +46,8 @@ export const qk = {
     all: ["balance"] as const,
     byStaff: (staffId: string) => ["balance", "byStaff", staffId] as const,
   },
+  config: {
+    all: ["config"] as const,
+    unitPrice: () => ["config", "unitPrice"] as const,
+  },
 } as const;

@@ -2,6 +2,7 @@ import { AuditProvider } from "@/data/audit";
 import type { HasId, StoragePort } from "@/data/port";
 import { type Cents, cents, id, now } from "@/data/primitives";
 import type { ProductRepository } from "@/data/product";
+import type { ConfigRepository } from "@/data/config";
 import { ADMIN_STAFF_ID } from "@/data/staff";
 
 export type Direction = "in" | "out";
@@ -12,6 +13,14 @@ export interface StockRecord extends HasId {
   direction: Direction;
   timestamp: number; // user-settable (defaults to now) — backdatable
   note: string | null;
+  /**
+   * Frozen global unit price (Cents) at posting time, for `direction: 'out'`
+   * only (stock-balance-refactor). `null` for restock `'in'` (the split into
+   * 单数 + 零售 only applies to checkouts). Frozen at create (snapshot铁律
+   * invariant #3); an edit does NOT re-freeze — a later unit-price change affects
+   * only new checkouts, so each record stays self-consistent.
+   */
+  unit_price_snapshot: Cents | null;
   voided_at: number | null;
   created_at: number;
   updated_at: number;
@@ -74,6 +83,7 @@ export class StockRecordRepository {
     private storage: StoragePort,
     private products: ProductRepository,
     private audit: AuditProvider,
+    private config: ConfigRepository,
   ) {}
 
   async create(input: StockRecordCreateInput): Promise<RecordWithItems> {
@@ -85,12 +95,17 @@ export class StockRecordRepository {
       );
     }
     const ts = now();
+    // Freeze the global unit price at posting time for checkouts (snapshot铁律);
+    // restock carries null (the 单数/零售 split only applies to 'out').
+    const unitPriceSnapshot: Cents | null =
+      input.direction === "out" ? await this.config.getUnitPrice() : null;
     const record: StockRecord = {
       id: id(),
       staff_id: input.staff_id,
       direction: input.direction,
       timestamp: input.timestamp ?? ts,
       note: input.note ?? null,
+      unit_price_snapshot: unitPriceSnapshot,
       voided_at: null,
       created_at: ts,
       updated_at: ts,

@@ -3,6 +3,7 @@ import { InMemoryAdapter } from "@/data/in-memory";
 import { AuditProvider } from "@/data/audit";
 import { ProductRepository } from "@/data/product";
 import { ADMIN_STAFF_ID } from "@/data/staff";
+import { ConfigRepository } from "@/data/config";
 import { StockRecordRepository } from "@/data/stock-record";
 import { cents } from "@/data/primitives";
 
@@ -10,8 +11,9 @@ function setup() {
   const storage = new InMemoryAdapter();
   const audit = new AuditProvider(storage);
   const products = new ProductRepository(storage, audit);
-  const stockRecords = new StockRecordRepository(storage, products, audit);
-  return { storage, audit, products, stockRecords };
+  const config = new ConfigRepository(storage, audit);
+  const stockRecords = new StockRecordRepository(storage, products, audit, config);
+  return { storage, audit, products, config, stockRecords };
 }
 
 describe("StockRecordRepository — direction guard (stock-balance-refactor)", () => {
@@ -70,6 +72,57 @@ describe("StockRecordRepository — direction guard (stock-balance-refactor)", (
     });
     expect(updated.record.direction).toBe("in");
     expect(updated.record.staff_id).toBe(ADMIN_STAFF_ID);
+  });
+});
+
+describe("StockRecordRepository — unit_price_snapshot (stock-balance-refactor)", () => {
+  test("an 'out' checkout freezes the global unit price at posting time", async () => {
+    const { products, config, stockRecords } = setup();
+    const p = await products.create({ title: "可乐", purchase_price: cents(300) });
+    await config.setUnitPrice(cents(2400)); // ¥24.00
+
+    const { record } = await stockRecords.create({
+      staff_id: "s1", direction: "out", items: [{ product_id: p.id, qty: 1 }],
+    });
+    expect(record.unit_price_snapshot).toBe(cents(2400));
+  });
+
+  test("a restock 'in' (admin -1) carries a null snapshot", async () => {
+    const { products, config, stockRecords } = setup();
+    const p = await products.create({ title: "可乐", purchase_price: cents(300) });
+    await config.setUnitPrice(cents(2400));
+
+    const { record } = await stockRecords.create({
+      staff_id: ADMIN_STAFF_ID, direction: "in", items: [{ product_id: p.id, qty: 5 }],
+    });
+    expect(record.unit_price_snapshot).toBeNull();
+  });
+
+  test("a later unit-price change does NOT re-freeze an existing record (snapshot铁律)", async () => {
+    const { products, config, stockRecords } = setup();
+    const p = await products.create({ title: "可乐", purchase_price: cents(300) });
+    await config.setUnitPrice(cents(2400));
+    const { record } = await stockRecords.create({
+      staff_id: "s1", direction: "out", items: [{ product_id: p.id, qty: 1 }],
+    });
+    expect(record.unit_price_snapshot).toBe(cents(2400));
+
+    await config.setUnitPrice(cents(3000));
+    // a NEW checkout freezes the new price; the old record keeps its snapshot.
+    const { record: newer } = await stockRecords.create({
+      staff_id: "s1", direction: "out", items: [{ product_id: p.id, qty: 1 }],
+    });
+    expect(newer.unit_price_snapshot).toBe(cents(3000));
+    expect((await stockRecords.getById(record.id))!.record.unit_price_snapshot).toBe(cents(2400));
+  });
+
+  test("cold-start unit price 0 → out snapshot is 0 (no crash)", async () => {
+    const { products, stockRecords } = setup();
+    const p = await products.create({ title: "可乐", purchase_price: cents(300) });
+    const { record } = await stockRecords.create({
+      staff_id: "s1", direction: "out", items: [{ product_id: p.id, qty: 1 }],
+    });
+    expect(record.unit_price_snapshot).toBe(cents(0));
   });
 });
 

@@ -32,8 +32,8 @@ describe("SCHEMA registry", () => {
     expect(SCHEMA.topup.columns).toEqual([
       "id", "staff_id", "amount", "timestamp", "note", "voided_at", "created_at", "updated_at",
     ]);
-    // config (stock-balance-refactor): generic key-value store, first key unit_price.
-    expect(SCHEMA.config.columns).toEqual(["key", "value", "updated_at"]);
+    // config (stock-balance-refactor): generic key-value store; id is the config key.
+    expect(SCHEMA.config.columns).toEqual(["id", "value", "updated_at"]);
 
     // Only audit_log.diff is a JSON column — the registry flags it so serialize/deserialize
     // and the DDL (spec #02) all share one source of truth.

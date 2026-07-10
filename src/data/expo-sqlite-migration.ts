@@ -103,7 +103,7 @@ export const COLUMNS: Record<TableName, readonly ColDef[]> = {
     { name: "updated_at", type: "INTEGER" },
   ],
   config: [
-    { name: "key", type: "TEXT", pk: true },
+    { name: "id", type: "TEXT", pk: true },
     { name: "value", type: "INTEGER" },
     { name: "updated_at", type: "INTEGER" },
   ],

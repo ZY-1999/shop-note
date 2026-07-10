@@ -112,3 +112,12 @@ export function useMemberBalance(staffId: string): UseQueryResult<Balance> {
     queryFn: () => repos.memberBalance.balance(staffId),
   });
 }
+
+/** The global unit price (Cents); 0 on cold start. */
+export function useUnitPrice(): UseQueryResult<number> {
+  const repos = useRepos();
+  return useQuery<number>({
+    queryKey: qk.config.unitPrice(),
+    queryFn: () => repos.config.getUnitPrice(),
+  });
+}

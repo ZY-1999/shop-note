@@ -1,7 +1,7 @@
 # 单价·拆分域: 全局单价 config + splitBundleRetail + 出库快照 + 管理·配置段 + 出库记录详情
 
 Type: spec
-Status: ready-for-agent
+Status: ready-for-human
 Parent: #01 (01-stock-balance-refactor.md)
 Blocked by: #02
 
@@ -55,3 +55,21 @@ Blocked by: #02
 ## Rework on failure
 
 单价/拆分独立——失败 redo 本 spec（config + splitBundleRetail + 出库快照 + 配置/详情 UI）；不波及库存/余额域。
+
+## Comments
+
+- 2026-07-11 — implemented via `/tdd`（数据层 → 流层 → UI，双绿 254 tests）。AC → 测试：
+  - 配置段输入 ¥24 → 保存 → `getUnitPrice()`===cents(2400)；审计含 create/update；冷启动返回 0 — `src/data/config.test.ts`；`src/components/manage-tab.test.tsx::ManageTab — config segment`
+  - `splitBundleRetail(7200,2400)`→{3,0}；`(7000,2400)`→{2,2200}；amount<unit→{0,amount}；unitPrice≤0→{0,amount}；大额不溢出 — `src/data/split-bundle.test.ts`
+  - 出库 line_amount=¥72 → `unit_price_snapshot`===cents(2400)；补货(in)===null；改单价后新出库冻结新值，旧记录不变 — `src/data/stock-record.test.ts::StockRecordRepository — unit_price_snapshot`
+  - 出库详情显示「快照单价 / N 单 / 零售」（splitBundleRetail 派生）；补货(in) 不显示 — `src/components/record-detail.test.tsx::RecordDetail — 出库 单数/零售 split`
+  - 四段切换正常（会员/商品/补货/配置）— `manage-tab.test.tsx::four segments toggle`
+  - record-detail 作废入口仍可用（既有用例，未回归）— `record-detail.test.tsx::RecordDetail — void`
+  - `tsc --noEmit` 通过；`jest` 全绿 254 passed（32 suites）
+- 数据层：`split-bundle.ts` 纯函数（unitPrice≤0 守卫，无 NaN）；`config.ts` ConfigRepository（getUnitPrice/setUnitPrice upsert+审计，冷启动 0）；`StockRecord` 加 `unit_price_snapshot: Cents|null`，`StockRecordRepo` 构造加 `config` 依赖，`create` 出库时冻结（edit 不重冻结——snapshot 铁律）；`composition` 接入 `config`。
+- schema 调整：config 表 `key` PK → `id` PK（与 storage port 的 `HasId` 契约 + 全部其它表一致；id 即配置 key）。同步 `SCHEMA`/`COLUMNS`/spec-01 两处测试 + v3 createTableSql 自动反映。
+- 流层：`qk.config`（all/unitPrice）；`useUnitPrice`；`useUpdateUnitPrice`（gate + 审计 + invalidate qk.config）。
+- UI：`manage-tab` 加 配置段（ConfigManage：元→Cents + 当前价展示）；`record-detail` 出库详情加「快照单价 + 单数 + 零售」（splitBundleRetail 派生），补货(in)/unitPrice=0 不显示该区域。
+- **[手动/发布门]** 真实 SQLite 下 config 表 + 出库快照的运行时行为仅设备 smoke 覆盖（ADR-0004，发布前手跑）。
+- Codemap / CONTEXT.md 术语更新延后到 `/sdd-flow` Stage 4。
+

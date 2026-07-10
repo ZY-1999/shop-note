@@ -365,6 +365,40 @@ describe("ManageTab — restock segment (stock-balance-refactor AC3)", () => {
   });
 });
 
+describe("ManageTab — config segment (stock-balance-refactor US2)", () => {
+  it("switches to the 配置 segment showing the current unit price (0 on cold start)", async () => {
+    const { repos } = await seed();
+    const { view } = await renderManage(<ManageTab />, { repos });
+    await fireEvent.press(view.getByTestId("seg-config"));
+    await waitForSync(() => view.getByTestId("view-config"));
+    expect(view.getByTestId("config-current").props.children).toContain("0.00");
+  });
+
+  it("entering a unit price + save posts it via useUpdateUnitPrice", async () => {
+    const { repos } = await seed();
+    const { view } = await renderManage(<ManageTab />, { repos });
+    await fireEvent.press(view.getByTestId("seg-config"));
+    await waitForSync(() => view.getByTestId("config-price-input"));
+
+    await fireEvent.changeText(view.getByTestId("config-price-input"), "24");
+    await fireEvent.press(view.getByTestId("config-submit"));
+
+    await waitForSync(async () => {
+      expect(await repos.config.getUnitPrice()).toBe(cents(2400)); // ¥24.00
+    });
+    expect(view.getByTestId("config-current").props.children).toContain("24.00");
+  });
+
+  it("four segments toggle (会员 / 商品 / 补货 / 配置)", async () => {
+    const { repos } = await seed();
+    const { view } = await renderManage(<ManageTab />, { repos });
+    expect(view.getByTestId("seg-staff")).toBeTruthy();
+    expect(view.getByTestId("seg-product")).toBeTruthy();
+    expect(view.getByTestId("seg-restock")).toBeTruthy();
+    expect(view.getByTestId("seg-config")).toBeTruthy();
+  });
+});
+
 describe("ManageTab — member level selector + badge (member-rename-level #03)", () => {
   it("create form has a level selector; submitting unchanged creates a 普站 member", async () => {
     const { repos } = await seed();
