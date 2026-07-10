@@ -13,11 +13,12 @@ import { renderWithProviders, type RenderWithProvidersResult } from "@/testing/r
 import { flushPending, waitForSync } from "@/testing/async";
 
 /**
- * Spec #08 (summary-tab) — the 汇总 supervision tab, through the real data stack
- * (ADR-0006: InMemoryAdapter, no mocked Repos). Pure composition of the derived
- * reads (shopAggregate / staffSummaries / dailyFlow / balance) — no new read API,
- * no writes. Async mechanics (waitForSync / flushPending / QueryClient clear) live
- * in [testing/async.ts](../testing/async.ts) (first won in #06, shared by #07).
+ * Spec #05 (page-refactor) — the rewritten 汇总 tab through the real data stack
+ * (ADR-0006: InMemoryAdapter, no mocked Repos). Single time-range-scoped view:
+ * 时间段 selector → 库存卡 (as-of-now, range-independent) → 流水 (range-scoped,
+ * day×staff, expandable). `now` is injected (#01's rangeFor seam) so the
+ * date_range filtering is deterministic. Async mechanics (waitForSync /
+ * flushPending / QueryClient clear) live in [testing/async.ts](../testing/async.ts).
  */
 
 let activeQueryClient: QueryClient | null = null;
@@ -43,155 +44,150 @@ function money(el: { props: { children?: unknown } }): string {
   return Array.isArray(c) ? (c as string[]).join("") : String(c ?? "");
 }
 
-const T1 = new Date("2026-07-09T10:00:00").getTime();
-const T2 = new Date("2026-07-09T14:00:00").getTime();
+/** Injected "now" = 2026-07-10 noon → thisMonth = July 2026, lastMonth = June 2026. */
+const NOW = new Date(2026, 6, 10, 12, 0).getTime();
+const DAY = (d: number, h = 10, m = 0) => new Date(2026, 6, d, h, m).getTime(); // a day in July 2026
 
-/**
- * Seed: one staff, two products. An `in` of cola×4 + water×3, then an `out` of
- * cola×1. shopAggregate → cola net 3 (¥9.00), water net 3 (¥15.00), grand ¥24.00.
- * staffSummaries → 张三: 2种 / 6件 / ¥24.00. dailyFlow (same day) → in ¥27.00 / out ¥3.00.
- */
-async function seed() {
+/** Base: one staff + cola (¥3.00) + water (¥5.00). Tests add the records they need. */
+async function setup() {
   const repos = setupRepos(new InMemoryAdapter());
   const staff = await repos.staff.create({ name: "张三", phone: "138", notes: "" });
   const cola = await repos.products.create({ title: "可乐", purchase_price: cents(300), category: "饮料" });
   const water = await repos.products.create({ title: "矿泉水", purchase_price: cents(500), category: "饮料" });
-  await repos.stockRecords.create({
-    staff_id: staff.id,
-    direction: "in",
-    timestamp: T1,
-    items: [
-      { product_id: cola.id, qty: 4 },
-      { product_id: water.id, qty: 3 },
-    ],
-  });
-  await repos.stockRecords.create({
-    staff_id: staff.id,
-    direction: "out",
-    timestamp: T2,
-    items: [{ product_id: cola.id, qty: 1 }],
-  });
   return { repos, staffId: staff.id, colaId: cola.id, waterId: water.id };
 }
 
-describe("SummaryTab — segmented switcher (spec #08 AC1)", () => {
-  it("renders four segments with overview as the default view", async () => {
-    const { repos, colaId } = await seed();
-    const { view } = await renderTab(<SummaryTab onOpenStaff={jest.fn()} />, { repos });
+describe("SummaryTab — 时间段 selector + range refilter (spec #05 AC1)", () => {
+  it("defaults to 本月 with the range's flow totals, and switching the preset refilters the flow", async () => {
+    const { repos, staffId, colaId, waterId } = await setup();
+    // in: cola×4 + water×3 = 2700¢ (¥27.00); out: cola×1 = 300¢ (¥3.00) — on July 9 (thisMonth)
+    await repos.stockRecords.create({
+      staff_id: staffId, direction: "in", timestamp: DAY(9, 10),
+      items: [{ product_id: colaId, qty: 4 }, { product_id: waterId, qty: 3 }],
+    });
+    await repos.stockRecords.create({
+      staff_id: staffId, direction: "out", timestamp: DAY(9, 14),
+      items: [{ product_id: colaId, qty: 1 }],
+    });
+    const { view } = await renderTab(<SummaryTab now={NOW} onOpenStaff={jest.fn()} />, { repos });
+    await waitForSync(() => view.getByTestId("flow-summary"));
 
-    expect(view.getByTestId("seg-overview")).toBeTruthy();
-    expect(view.getByTestId("seg-dailyFlow")).toBeTruthy();
-    expect(view.getByTestId("seg-byStaff")).toBeTruthy();
-    expect(view.getByTestId("seg-byProduct")).toBeTruthy();
-    // overview is the default → its view (and the seeded product row) render first
-    expect(await waitForSync(() => view.getByTestId("view-overview"))).toBeTruthy();
-    expect(view.getByTestId(`overview-product-${colaId}`)).toBeTruthy();
-  });
+    // default 本月 → the seeded July records are in range → range totals render.
+    expect(money(view.getByTestId("flow-in-total"))).toMatch(/27\.00/);
+    expect(money(view.getByTestId("flow-out-total"))).toMatch(/3\.00/);
 
-  it("switching the segment swaps the active view", async () => {
-    const { repos } = await seed();
-    const { view } = await renderTab(<SummaryTab onOpenStaff={jest.fn()} />, { repos });
-    await waitForSync(() => view.getByTestId("view-overview"));
-
-    fireEvent.press(view.getByTestId("seg-dailyFlow"));
-    await waitForSync(() => view.getByTestId("view-dailyFlow"));
-    expect(() => view.getByTestId("view-overview")).toThrow(); // overview unmounted
-  });
-});
-
-describe("SummaryTab — overview: per-product totals + grand total (spec #08 AC2)", () => {
-  it("renders each product's total qty + amount and a grand total", async () => {
-    const { repos, colaId, waterId } = await seed();
-    const { view } = await renderTab(<SummaryTab onOpenStaff={jest.fn()} />, { repos });
-
-    await waitForSync(() => view.getByTestId("view-overview"));
-    // cola: net in4-out1 = 3 × 300¢ = ¥9.00; water: in3 × 500¢ = ¥15.00
-    expect(money(view.getByTestId(`overview-amount-${colaId}`))).toMatch(/9\.00/);
-    expect(view.getByTestId(`overview-qty-${colaId}`).props.children).toContain(3);
-    expect(money(view.getByTestId(`overview-amount-${waterId}`))).toMatch(/15\.00/);
-    // grand total = 900¢ + 1500¢ = 2400¢ = ¥24.00
-    expect(money(view.getByTestId("overview-grand-total"))).toMatch(/24\.00/);
+    // switch to 上月 (June 2026) → no records in range → flow totals drop to ¥0.00.
+    await fireEvent.press(view.getByTestId("range-lastMonth"));
+    await flushPending();
+    await waitForSync(() => expect(money(view.getByTestId("flow-in-total"))).toMatch(/0\.00/));
+    expect(money(view.getByTestId("flow-out-total"))).toMatch(/0\.00/);
+    // no day separators render for an empty range.
+    expect(view.queryAllByTestId(/^day-/)).toHaveLength(0);
   });
 });
 
-describe("SummaryTab — daily flow (spec #08 AC3)", () => {
-  it("renders rows of (day × staff) with in/out amounts, newest day first", async () => {
-    const repos = setupRepos(new InMemoryAdapter());
-    const staff = await repos.staff.create({ name: "张三", phone: "", notes: "" });
-    const cola = await repos.products.create({ title: "可乐", purchase_price: cents(300), category: "" });
-    const dayA = new Date("2026-07-01T10:00:00").getTime(); // older
-    const dayB = new Date("2026-07-09T10:00:00").getTime(); // newer
-    await repos.stockRecords.create({ staff_id: staff.id, direction: "in", timestamp: dayA, items: [{ product_id: cola.id, qty: 2 }] });
-    await repos.stockRecords.create({ staff_id: staff.id, direction: "out", timestamp: dayB, items: [{ product_id: cola.id, qty: 1 }] });
+describe("SummaryTab — 库存卡: as-of-now total, expandable, range-independent (spec #05 AC2)", () => {
+  it("shows the as-of-now inventory total, expands per-product on tap, and ignores the range", async () => {
+    const { repos, staffId, colaId, waterId } = await setup();
+    await repos.stockRecords.create({
+      staff_id: staffId, direction: "in", timestamp: DAY(9, 10),
+      items: [{ product_id: colaId, qty: 4 }, { product_id: waterId, qty: 3 }],
+    });
+    await repos.stockRecords.create({
+      staff_id: staffId, direction: "out", timestamp: DAY(9, 14),
+      items: [{ product_id: colaId, qty: 1 }],
+    });
+    const { view } = await renderTab(<SummaryTab now={NOW} onOpenStaff={jest.fn()} />, { repos });
+    await waitForSync(() => view.getByTestId("inventory-total"));
 
-    const { view } = await renderTab(<SummaryTab onOpenStaff={jest.fn()} />, { repos });
-    fireEvent.press(await waitForSync(() => view.getByTestId("seg-dailyFlow")));
+    // as-of-now: cola net 3 × 300¢ + water net 3 × 500¢ = 2400¢ = ¥24.00
+    expect(money(view.getByTestId("inventory-total"))).toMatch(/24\.00/);
+    // collapsed by default → product rows hidden.
+    expect(() => view.getByTestId(`inventory-product-${colaId}`)).toThrow();
 
-    const newer = await waitForSync(() => view.getByTestId(`flowrow-2026-07-09-${staff.id}`));
-    const older = view.getByTestId(`flowrow-2026-07-01-${staff.id}`);
-    const rows = view.getAllByTestId(/^flowrow-/);
-    expect(rows.indexOf(newer)).toBeLessThan(rows.indexOf(older)); // newest day first
-    // amounts: dayA in = cola×2 × 300¢ = ¥6.00; dayB out = cola×1 × 300¢ = ¥3.00
-    expect(money(view.getByTestId(`flow-in-2026-07-01-${staff.id}`))).toMatch(/6\.00/);
-    expect(money(view.getByTestId(`flow-out-2026-07-09-${staff.id}`))).toMatch(/3\.00/);
-  });
+    // expand → per-product rows (title / qty / cost).
+    await fireEvent.press(view.getByTestId("inventory-toggle"));
+    await flushPending();
+    expect(view.getByTestId(`inventory-product-${colaId}`)).toBeTruthy();
+    expect(view.getByTestId(`inventory-product-${waterId}`)).toBeTruthy();
 
-  it("amounts are the frozen snapshot — unchanged by a later price edit", async () => {
-    const { repos, staffId, colaId } = await seed(); // in: cola×4 + water×3 → in_amount 2700¢ = ¥27.00
-    // later, cola's price changes — dailyFlow must NOT revalue (frozen line_amount, not current price)
-    await repos.products.update(colaId, { purchase_price: cents(999) });
-
-    const { view } = await renderTab(<SummaryTab onOpenStaff={jest.fn()} />, { repos });
-    fireEvent.press(await waitForSync(() => view.getByTestId("seg-dailyFlow")));
-    await waitForSync(() => view.getByTestId(`flowrow-2026-07-09-${staffId}`));
-    // STILL ¥27.00 (frozen snapshot), not revalued to 999×4 + 500×3
-    expect(money(view.getByTestId(`flow-in-2026-07-09-${staffId}`))).toMatch(/27\.00/);
+    // switching the range does NOT change the as-of-now total (different caliber).
+    await fireEvent.press(view.getByTestId("range-lastMonth"));
+    await flushPending();
+    expect(money(view.getByTestId("inventory-total"))).toMatch(/24\.00/);
   });
 });
 
-describe("SummaryTab — by staff (spec #08 AC4)", () => {
-  it("lists each staff's variety/qty/amount and opens their detail on tap", async () => {
-    const { repos, staffId } = await seed(); // 张三: 2种 / 6件 / ¥24.00
-    const onOpenStaff = jest.fn();
-    const { view } = await renderTab(<SummaryTab onOpenStaff={onOpenStaff} />, { repos });
+describe("SummaryTab — flow grouped by day × staff, newest first (spec #05 AC4)", () => {
+  it("groups flow under per-day separators (newest day first) with a per-staff row carrying in/out", async () => {
+    const { repos, staffId, colaId } = await setup();
+    // July 8 (older): in cola×2 = ¥6.00; July 9 (newer): out cola×1 = ¥3.00
+    await repos.stockRecords.create({ staff_id: staffId, direction: "in", timestamp: DAY(8, 10), items: [{ product_id: colaId, qty: 2 }] });
+    await repos.stockRecords.create({ staff_id: staffId, direction: "out", timestamp: DAY(9, 14), items: [{ product_id: colaId, qty: 1 }] });
 
-    fireEvent.press(await waitForSync(() => view.getByTestId("seg-byStaff")));
-    await waitForSync(() => view.getByTestId(`bystaff-row-${staffId}`));
-    // staffSummaries() one-pass rollup: 2 varieties / 6 qty / 2400¢ = ¥24.00
-    expect(view.getByText("2种 / 6件")).toBeTruthy();
-    expect(view.getByText("¥24.00")).toBeTruthy();
+    const { view } = await renderTab(<SummaryTab now={NOW} onOpenStaff={jest.fn()} />, { repos });
+    await waitForSync(() => view.getByTestId("day-2026/07/09"));
 
-    fireEvent.press(view.getByTestId(`bystaff-row-${staffId}`));
-    expect(onOpenStaff).toHaveBeenCalledWith(staffId);
+    // two per-day separators, newest (07/09) before older (07/08).
+    const allDays = view.getAllByTestId(/^day-/);
+    expect(allDays.indexOf(view.getByTestId("day-2026/07/09"))).toBeLessThan(allDays.indexOf(view.getByTestId("day-2026/07/08")));
+
+    // a per-staff row on July 8 carries its in amount (cola×2 × 300¢ = ¥6.00).
+    expect(view.getByTestId(`staff-row-2026-07-08-${staffId}`)).toBeTruthy();
+    expect(money(view.getByTestId(`staff-in-2026-07-08-${staffId}`))).toMatch(/6\.00/);
   });
 });
 
-describe("SummaryTab — by product (spec #08 AC5)", () => {
-  it("lists each product's total qty/amount and drills into a per-staff breakdown on tap", async () => {
-    const repos = setupRepos(new InMemoryAdapter());
-    const alice = await repos.staff.create({ name: "张三", phone: "", notes: "" });
-    const bob = await repos.staff.create({ name: "李四", phone: "", notes: "" });
-    const cola = await repos.products.create({ title: "可乐", purchase_price: cents(300), category: "" });
-    await repos.stockRecords.create({ staff_id: alice.id, direction: "in", items: [{ product_id: cola.id, qty: 4 }] });
-    await repos.stockRecords.create({ staff_id: bob.id, direction: "in", items: [{ product_id: cola.id, qty: 2 }] });
+describe("SummaryTab — staff-row expand → records → record detail (spec #05 AC5)", () => {
+  it("expanding a staff row lists that day's records and opens one on tap", async () => {
+    const { repos, staffId, colaId } = await setup();
+    const rec = await repos.stockRecords.create({ staff_id: staffId, direction: "in", timestamp: DAY(9, 10), items: [{ product_id: colaId, qty: 2 }] });
 
-    const { view } = await renderTab(<SummaryTab onOpenStaff={jest.fn()} />, { repos });
-    fireEvent.press(await waitForSync(() => view.getByTestId("seg-byProduct")));
-    await waitForSync(() => view.getByTestId(`byproduct-row-${cola.id}`));
-    // shopAggregate: cola net 6 × 300¢ = ¥18.00
-    expect(money(view.getByTestId(`byproduct-amount-${cola.id}`))).toMatch(/18\.00/);
+    const onOpenRecord = jest.fn();
+    const { view } = await renderTab(<SummaryTab now={NOW} onOpenStaff={jest.fn()} onOpenRecord={onOpenRecord} />, { repos });
+    await waitForSync(() => view.getByTestId(`staff-row-2026-07-09-${staffId}`));
 
-    // tap → per-staff breakdown (a conditional useBalance per staff row, only rendered when tapped)
-    fireEvent.press(view.getByTestId(`byproduct-row-${cola.id}`));
-    await waitForSync(() => view.getByTestId(`byproduct-staff-${cola.id}-${alice.id}`));
-    // alice: 4 × 300¢ = ¥12.00; bob: 2 × 300¢ = ¥6.00
-    expect(money(view.getByTestId(`byproduct-staff-amount-${cola.id}-${alice.id}`))).toMatch(/12\.00/);
-    expect(money(view.getByTestId(`byproduct-staff-amount-${cola.id}-${bob.id}`))).toMatch(/6\.00/);
+    // collapsed by default → the record row isn't rendered yet.
+    expect(() => view.getByTestId(`flow-record-${rec.record.id}`)).toThrow();
+
+    // expand → the record row appears with its HH:mm time + items×qty.
+    await fireEvent.press(view.getByTestId(`staff-row-2026-07-09-${staffId}`));
+    await flushPending();
+    expect(view.getByTestId(`flow-record-${rec.record.id}`)).toBeTruthy();
+    expect(view.getByText("10:00")).toBeTruthy();
+    expect(view.getByText(/可乐 ×2/)).toBeTruthy();
+
+    // tapping the record row opens record detail.
+    await fireEvent.press(view.getByTestId(`flow-record-${rec.record.id}`));
+    expect(onOpenRecord).toHaveBeenCalledWith(rec.record.id);
+  });
+});
+
+describe("SummaryTab — day-batched rendering (spec #05 AC6, ADR-0007)", () => {
+  it("renders the first days, holds the rest back, and reveals them whole (batch = whole days)", async () => {
+    const { repos, staffId, colaId } = await setup();
+    // Seven records, one per distinct local day (July 1–7 2026, all in 本月).
+    for (let d = 1; d <= 7; d++) {
+      await repos.stockRecords.create({ staff_id: staffId, direction: "in", timestamp: DAY(d, 9), items: [{ product_id: colaId, qty: 1 }] });
+    }
+    const { view } = await renderTab(<SummaryTab now={NOW} onOpenStaff={jest.fn()} />, { repos });
+    await waitForSync(() => view.getByTestId("flow-summary"));
+
+    // INITIAL_DAYS (5) day separators render first; the 6th day (07/02, newest-first) is held back.
+    expect(view.getAllByTestId(/^day-/)).toHaveLength(5);
+    expect(() => view.getByTestId("day-2026/07/02")).toThrow();
+    expect(view.getByTestId("load-more-days")).toBeTruthy();
+
+    // reveal → all 7 day separators, whole (no split); footer disappears.
+    await fireEvent.press(view.getByTestId("load-more-days"));
+    await flushPending();
+    expect(view.getAllByTestId(/^day-/)).toHaveLength(7);
+    expect(view.queryByTestId("load-more-days")).toBeNull();
   });
 });
 
 /** Test-only writer: posts an `in` record through the real mutation, so the suite
- *  can prove a write ELSEWHERE refreshes the open 汇总 view (AC6) — no manual refetch. */
+ *  can prove a write ELSEWHERE refreshes the open 汇总 view (AC7) — no manual refetch. */
 function Poster({ staffId, productId }: { staffId: string; productId: string }) {
   const create = useCreateStockRecord();
   return (
@@ -203,27 +199,32 @@ function Poster({ staffId, productId }: { staffId: string; productId: string }) 
   );
 }
 
-describe("SummaryTab — cross-view refresh (spec #08 AC6)", () => {
+describe("SummaryTab — cross-view refresh (spec #05 AC7)", () => {
   it("a post elsewhere refreshes the open 汇总 view without manual refetch", async () => {
-    const { repos, staffId, colaId } = await seed(); // overview grand total ¥24.00 (2400¢)
+    const { repos, staffId, colaId, waterId } = await setup();
+    await repos.stockRecords.create({
+      staff_id: staffId, direction: "in", timestamp: DAY(9, 10),
+      items: [{ product_id: colaId, qty: 4 }, { product_id: waterId, qty: 3 }],
+    });
+    await repos.stockRecords.create({
+      staff_id: staffId, direction: "out", timestamp: DAY(9, 14),
+      items: [{ product_id: colaId, qty: 1 }],
+    });
     const { view } = await renderTab(
       <View>
-        <SummaryTab onOpenStaff={jest.fn()} />
+        <SummaryTab now={NOW} onOpenStaff={jest.fn()} />
         <Poster staffId={staffId} productId={colaId} />
       </View>,
       { repos },
     );
-    await waitForSync(() => view.getByTestId("overview-grand-total"));
-    expect(money(view.getByTestId("overview-grand-total"))).toMatch(/24\.00/);
+    await waitForSync(() => view.getByTestId("inventory-total"));
+    // as-of-now inventory: cola net 3 + water net 3 = ¥24.00
+    expect(money(view.getByTestId("inventory-total"))).toMatch(/24\.00/);
 
     // post another cola×1 elsewhere — useCreateStockRecord invalidates qk.inventory
     fireEvent.press(view.getByTestId("poster"));
 
-    // grand total revalues live: 2400¢ + 300¢ = 2700¢ = ¥27.00
-    await waitForSync(() => expect(money(view.getByTestId("overview-grand-total"))).toMatch(/27\.00/));
+    // inventory revalues live: cola net 4 × 300¢ + water 1500¢ = 2700¢ = ¥27.00
+    await waitForSync(() => expect(money(view.getByTestId("inventory-total"))).toMatch(/27\.00/));
   });
 });
-
-
-
-

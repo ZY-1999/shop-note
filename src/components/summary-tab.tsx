@@ -1,219 +1,247 @@
-import { useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useMemo, useState } from 'react';
+import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 
 import { MoneyText } from '@/components/money-text';
-import { useBalance, useDailyFlow, useShopAggregate, useStaff, useStaffSummaries } from '@/hooks/reads';
+import { formatDate, formatTime, rangeFor, type RangePreset } from '@/components/date-format';
+import { useDailyFlow, useShopAggregate, useStaff, useStockRecords } from '@/hooks/reads';
 import { useTheme } from '@/hooks/use-theme';
 import { cents } from '@/data/primitives';
+import type { Direction } from '@/data/stock-record';
 
 /**
- * The 汇总 tab (spec #08) — the supervision / reconciliation surface. A
- * segmented switcher over four read-only, derived views of the one ledger:
- * overview (cross-staff totals per product + grand total), daily flow
- * (per day×staff money movement), by-staff (who holds what), and by-product
- * (where each product went). All derived, never stored (ADR-0002); all refresh
- * automatically when the ledger changes (every write path invalidates
- * qk.inventory / qk.dailyFlow — no view-local refetch).
+ * The 汇总 tab (rewritten, spec #05 / page-refactor) — a single time-range-scoped
+ * supervision view that replaced the old four-segment switcher. Three regions:
  *
- * Read-only and delegation-only: do NOT sneak aggregation into the UI (the
- * reads already did it). Navigation is delegated (`onOpenStaff`) so the tab is
- * router-agnostic and RNTL-testable; the route wires it to the router.
+ *  1. 时间段 selector (本月/上月/本周/上周) — drives the flow region's `date_range`
+ *     via #01's `rangeFor`. `now` is injectable (rangeFor's designed test seam).
+ *  2. 库存卡 — an as-of-now snapshot of the whole shop's stock value
+ *     (`useShopAggregate`, NOT range-scoped): the total never changes when you
+ *     switch the range. Labelled 「当前」 so the operator feels the caliber
+ *     difference from the flow (current price vs frozen history — ADR-0002).
+ *  3. 流水 — the range's in/out totals + a day-grouped (newest-first) × staff
+ *     movement from one `useDailyFlow({ date_range })` pass. Each staff row
+ *     expands to that day's records (drilled from the range-scoped
+ *     `useStockRecords`, filtered by staff + local day). Record rows tap through
+ *     to record detail (edit / void live there).
+ *
+ * Each FlatList item is one whole DAY SECTION (the day separator + its staff
+ * rows nested together), so `visibleDays` caps how many days render and a batch
+ * boundary can never split a day (ADR-0007; same structural-wholeness trick as
+ * staff-detail #04). `onEndReached` reveals more days; a `加载更多` footer is the
+ * same reveal via an explicit tap. Navigation is delegated (`onOpenStaff` /
+ * `onOpenRecord`); the route wires the router, so the tab is RNTL-testable.
  */
-type ViewName = 'overview' | 'dailyFlow' | 'byStaff' | 'byProduct';
+const DIRECTION_LABEL: Record<Direction, string> = { in: '入库', out: '出单' };
 
-const SEGMENTS: Array<{ key: ViewName; label: string; testID: string }> = [
-  { key: 'overview', label: '总览', testID: 'seg-overview' },
-  { key: 'dailyFlow', label: '流水', testID: 'seg-dailyFlow' },
-  { key: 'byStaff', label: '按员工', testID: 'seg-byStaff' },
-  { key: 'byProduct', label: '按商品', testID: 'seg-byProduct' },
+/** Initial days rendered, and how many more each reveal (onEndReached / footer) adds. */
+const INITIAL_DAYS = 5;
+const DAYS_PER_BATCH = 5;
+
+const PRESETS: Array<{ key: RangePreset; label: string; testID: string }> = [
+  { key: 'thisMonth', label: '本月', testID: 'range-thisMonth' },
+  { key: 'lastMonth', label: '上月', testID: 'range-lastMonth' },
+  { key: 'thisWeek', label: '本周', testID: 'range-thisWeek' },
+  { key: 'lastWeek', label: '上周', testID: 'range-lastWeek' },
 ];
 
 export interface SummaryTabProps {
   onOpenStaff: (staffId: string) => void;
+  /** Record-row tap (inside an expanded staff row) → record detail (#07 route). */
+  onOpenRecord?: (recordId: string) => void;
+  /** Epoch-ms "now" threaded into `rangeFor` — #01's deterministic-test seam. Defaults to Date.now(). */
+  now?: number;
 }
 
-export function SummaryTab({ onOpenStaff }: SummaryTabProps) {
-  const theme = useTheme();
-  const [view, setView] = useState<ViewName>('overview');
-
-  return (
-    <ScrollView style={[styles.container, { backgroundColor: theme.background }]}>
-      <View style={[styles.segments, { borderColor: theme.border }]}>
-        {SEGMENTS.map((seg) => {
-          const active = seg.key === view;
-          return (
-            <Pressable
-              key={seg.key}
-              testID={seg.testID}
-              onPress={() => setView(seg.key)}
-              style={[styles.segment, active && { backgroundColor: theme.backgroundSelected }]}>
-              <Text style={[styles.segmentText, { color: active ? theme.text : theme.textSecondary }]}>{seg.label}</Text>
-            </Pressable>
-          );
-        })}
-      </View>
-
-      {view === 'overview' && <OverviewView />}
-      {view === 'dailyFlow' && <DailyFlowView />}
-      {view === 'byStaff' && <ByStaffView onOpenStaff={onOpenStaff} />}
-      {view === 'byProduct' && <ByProductView />}
-    </ScrollView>
-  );
+/** One FlatList item = one local calendar day: its separator totals + staff rows. */
+interface DaySection {
+  dateDash: string; // 'YYYY-MM-DD' (dailyFlow row.date) — the day key + keyExtractor
+  dateSlash: string; // 'YYYY/MM/DD' — display + testID (matches formatDate)
+  dayIn: number; // Σ in_amount across the day's staff (cents)
+  dayOut: number; // Σ out_amount across the day's staff (cents)
+  staffRows: { staffId: string; inAmount: number; outAmount: number }[];
 }
 
-/** By-staff view — each staff's variety/qty/amount from one `useStaffSummaries()`
- *  pass; tapping a row opens that staff's holdings detail (#07). 欠货 flagged. */
-function ByStaffView({ onOpenStaff }: { onOpenStaff: (staffId: string) => void }) {
+export function SummaryTab({ onOpenStaff, onOpenRecord, now = Date.now() }: SummaryTabProps) {
   const theme = useTheme();
-  const summaries = useStaffSummaries();
+  const [preset, setPreset] = useState<RangePreset>('thisMonth');
+  const [inventoryOpen, setInventoryOpen] = useState(false);
+  const [expandedStaffDay, setExpandedStaffDay] = useState<string | null>(null);
+  const [visibleDays, setVisibleDays] = useState(INITIAL_DAYS);
+
+  const range = useMemo(() => rangeFor(preset, now), [preset, now]);
+  const aggregate = useShopAggregate(); // as-of-now, NOT range-scoped
+  const flow = useDailyFlow({ date_range: range });
+  const records = useStockRecords({ date_range: range }); // drill-down for staff-row expand
   const staff = useStaff();
-  const staffName = new Map((staff.data ?? []).map((s) => [s.id, s.name]));
-  const rows = summaries.data ?? [];
+  const staffName = useMemo(() => new Map((staff.data ?? []).map((s) => [s.id, s.name])), [staff.data]);
 
-  return (
-    <View testID="view-byStaff">
-      {rows.map((s) => (
-        <Pressable
-          key={s.staff_id}
-          testID={`bystaff-row-${s.staff_id}`}
-          onPress={() => onOpenStaff(s.staff_id)}
-          style={[styles.row, { borderColor: theme.border }, s.has_negative && { backgroundColor: theme.backgroundSelected }]}>
-          <Text style={[styles.title, { color: theme.text }]}>{staffName.get(s.staff_id) ?? s.staff_id}</Text>
-          <Text style={[styles.qty, { color: theme.textSecondary }]}>{`${s.variety}种 / ${s.total_qty}件`}</Text>
-          <MoneyText cents={cents(s.total_amount)} />
-        </Pressable>
-      ))}
+  const aggregateRows = aggregate.data ?? [];
+  const inventoryTotal = aggregateRows.reduce((sum, r) => sum + r.total_cost, 0);
+
+  // Group the (already newest-first) dailyFlow rows by day, folding each row into
+  // the day + section totals. Pure derived shape — never stored.
+  const { sections, totalDays, inTotal, outTotal } = useMemo(() => {
+    const byDay = new Map<string, DaySection>();
+    let inT = 0;
+    let outT = 0;
+    for (const row of flow.data ?? []) {
+      let day = byDay.get(row.date);
+      if (!day) {
+        day = { dateDash: row.date, dateSlash: row.date.replace(/-/g, '/'), dayIn: 0, dayOut: 0, staffRows: [] };
+        byDay.set(row.date, day);
+      }
+      day.dayIn += row.in_amount;
+      day.dayOut += row.out_amount;
+      inT += row.in_amount;
+      outT += row.out_amount;
+      day.staffRows.push({ staffId: row.staff_id, inAmount: row.in_amount, outAmount: row.out_amount });
+    }
+    // flow returns newest-first; Map preserves first-seen order, so sections stay newest-first.
+    const all = [...byDay.values()];
+    return { sections: all, totalDays: all.length, inTotal: inT, outTotal: outT };
+  }, [flow.data]);
+
+  // Day-batched slice (ADR-0007): each section is a whole day, so slicing at a day
+  // boundary can never split a day's separator from its staff rows.
+  const visible = sections.slice(0, visibleDays);
+
+  const renderDay = ({ item }: { item: DaySection }) => (
+    <View>
+      <View testID={`day-${item.dateSlash}`} style={[styles.dayHeader, { borderColor: theme.border }]}>
+        <Text style={[styles.dayDate, { color: theme.text }]}>{item.dateSlash}</Text>
+        <Text style={{ color: theme.success }}>入库</Text>
+        <MoneyText cents={cents(item.dayIn)} />
+        <Text style={{ color: theme.danger }}>出单</Text>
+        <MoneyText cents={cents(item.dayOut)} />
+      </View>
+      {item.staffRows.map((sr) => {
+        const key = `${item.dateDash}|${sr.staffId}`;
+        const expanded = expandedStaffDay === key;
+        return (
+          <View key={key}>
+            <Pressable
+              testID={`staff-row-${item.dateDash}-${sr.staffId}`}
+              onPress={() => setExpandedStaffDay((cur) => (cur === key ? null : key))}
+              onLongPress={() => onOpenStaff(sr.staffId)}
+              style={[styles.staffRow, { borderColor: theme.border }]}>
+              <Text style={[styles.title, { color: theme.text }]}>{staffName.get(sr.staffId) ?? sr.staffId}</Text>
+              <Text style={{ color: theme.success }}>入</Text>
+              <MoneyText testID={`staff-in-${item.dateDash}-${sr.staffId}`} cents={cents(sr.inAmount)} />
+              <Text style={{ color: theme.danger }}>出</Text>
+              <MoneyText testID={`staff-out-${item.dateDash}-${sr.staffId}`} cents={cents(sr.outAmount)} />
+              <Ionicons name={expanded ? 'chevron-up' : 'chevron-down'} size={14} color={theme.textSecondary} />
+            </Pressable>
+            {expanded &&
+              (records.data ?? [])
+                .filter((rw) => rw.record.staff_id === sr.staffId && formatDate(rw.record.timestamp) === item.dateSlash)
+                .map((rw) => {
+                  const amt = rw.items.reduce((s, i) => s + i.line_amount, 0);
+                  return (
+                    <Pressable
+                      key={rw.record.id}
+                      testID={`flow-record-${rw.record.id}`}
+                      onPress={() => onOpenRecord?.(rw.record.id)}
+                      style={[styles.subRow, { borderColor: theme.border }]}>
+                      <Text style={{ color: rw.record.direction === 'in' ? theme.success : theme.danger }}>
+                        {DIRECTION_LABEL[rw.record.direction]}
+                      </Text>
+                      <Text style={{ color: theme.textSecondary }}>{formatTime(rw.record.timestamp)}</Text>
+                      <Text style={[styles.title, { color: theme.text }]}>
+                        {rw.items.map((i) => `${i.title} ×${i.qty}`).join('、')}
+                      </Text>
+                      <MoneyText cents={cents(amt)} />
+                    </Pressable>
+                  );
+                })}
+          </View>
+        );
+      })}
     </View>
   );
-}
 
-/**
- * Daily flow — per (day × staff) money movement from one `useDailyFlow()` read,
- * newest day first. Amounts are the FROZEN snapshot `line_amount` (unit_price ×
- * qty at posting / last-touch), NOT current-price-revalued — so a later price
- * edit does not mutate past flow rows (contrast with overview, which revalues).
- */
-function DailyFlowView() {
-  const theme = useTheme();
-  const flow = useDailyFlow();
-  const staff = useStaff();
-  const staffName = new Map((staff.data ?? []).map((s) => [s.id, s.name]));
-  const rows = flow.data ?? [];
+  const revealMore = () => setVisibleDays((n) => Math.min(n + DAYS_PER_BATCH, totalDays));
 
   return (
-    <View testID="view-dailyFlow">
-      {rows.map((row) => (
-        <View key={`${row.date}-${row.staff_id}`} testID={`flowrow-${row.date}-${row.staff_id}`} style={[styles.row, { borderColor: theme.border }]}>
-          <Text style={[styles.date, { color: theme.text }]}>{row.date}</Text>
-          <Text style={[styles.staff, { color: theme.textSecondary }]}>{staffName.get(row.staff_id) ?? row.staff_id}</Text>
-          <View style={styles.amountPair}>
-            <Text style={[styles.amountLabel, { color: theme.textSecondary }]}>入 </Text>
-            <MoneyText cents={cents(row.in_amount)} testID={`flow-in-${row.date}-${row.staff_id}`} />
-            <Text style={[styles.amountLabel, { color: theme.textSecondary }]}> 出 </Text>
-            <MoneyText cents={cents(row.out_amount)} testID={`flow-out-${row.date}-${row.staff_id}`} />
+    <FlatList
+      testID="summary-list"
+      data={visible}
+      keyExtractor={(item) => item.dateDash}
+      renderItem={renderDay}
+      onEndReached={revealMore}
+      onEndReachedThreshold={0.2}
+      ListFooterComponent={
+        visibleDays < totalDays ? (
+          <Pressable testID="load-more-days" onPress={revealMore} style={styles.loadMore}>
+            <Text style={{ color: theme.textSecondary }}>加载更多</Text>
+          </Pressable>
+        ) : null
+      }
+      contentContainerStyle={[styles.content, { backgroundColor: theme.background }]}
+      ListHeaderComponent={
+        <View style={styles.header}>
+          {/* 时间段 selector — drives the flow region's date_range */}
+          <View style={[styles.presets, { borderColor: theme.border }]}>
+            {PRESETS.map((p) => {
+              const active = p.key === preset;
+              return (
+                <Pressable
+                  key={p.key}
+                  testID={p.testID}
+                  onPress={() => setPreset(p.key)}
+                  style={[styles.preset, active && { backgroundColor: theme.backgroundSelected }]}>
+                  <Text style={{ color: active ? theme.text : theme.textSecondary }}>{p.label}</Text>
+                </Pressable>
+              );
+            })}
+          </View>
+
+          {/* 库存卡 — as-of-now snapshot, range-independent. 「当前」 flags the caliber. */}
+          <Pressable
+            testID="inventory-toggle"
+            onPress={() => setInventoryOpen((v) => !v)}
+            style={[styles.card, { borderColor: theme.border }]}>
+            <View style={styles.cardHead}>
+              <Text style={[styles.cardTitle, { color: theme.text }]}>库存（当前）</Text>
+              <MoneyText testID="inventory-total" cents={cents(inventoryTotal)} />
+              <Ionicons name={inventoryOpen ? 'chevron-up' : 'chevron-down'} size={16} color={theme.textSecondary} />
+            </View>
+            {inventoryOpen &&
+              aggregateRows.map((r) => (
+                <View key={r.product.id} testID={`inventory-product-${r.product.id}`} style={[styles.subRow, { borderColor: theme.border }]}>
+                  <Text style={[styles.title, { color: theme.text }]}>{r.product.title}</Text>
+                  <Text style={{ color: theme.textSecondary }}>{r.total_qty}件</Text>
+                  <MoneyText cents={cents(r.total_cost)} />
+                </View>
+              ))}
+          </Pressable>
+
+          {/* 流水 region header — the range's in/out totals (frozen line_amount, ADR-0002) */}
+          <View testID="flow-summary" style={[styles.summary, { borderColor: theme.border }]}>
+            <Text style={{ color: theme.success }}>入库</Text>
+            <MoneyText testID="flow-in-total" cents={cents(inTotal)} />
+            <Text style={{ color: theme.danger }}>出单</Text>
+            <MoneyText testID="flow-out-total" cents={cents(outTotal)} />
           </View>
         </View>
-      ))}
-    </View>
-  );
-}
-
-/**
- * Overview — per-product cross-staff totals (qty + amount) from one
- * `shopAggregate()` read, plus a grand total. Current-price cost view: a later
- * price change revalues these rows on the next read (contrast with dailyFlow's
- * frozen snapshot).
- */
-function OverviewView() {
-  const theme = useTheme();
-  const aggregate = useShopAggregate();
-  const rows = aggregate.data ?? [];
-  const grandTotal = rows.reduce((sum, r) => sum + r.total_cost, 0);
-
-  return (
-    <View testID="view-overview">
-      {rows.map((r) => (
-        <View key={r.product.id} testID={`overview-product-${r.product.id}`} style={[styles.row, { borderColor: theme.border }]}>
-          <Text style={[styles.title, { color: theme.text }]}>{r.product.title}</Text>
-          <Text testID={`overview-qty-${r.product.id}`} style={[styles.qty, { color: theme.textSecondary }]}>
-            {r.total_qty}件
-          </Text>
-          <MoneyText cents={cents(r.total_cost)} testID={`overview-amount-${r.product.id}`} />
-        </View>
-      ))}
-      <View style={[styles.grandRow, { borderColor: theme.border }]}>
-        <Text style={[styles.grandLabel, { color: theme.text }]}>合计</Text>
-        <MoneyText cents={cents(grandTotal)} testID="overview-grand-total" />
-      </View>
-    </View>
-  );
-}
-
-/**
- * By-product — each product's cross-staff total qty/amount (`shopAggregate()`).
- * Tapping a product reveals its per-staff breakdown ON DEMAND: each staff row is
- * its own `<ProductStaffBalance>` component that calls `useBalance(staffId,
- * productId)` — rules-of-React clean (one hook per component, not N calls in one
- * render body), and only mounted when a product is selected. Staff with a zero
- * balance for the product stay hidden.
- */
-function ByProductView() {
-  const theme = useTheme();
-  const aggregate = useShopAggregate();
-  const staff = useStaff();
-  const [selectedProduct, setSelectedProduct] = useState<string | null>(null);
-  const rows = aggregate.data ?? [];
-  const staffList = staff.data ?? [];
-
-  return (
-    <View testID="view-byProduct">
-      {rows.map((r) => (
-        <Pressable
-          key={r.product.id}
-          testID={`byproduct-row-${r.product.id}`}
-          onPress={() => setSelectedProduct((p) => (p === r.product.id ? null : r.product.id))}
-          style={[styles.row, { borderColor: theme.border }, selectedProduct === r.product.id && { backgroundColor: theme.backgroundSelected }]}>
-          <Text style={[styles.title, { color: theme.text }]}>{r.product.title}</Text>
-          <Text style={[styles.qty, { color: theme.textSecondary }]}>{`${r.total_qty}件`}</Text>
-          <MoneyText cents={cents(r.total_cost)} testID={`byproduct-amount-${r.product.id}`} />
-        </Pressable>
-      ))}
-      {selectedProduct &&
-        staffList.map((s) => (
-          <ProductStaffBalance key={s.id} staffId={s.id} staffName={s.name} productId={selectedProduct} />
-        ))}
-    </View>
-  );
-}
-
-/** One staff's balance for the tapped product — a component so its `useBalance` hook is rules-compliant. */
-function ProductStaffBalance({ staffId, staffName, productId }: { staffId: string; staffName: string; productId: string }) {
-  const theme = useTheme();
-  const balance = useBalance(staffId, productId);
-  const qty = balance.data?.qty ?? 0;
-  if (qty === 0) return null; // hide staff who don't hold this product
-  return (
-    <View testID={`byproduct-staff-${productId}-${staffId}`} style={[styles.subRow, { borderColor: theme.border }]}>
-      <Text style={[styles.title, { color: theme.text }]}>{staffName}</Text>
-      <Text style={[styles.qty, { color: theme.textSecondary }]}>{`${qty}件`}</Text>
-      <MoneyText cents={cents(balance.data!.cost_amount)} testID={`byproduct-staff-amount-${productId}-${staffId}`} />
-    </View>
+      }
+    />
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, padding: 12, gap: 8 },
-  segments: { flexDirection: 'row', borderWidth: 1, borderRadius: 8, overflow: 'hidden' },
-  segment: { flex: 1, paddingVertical: 10, alignItems: 'center' },
-  segmentText: { fontSize: 14, fontWeight: '600' },
-  row: { flexDirection: 'row', alignItems: 'center', gap: 8, borderWidth: 1, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10 },
-  title: { flex: 1, fontSize: 15 },
-  qty: { fontSize: 14 },
-  date: { fontSize: 14, fontWeight: '600' },
-  staff: { flex: 1, fontSize: 14 },
-  amountPair: { flexDirection: 'row', alignItems: 'center', gap: 2 },
-  amountLabel: { fontSize: 13 },
+  content: { padding: 12, gap: 8 },
+  header: { gap: 8, paddingBottom: 4 },
+  presets: { flexDirection: 'row', borderWidth: 1, borderRadius: 8, overflow: 'hidden' },
+  preset: { flex: 1, paddingVertical: 10, alignItems: 'center' },
+  card: { borderWidth: 1, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10, gap: 8 },
+  cardHead: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  cardTitle: { flex: 1, fontSize: 15, fontWeight: '600' },
+  summary: { flexDirection: 'row', alignItems: 'center', gap: 8, borderWidth: 1, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10 },
+  dayHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, borderWidth: 1, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 6 },
+  dayDate: { fontSize: 13, fontWeight: '600' },
+  staffRow: { flexDirection: 'row', alignItems: 'center', gap: 8, borderWidth: 1, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10 },
   subRow: { flexDirection: 'row', alignItems: 'center', gap: 8, borderWidth: 1, borderRadius: 8, paddingHorizontal: 16, paddingVertical: 8, marginLeft: 12 },
-  grandRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', gap: 12, borderWidth: 1, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 12, marginTop: 4 },
-  grandLabel: { fontSize: 16, fontWeight: '700' },
+  title: { flex: 1, fontSize: 15 },
+  loadMore: { alignItems: 'center', paddingVertical: 12 },
 });
