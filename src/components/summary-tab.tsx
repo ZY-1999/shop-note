@@ -35,16 +35,19 @@ import { useTheme } from "@/hooks/use-theme";
  *     `useStockRecords`, filtered by staff + local day). Record rows tap through
  *     to record detail (edit / void live there).
  *
- * Each FlatList item is one whole DAY SECTION (the day separator + its staff
- * rows nested together), so `visibleDays` caps how many days render and a batch
+ * Each FlatList item is one whole DAY SECTION (the day card + its staff cards
+ * nested together), so `visibleDays` caps how many days render and a batch
  * boundary can never split a day (ADR-0007; same structural-wholeness trick as
- * staff-detail #04). Each day header is itself a collapsible card (day-collapse
- * spec): `openDays` holds the expanded dateDash set (default empty = all
- * collapsed), the header tap toggles membership, and staff rows render only when
- * the day is open — same collapse pattern as the 库存卡 above. `onEndReached`
- * reveals more days; a `加载更多` footer is the same reveal via an explicit tap.
- * Navigation is delegated (`onOpenStaff` / `onOpenRecord`); the route wires the
- * router, so the tab is RNTL-testable.
+ * staff-detail #04). Each level is a **container card** mirroring the 库存卡:
+ * the day card (`styles.card`) wraps its header + staff cards; a staff card
+ * (`styles.staffCard`) wraps its header + record lines. `openDays` holds the
+ * expanded dateDash set (default empty = all collapsed) — a header tap toggles
+ * membership, and the card's height grows to contain its children with `gap`
+ * only when open. `expandedStaffDay` is the same pattern one level down (staff
+ * card → record lines). `onEndReached` reveals more days; a `加载更多` footer
+ * is the same reveal via an explicit tap. Navigation is delegated
+ * (`onOpenStaff` / `onOpenRecord`); the route wires the router, so the tab is
+ * RNTL-testable.
  */
 const DIRECTION_LABEL: Record<Direction, string> = { in: "入库", out: "出单" };
 
@@ -151,11 +154,11 @@ export function SummaryTab({
   const renderDay = ({ item }: { item: DaySection }) => {
     const dayOpen = openDays.has(item.dateDash);
     return (
-      <View>
+      <View style={[styles.card, { borderColor: theme.border }]}>
         <Pressable
           testID={`day-${item.dateSlash}`}
           onPress={() => toggleDay(item.dateDash)}
-          style={[styles.dayHeader, { borderColor: theme.border }]}
+          style={styles.cardHead}
         >
           <Text style={[styles.dayDate, { color: theme.text }]}>
             {item.dateSlash}
@@ -175,14 +178,17 @@ export function SummaryTab({
             const key = `${item.dateDash}|${sr.staffId}`;
             const expanded = expandedStaffDay === key;
             return (
-              <View key={key}>
+              <View
+                key={key}
+                style={[styles.staffCard, { borderColor: theme.border }]}
+              >
                 <Pressable
                   testID={`staff-row-${item.dateDash}-${sr.staffId}`}
                   onPress={() =>
                     setExpandedStaffDay((cur) => (cur === key ? null : key))
                   }
                   onLongPress={() => onOpenStaff(sr.staffId)}
-                  style={[styles.staffRow, { borderColor: theme.border }]}
+                  style={styles.cardHead}
                 >
                   <Text style={[styles.title, { color: theme.text }]}>
                     {staffName.get(sr.staffId) ?? sr.staffId}
@@ -220,7 +226,7 @@ export function SummaryTab({
                           key={rw.record.id}
                           testID={`flow-record-${rw.record.id}`}
                           onPress={() => onOpenRecord?.(rw.record.id)}
-                          style={[styles.subRow, { borderColor: theme.border }]}
+                          style={styles.recordLine}
                         >
                           <Text
                             style={{
@@ -393,24 +399,22 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 10,
   },
-  dayHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    borderWidth: 1,
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-  },
   dayDate: { flex: 1, fontSize: 13, fontWeight: "600" },
-  staffRow: {
+  // Nested container card (a day card holds staff cards; a staff card holds
+  // record lines) — same containment model as `card`/库存卡, just tighter so the
+  // nesting reads. `gap` spaces the header from its expanded children.
+  staffCard: {
+    borderWidth: 1,
+    borderRadius: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    gap: 4,
+  },
+  recordLine: {
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
-    borderWidth: 1,
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
+    paddingVertical: 4,
   },
   subRow: {
     flexDirection: "row",

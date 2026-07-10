@@ -59,6 +59,8 @@ Parent: #01-page-refactor（后续增强；#05 summary-rewrite 已 ship）
 
 **改动范围**：`src/components/summary-tab.tsx`（`renderDay`：天头 `View`→`Pressable` + chevron + `openDays` 条件渲染；新增 `openDays` state + `toggleDay`；`dayDate` 加 `flex:1`；doc 注释同步）+ `src/components/summary-tab.test.tsx`（2 个新 day-collapse 测试 + AC4/AC5 更新为先展开天）+ `docs/codemap/project.md`（summary capability 描述 + Updated 条目）。`<SummaryTab onOpenStaff onOpenRecord? now?>` 签名不变——折叠是纯本地 UI 态，读模型/hook/数据层全未动。
 
+**Revision 2（容器卡包含，2026-07-10 同日）**：用户澄清「类似 库存卡 = 卡片展开后高度撑开、包含多行元素、带适当 gap」。初版只加了折叠态，day/staff 仍是各自带边框的平铺行，**没有外层容器卡包住子行**。重构为嵌套容器卡：day 外层 `styles.card`（边框 + padding + `gap:8`）包住「天头 + 各 staff 卡」；staff 外层新增 `styles.staffCard`（边框 + padding + `gap:4`）包住「员工头 + 各 record 行」；record 行改用 borderless `styles.recordLine`（避免三重边框）。天头/staff 头改用 `styles.cardHead`（无边框，在卡内）。展开时卡片高度随子行撑开、`gap` 间距——与库存卡同款包含模型。移除未用的 `dayHeader`/`staffRow` 样式。testID 仍在各 header Pressable 上，8/8 测试无改动即过；`npx tsc --noEmit` exit 0。
+
 Commit: see `feat(summary): day section 可折叠（默认收起，镜像库存卡）` (this spec's Stage 2 commit).
 
 ## Comments
