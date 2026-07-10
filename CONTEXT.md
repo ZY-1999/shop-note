@@ -49,6 +49,7 @@ The data layer is consumed by a thin UI layer (the system PRD calls UI a "thin c
 - **数据流** — UI reads/writes through React Query hooks (`useStaff` / `useProducts` / `useStockRecords` / `useInventory` / `useDailyFlow`); writes invalidate the affected queries so derived reads refresh automatically. Derived reads stay pure-and-recomputed (ADR-0002) — performance is controlled by precise invalidation, not by caching results.
 - **导航** — three tabs: 记账 (bookkeeping, home) → 汇总 (summary) → 管理 (manage). 记账 is staff-centric (search a staff → post in/out); the `dailyFlow` report lives under 汇总.
 - **样式** — RN `StyleSheet` + extended `theme.ts` semantic tokens (success/danger/warning/border/inputBg/accent); no NativeWind / component library. Native inputs (TextField/Picker/SegmentedControl) use the already-installed `@expo/ui` where it helps.
+- **页面优化重构 (2026-07-10)** — 记账 / 员工详情 / 汇总三屏 UX 重构（管理页另算）：`direction: out` 的展示词由「出库」改「出单」（数据层 enum `out` 不变）；日期统一 `YYYY/MM/DD`（datetime 控件用 `YYYY/MM/DD HH:mm`）；长列表（员工详情历史 / 汇总流水）按天倒序 + **UI 级分批渲染**（[ADR-0007](docs/adr/0007-list-batched-rendering.md)）；汇总屏抛弃四段切换，改为时间段选择 + 库存卡 + 按天×员工流水。**口径区分**：库存卡金额 = as-of-now 现价快照（不受时间段影响），流水段金额 = 选定时间段内的历史快照 `line_amount`（与 [ADR-0002](docs/adr/0002-derived-inventory-never-stored.md) 一致）。
 
 UI testing ([ADR-0006](docs/adr/0006-ui-component-testing-rntl.md)): derived pure logic (`dailyFlow` etc.) is Jest-covered against `InMemoryAdapter`; **screens / hooks / user-behavior flows are covered by React Native Testing Library component tests** using the real `InMemoryAdapter` (no Repos mocking), driven from user actions (search → post → observe). Real SQL execution stays with the [ADR-0004](docs/adr/0004-adapter-verification-device-smoke.md) device smoke; dark-mode / feel stay manual.
 
@@ -56,6 +57,7 @@ UI testing ([ADR-0006](docs/adr/0006-ui-component-testing-rntl.md)): derived pur
 
 - **System PRD**: [.scratch/2026-07-08-shop-management-system/01-shop-management-system.md](.scratch/2026-07-08-shop-management-system/01-shop-management-system.md)
 - **UI PRD**: [.scratch/2026-07-09-shop-management-ui/01-shop-management-ui.md](.scratch/2026-07-09-shop-management-ui/01-shop-management-ui.md)
+- **页面重构 PRD**: [.scratch/2026-07-10-page-refactor/01-page-refactor.md](.scratch/2026-07-10-page-refactor/01-page-refactor.md)
 - **Specs**: [.scratch/2026-07-08-shop-management-system/specs/](.scratch/2026-07-08-shop-management-system/specs/)
-- **ADRs**: [docs/adr/](docs/adr/) (incl. [ADR-0005 UI 层架构](docs/adr/0005-ui-layer-architecture.md), [ADR-0006 UI 组件测试](docs/adr/0006-ui-component-testing-rntl.md))
+- **ADRs**: [docs/adr/](docs/adr/) (incl. [ADR-0005 UI 层架构](docs/adr/0005-ui-layer-architecture.md), [ADR-0006 UI 组件测试](docs/adr/0006-ui-component-testing-rntl.md), [ADR-0007 列表分批渲染](docs/adr/0007-list-batched-rendering.md))
 - **CodeMap**: [docs/codemap/project.md](docs/codemap/project.md)
