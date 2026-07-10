@@ -1,0 +1,59 @@
+# 库存域: 全局库存 + 管理员 -1 + 废弃 per-staff + 补货 + smoke 迁移
+
+Type: spec
+Status: ready-for-agent
+Parent: #01 (01-stock-balance-refactor.md)
+Blocked by: #01
+
+## Goal
+
+库存收敛为全局唯一（`shopAggregate`，`in` 只来自 `-1` 补货）；虚拟管理员 `-1` 在数据层成为受保护实体；废弃所有 per-staff 库存派生 + 连带 hooks/query-keys；管理 tab 新增补货段；smoke 迁移到新口径——为余额域/单价域建立干净基线。
+
+## Acceptance criteria
+
+- [ ] `StaffRepository.list()`/`listActive()`/`search({})`/`list({includeVoided:true})` 返回列表均不含 `-1`；`staff.void('-1')` 抛错；`-1` 行始终存在。——US12 数据层基础
+- [ ] `stockRecords.create({direction:'in', staff_id:<普通会员>})` 抛错；`{direction:'in', staff_id:'-1'}` 成功；`{direction:'out', staff_id:<普通会员>}` 不受约束。——证明 in 仅管理员
+- [ ] 管理 tab 补货段选商品 A ×10 → 提交 → `shopAggregate` 中 A `total_qty===10`；再记一笔出库 A ×3 → `total_qty===7`。——US1, US6 数据层
+- [ ] smoke `behavior-script.ts` 全部步骤改造为 `shopAggregate` + `-1` 补货口径；InMemory 半边通过；不再调 `inventory.balance`/`staffInventory`。——证明 smoke 不崩
+- [ ] `npx tsc --noEmit` 通过——全项目无对已删方法/hooks/类型的引用（bookkeeping/staff-detail/staff-row 占位骨架编译干净）。——证明废弃干净
+- [ ] 出库数量 > 现有全局库存 → `shopAggregate` 该商品 `total_qty` 为负（欠货），create 不抛错不拦截。——US10 欠货侧（invariant #5，与 spec 03 欠款侧对称）
+- [ ] `npx jest` 全绿——所有创建 `direction='in'` 的存量测试迁移到 `staff_id='-1'`（或改 out），无运行时方向校验抛错；废弃方法的测试断言全部迁移。——证明 direction 校验不破坏存量测试套件（tsc 抓不到此运行时破坏）
+
+## Scope
+
+- **In**:
+  - 数据层：StaffRepo 默认排除 `-1` + void 守卫；StockRecordRepo.create 校验 in↔`-1`；Inventory 删 `balance`/`staffInventory`/`staffSummaries` + `StaffSummary`/`Balance` 类型，保留 `shopAggregate`。
+  - 流层：query-keys 移除 `inventory.staffSummaries`/`staff`/`balance`；reads 移除对应 hooks。
+  - UI：manage-tab 加「补货」段（补货入库表单，走 useCreateStockRecord，staff_id='-1'）；bookkeeping/staff-row/staff-detail 移除 per-staff 库存依赖（占位骨架——余额留给 spec 03）；staff-row 移除「入库」按钮。
+  - smoke + 测试：`behavior-script.ts` 改造 + `behavior-script.test.ts`（InMemory 半边，调 inventory.balance + dailyFlow 金额断言，随 smoke 迁移更新）；存量测试迁移——`inventory.test.ts`（删 balance/staffInventory/staffSummaries 断言）、`reads.test.tsx`（删 useBalance/useStaffInventory）、`stock-record.test.ts`/`daily-flow.test.ts`/`summary-tab.test.tsx`/`__tests__/bookkeeping-tab.test.tsx`/`staff-detail.test.tsx`/`record-form.test.tsx`（所有 `direction='in'` 改 `staff_id='-1'` 或改 out；移除 per-staff 持有断言）、`manage-tab.test.tsx`/`record-detail.test.tsx`（编译干净 + 增强）。
+- **Out**: 余额展示/充值（spec 03）；单价/拆分（spec 04）；综合流水（spec 05）；`-1` 种子行本身（spec 01 已 INSERT）。
+
+## Context
+
+- ADR-0002（派生不存储——shopAggregate 派生逻辑不改）、ADR-0005（数据流层 invalidation）、ADR-0006（测试 seam：data InMemory + ui RNTL）、ADR-0004（smoke 是生产代码，非 Jest）。
+- CONTEXT invariant #5（欠货允许——全局库存可为负）。
+- 破坏面（PRD Further Notes 四类）：Inventory 三方法、reads.ts 三 hooks、query-keys 三 key family、smoke behavior-script、UI staff-row/staff-detail「库存」展示、record-detail.test/manage-tab.test。
+- 现有 `shopAggregate`（inventory.ts）本就跨 staff 求和，语义重定义不需改派生逻辑——`in` 只来自 `-1`、`out` 来自会员，自然落在 shopAggregate。
+- `direction='in'` 校验一加即破坏 smoke 步骤 14（原脚本给普通会员 create 'in'），故 smoke 改造必须在同一 spec 内完成。
+
+## Design
+
+- **Interface delta**
+  - `StaffRepository`：`list`/`listActive`/`search` 默认排除 `staff_id='-1'`（含 `includeVoided:true`）；`void('-1')` 抛错。
+  - `StockRecordRepository.create`：`direction='in'` 时强制 `staff_id='-1'`，否则抛错；`direction='out'` 的 staff_id 不受约束。**`update` 同守卫**：`patch.direction='in'` 时也强制 `staff_id='-1'`（防止编辑绕过方向约束——当前 UI 编辑不传 direction，但数据层 invariant 要闭合）。
+  - `Inventory`：删除 `balance`/`staffInventory`/`staffSummaries` 方法 + `StaffSummary`/`Balance` 类型导出；仅留 `shopAggregate`（+ `Aggregate` 类型）。
+  - `query-keys`：移除 `inventory.staffSummaries`/`staff`/`balance`（`inventory` 仅留 `all` + `shopAggregate`）。
+  - `reads`：移除 `useStaffSummaries`/`useStaffInventory`/`useBalance`。
+  - UI：`manage-tab` 加「补货」段（补货入库表单 → `useCreateStockRecord`，`staff_id='-1'`）；`bookkeeping`/`staff-row`/`staff-detail` 移除 per-staff 库存依赖，留占位骨架（余额展示留 spec 03）；`staff-row` 移除「入库」按钮。
+
+- **Internal architecture**
+  - **'-1' 过滤在 repo 层一处**：`list`/`listActive`/`search` 默认排除，所有消费者（记账/汇总/管理）自动受益，无需各自过滤。
+  - **shopAggregate 派生逻辑不改**：本就跨 staff 求和；`in` 只来自 `-1`、`out` 来自会员后，语义自然收敛为全局库存（欠货允许负）。
+  - **占位骨架策略**：UI 先拆除废弃依赖使编译干净，余额/单价展示留给 spec 03/04 填——避免两个域的 session 同时改同一 UI 文件（合并冲突）。
+  - **smoke 同 spec**：`direction='in'` 校验一加即破坏 smoke 步骤 14（原给普通会员 create 'in'），故 behavior-script 改造必须在本 spec 内完成。
+
+- **Deep-module note**：`Inventory` 从"per-staff 持有 + 全局汇总"多职责收窄为"仅全局库存"——职责变纯、接口变小，是 `/codebase-design` DEEPENING 的自然结果（废弃 per-staff 即深化）。
+
+## Rework on failure
+
+废弃面广但孤立于新功能——失败 redo 本 spec（数据层废弃 + 消费者占位 + smoke/测试迁移）；新表/余额/单价不受影响。
