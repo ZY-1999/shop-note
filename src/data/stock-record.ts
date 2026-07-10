@@ -2,6 +2,7 @@ import { AuditProvider } from "@/data/audit";
 import type { HasId, StoragePort } from "@/data/port";
 import { type Cents, cents, id, now } from "@/data/primitives";
 import type { ProductRepository } from "@/data/product";
+import { ADMIN_STAFF_ID } from "@/data/staff";
 
 export type Direction = "in" | "out";
 
@@ -76,6 +77,13 @@ export class StockRecordRepository {
   ) {}
 
   async create(input: StockRecordCreateInput): Promise<RecordWithItems> {
+    // Restock (`direction: 'in'`) is global — only the admin '-1' may receive it.
+    // A normal member checking out uses `direction: 'out'`. (stock-balance-refactor)
+    if (input.direction === "in" && input.staff_id !== ADMIN_STAFF_ID) {
+      throw new Error(
+        `direction 'in' (restock) requires the admin staff_id '${ADMIN_STAFF_ID}'`,
+      );
+    }
     const ts = now();
     const record: StockRecord = {
       id: id(),
@@ -160,6 +168,14 @@ export class StockRecordRepository {
         note: patch.note !== undefined ? patch.note : current.note,
         updated_at: ts,
       };
+      // Same invariant as create: an effective direction 'in' must be owned by '-1'.
+      // Closes the edit path that could otherwise flip an 'out' record to 'in'
+      // under a normal member. (stock-balance-refactor)
+      if (nextRecord.direction === "in" && nextRecord.staff_id !== ADMIN_STAFF_ID) {
+        throw new Error(
+          `direction 'in' (restock) requires the admin staff_id '${ADMIN_STAFF_ID}'`,
+        );
+      }
 
       let nextItems = storedItems;
       if (patch.items) {

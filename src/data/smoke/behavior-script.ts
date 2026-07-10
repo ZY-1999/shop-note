@@ -1,23 +1,29 @@
 import type { Repos } from "@/data/composition";
 import { cents } from "@/data/primitives";
+import { ADMIN_STAFF_ID } from "@/data/staff";
 
 /**
- * The shared behavior script for the cross-adapter device smoke (spec #02/#03).
+ * The shared behavior script for the cross-adapter device smoke.
  *
  * An ordered list of steps; each step mutates a repo set cumulatively and
  * returns a snapshot. `runExpoSqliteSmoke` runs the same steps against an Expo
  * repo set and an InMemory repo set, deep-comparing `stable(step.run(expo))`
  * vs `stable(step.run(mem))` per step — so drift localizes to the diverging
- * operation (DESIGN-IT-TWICE in spec #02). This file holds the *script*; the
- * runner lives in `run-smoke.ts` (device-only — it imports `expo-sqlite`).
+ * operation. This file holds the *script*; the runner lives in `run-smoke.ts`
+ * (device-only — it imports `expo-sqlite`). The `Repos` set and `setupRepos`
+ * wiring live in `src/data/composition.ts`.
  *
- * This module imports **no** `expo-sqlite` (only the `Repos` type + `cents`), so
- * Jest can run the script's InMemory half — see `behavior-script.test.ts`. The
- * `Repos` set and `setupRepos` wiring live in `src/data/composition.ts` (lifted
- * here in spec #02-composition-preflight) so the UI composition root and the
- * smoke share one assembly. Spec #02 seeded the tracer bullet (steps 1–5);
- * spec #03 appended the full-coverage steps (6+). The runner is untouched by
- * that growth — it takes `behaviorScript` as the default.
+ * This module imports **no** `expo-sqlite` (only the `Repos` type + `cents` +
+ * `ADMIN_STAFF_ID`), so Jest can run the script's InMemory half — see
+ * `behavior-script.test.ts`. The Expo half (real SQL) is the device smoke.
+ *
+ * stock-balance-refactor: the script drives the new global-inventory model —
+ * restock (`direction: 'in'`) is owned by the admin `-1`, members only check out
+ * (`direction: 'out'`), and the derived read is `shopAggregate` (global stock).
+ * The old per-staff `balance` / `staffInventory` reads are gone. The sequence
+ * exercises: restock → global up; member out → global down + balance decrement
+ * (spec 03); price change → cost reval; record edit (snapshot merge); dailyFlow;
+ * void → global drops (negative 欠货 when out exceeds restock).
  */
 
 /** One named behavior; its snapshot is compared across adapters after `stable()`. */
@@ -26,7 +32,7 @@ export interface SmokeStep {
   run: (repos: Repos) => Promise<unknown>;
 }
 
-/** First active staff, or throw — there is always exactly one by the time later steps run. */
+/** First active member, or throw — there is always exactly one by the time later steps run. */
 async function activeStaff(repos: Repos) {
   const [s] = await repos.staff.listActive();
   if (!s) throw new Error("smoke: no active staff");
@@ -42,19 +48,11 @@ async function activeProduct(repos: Repos) {
 }
 
 /**
- * The full behavior script. Steps 1–5 are the tracer bullet (spec #02): staff
- * CRUD loop, the create audit diff, and a transaction rollback. Steps 6+ are the
- * full-coverage thickening (spec #03): product CRUD + void/restore, the
- * `voided_at:null` filter, master-data void/restore round-trips, the stock-record
- * snapshot/update/void paths (touched resample, untouched snapshot kept, UPSERT
- * never drops lines, void never erases items), the derived balance/cost/aggregate
- * reads (incl. cost revaluation and void propagation), and the full audit timeline.
- *
- * Steps find earlier state dynamically (list[0]) rather than by hardcoded id,
- * because the two repo sets mint independent ids.
+ * The full behavior script. Steps find earlier state dynamically (list[0])
+ * rather than by hardcoded id, because the two repo sets mint independent ids.
  */
 export const behaviorScript: readonly SmokeStep[] = [
-  // ── tracer bullet (spec #02) ──────────────────────────────────────────────
+  // ── tracer bullet ─────────────────────────────────────────────────────────
   {
     name: "staff: create",
     run: (repos) => repos.staff.create({ name: "张三", phone: "138", notes: "n" }),
@@ -92,7 +90,7 @@ export const behaviorScript: readonly SmokeStep[] = [
     },
   },
 
-  // ── full coverage (spec #03) ──────────────────────────────────────────────
+  // ── full coverage ─────────────────────────────────────────────────────────
   {
     name: "product: create",
     run: (repos) => repos.products.create({ title: "可乐", purchase_price: cents(1995) }),
@@ -125,7 +123,7 @@ export const behaviorScript: readonly SmokeStep[] = [
     run: async (repos) => {
       const s = await activeStaff(repos);
       await repos.staff.void(s.id);
-      const excluded = await repos.staff.listActive(); // voided → excluded by the null filter
+      const excluded = await repos.staff.listActive(); // voided → excluded
       await repos.staff.restore(s.id);
       const restored = await repos.staff.listActive(); // restored → back
       return { excluded, restored };
@@ -143,12 +141,11 @@ export const behaviorScript: readonly SmokeStep[] = [
     },
   },
   {
-    name: "stock-record: create 'in' (line snapshot of title + unit_price)",
+    name: "restock: create 'in' under admin -1 (line snapshot of title + unit_price)",
     run: async (repos) => {
-      const s = await activeStaff(repos);
       const p = await activeProduct(repos);
       return repos.stockRecords.create({
-        staff_id: s.id,
+        staff_id: ADMIN_STAFF_ID,
         direction: "in",
         items: [
           { product_id: p.id, qty: 5 },
@@ -165,45 +162,45 @@ export const behaviorScript: readonly SmokeStep[] = [
     },
   },
   {
-    name: "inventory: balance (active record: qty=8, cost=8×price)",
+    name: "shopAggregate: global stock after restock (qty=8)",
+    run: (repos) => repos.inventory.shopAggregate(),
+  },
+  {
+    name: "checkout: member 'out' (direction guard: out allowed for a member)",
     run: async (repos) => {
       const s = await activeStaff(repos);
       const p = await activeProduct(repos);
-      return repos.inventory.balance(s.id, p.id);
+      return repos.stockRecords.create({
+        staff_id: s.id,
+        direction: "out",
+        items: [{ product_id: p.id, qty: 2 }],
+      });
     },
   },
   {
-    name: "inventory: staffInventory + shopAggregate",
-    run: async (repos) => {
-      const s = await activeStaff(repos);
-      return {
-        staffInventory: await repos.inventory.staffInventory(s.id),
-        shopAggregate: await repos.inventory.shopAggregate(),
-      };
-    },
+    name: "shopAggregate: global stock after member out (qty=6)",
+    run: (repos) => repos.inventory.shopAggregate(),
   },
   {
-    name: "product: update (price 1995→2495; cost-reval + resample baseline)",
+    name: "product: update (price 1995→2495; cost-reval baseline)",
     run: async (repos) => repos.products.update((await activeProduct(repos)).id, {
       purchase_price: cents(2495),
     }),
   },
   {
-    name: "inventory: balance after price change (cost revaluation, no record change)",
-    run: async (repos) => {
-      const s = await activeStaff(repos);
-      const p = await activeProduct(repos);
-      return repos.inventory.balance(s.id, p.id);
-    },
+    name: "shopAggregate: cost revaluation after price change (qty unchanged)",
+    run: (repos) => repos.inventory.shopAggregate(),
   },
   {
     name: "stock-record: update (touched resample + untouched keep + UPSERT keep)",
     run: async (repos) => {
+      // The restock record is the first record; edit its lines (direction stays
+      // 'in', staff_id stays '-1' — the update guard's effective-direction check
+      // holds). Touch items[0] (qty 5→7 → resnapshot at the new price), add a new
+      // line (qty 2), leave items[1] UNMENTIONED — it survives with its original
+      // posting-time snapshot (upsert never drops stored lines).
       const [entry] = await repos.stockRecords.list();
       const p = await activeProduct(repos);
-      // touch items[0] (qty 5→7 → resnapshot at the new price), add a new line
-      // (qty 2), and leave items[1] UNMENTIONED — it must survive with its
-      // original posting-time snapshot (upsert never drops stored lines).
       return repos.stockRecords.update(entry.record.id, {
         items: [
           { id: entry.items[0].id, product_id: p.id, qty: 7 },
@@ -215,21 +212,20 @@ export const behaviorScript: readonly SmokeStep[] = [
   {
     name: "dailyFlow: per (day,staff) in/out from snapshot line_amount",
     run: async (repos) => {
-      const s = await activeStaff(repos);
-      // Runs BEFORE the void step — the 'in' record is still active, so the flow
-      // is non-empty. Placed AFTER the price update (1995→2495) and the record
-      // edit (touched lines resampled at 2495; the unmentioned line keeps its
-      // 1995 snapshot), so in_amount is the Σ of FROZEN line_amounts — NOT a
-      // current-price (2495) revaluation. stable() collapses `date`→`<date>`.
-      return repos.dailyFlow.flow({ staff_id: s.id });
+      // No staff filter — both the '-1' restock and the member 'out' appear, each
+      // under its own (day, staff) row. Runs AFTER the price update + record edit
+      // so amounts are FROZEN line_amount snapshots, NOT current-price revalued.
+      // stable() collapses `date`→`<date>`.
+      return repos.dailyFlow.flow();
     },
   },
   {
     name: "stock-record: void (items retained, never erased)",
     run: async (repos) => {
+      // Void the restock record (list[0]) — the member 'out' stays active, so the
+      // global stock goes negative (欠货), exercising invariant #5.
       const [entry] = await repos.stockRecords.list();
       await repos.stockRecords.void(entry.record.id);
-      // getById returns even voided rows → confirm items are still all there.
       return repos.stockRecords.getById(entry.record.id);
     },
   },
@@ -238,11 +234,7 @@ export const behaviorScript: readonly SmokeStep[] = [
     run: (repos) => repos.audit.queryTimeline(),
   },
   {
-    name: "inventory: balance after record void (void propagates → qty=0)",
-    run: async (repos) => {
-      const s = await activeStaff(repos);
-      const p = await activeProduct(repos);
-      return repos.inventory.balance(s.id, p.id);
-    },
+    name: "shopAggregate: global stock after restock void (negative = 欠货)",
+    run: (repos) => repos.inventory.shopAggregate(),
   },
 ];

@@ -104,10 +104,10 @@ export function useCreateProduct(): UseMutationResult<Product, Error, ProductCre
 /**
  * Edit a product (spec #09) — title/code/category, or crucially purchase_price.
  * A price change is the one CROSS-ENTITY invalidation: derived amounts
- * (inventory/shopAggregate/staffSummaries — ADR-0002) read the product's CURRENT
- * price, so invalidating qk.inventory (prefix — covers staffSummaries) revalues
- * 记账 summaries (#5) + 汇总 (#8) on the next read, with no manual recompute.
- * qk.products refetches the picker / manage list.
+ * (inventory/shopAggregate — ADR-0002) read the product's CURRENT price, so
+ * invalidating qk.inventory (prefix — covers shopAggregate) revalues 汇总 (#8)
+ * on the next read, with no manual recompute. qk.products refetches the picker /
+ * manage list.
  */
 export function useUpdateProduct(): UseMutationResult<
   Product,

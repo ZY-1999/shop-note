@@ -31,6 +31,15 @@ export const STAFF_LEVELS: readonly StaffLevelDef[] = [
 /** The level a new member gets when none is specified (普站). */
 export const DEFAULT_STAFF_LEVEL: StaffLevel = "normal";
 
+/**
+ * The protected virtual "admin" member — the restock (`direction: 'in'`) owner.
+ * Seeded by the v3 migration as a fixed-id row (bypassing `create`'s random
+ * `id()`). It is never a manageable member: `list`/`listActive`/`search` hide it,
+ * and `void` refuses it. Stock records reference it (restock), and `getById`
+ * still returns it so record detail can render 「管理员」. (stock-balance-refactor)
+ */
+export const ADMIN_STAFF_ID = "-1";
+
 /** Display label for a level code (e.g. 'gold' → '金站'). */
 export function labelForLevel(code: StaffLevel): string {
   return defForLevel(code).label;
@@ -114,7 +123,9 @@ export class StaffRepository {
 
   async list(opts?: { includeVoided?: boolean }): Promise<Staff[]> {
     const rows = await this.storage.find<Staff>("staff");
-    const visible = opts?.includeVoided ? rows : rows.filter((s) => s.voided_at == null);
+    const visible = rows
+      .filter((s) => s.id !== ADMIN_STAFF_ID) // '-1' is never a manageable member
+      .filter((s) => (opts?.includeVoided ? true : s.voided_at == null));
     // Gold-first (rank desc), then created_at asc — one sort, every list view
     // (记账, 管理) renders 金站 before 普站. rank is derived from the level
     // code, not a stored column, so this must live here, not in the port query.
@@ -125,7 +136,10 @@ export class StaffRepository {
     const rows = await this.storage.find<Staff>("staff", {
       where: { voided_at: null },
     });
-    return rows.slice().sort(byLevelThenCreated);
+    return rows
+      .filter((s) => s.id !== ADMIN_STAFF_ID) // '-1' has voided_at=null but is not active
+      .slice()
+      .sort(byLevelThenCreated);
   }
 
   async search(q: { text?: string }): Promise<Staff[]> {
@@ -148,6 +162,9 @@ export class StaffRepository {
   }
 
   async void(staffId: string): Promise<Staff> {
+    if (staffId === ADMIN_STAFF_ID) {
+      throw new Error(`cannot void the admin row (staff_id ${ADMIN_STAFF_ID})`);
+    }
     return this.mutate(staffId, "void", (current) => {
       const ts = now();
       return {

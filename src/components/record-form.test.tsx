@@ -141,7 +141,7 @@ async function seed(): Promise<{ repos: Repos; staffId: string; productId: strin
  * produces empty trees. `waitForSync` polls without act (see it above), and a
  * final `flushPending` makes sure setQty has committed before the caller submits.
  */
-async function renderPicked(direction: "in" | "out", qty: string) {
+async function renderPicked(direction: "out", qty: string) {
   const seeded = await seed();
   const { view } = await renderForm(
     <RecordForm staffId={seeded.staffId} direction={direction} />,
@@ -159,9 +159,9 @@ async function renderPicked(direction: "in" | "out", qty: string) {
 describe("RecordForm — prefill + add a line (spec #06 AC1)", () => {
   it("shows the prefilled staff + direction, and picking a product adds a line", async () => {
     const { repos, staffId, productId } = await seed();
-    const { view } = await renderForm(<RecordForm staffId={staffId} direction="in" />, { repos });
+    const { view } = await renderForm(<RecordForm staffId={staffId} direction="out" />, { repos });
 
-    expect(view.getByText("入库")).toBeTruthy(); // direction prefilled
+    expect(view.getByText("出库")).toBeTruthy(); // direction prefilled
     expect(await waitForSync(() => view.getByText("张三"))).toBeTruthy(); // staff name prefilled
 
     // waitForSync (not findBy) before fireEvent — see renderPicked for why.
@@ -172,7 +172,7 @@ describe("RecordForm — prefill + add a line (spec #06 AC1)", () => {
 
 describe("RecordForm — live line amount + running total (spec #06 AC2)", () => {
   it("updates the line amount and total as the operator types a qty", async () => {
-    const { view } = await renderPicked("in", "4");
+    const { view } = await renderPicked("out", "4");
     // 300¢ × 4 = 1200¢ = ¥12.00 — the line amount AND the running total both show it.
     await waitForSync(() => expect(view.getAllByText("¥12.00")).toHaveLength(2));
 
@@ -189,14 +189,14 @@ describe("RecordForm — live line amount + running total (spec #06 AC2)", () =>
 describe("RecordForm — submit blocked with a visible message (spec #06 AC3)", () => {
   it("blocks submit with no items", async () => {
     const { repos, staffId } = await seed();
-    const { view } = await renderForm(<RecordForm staffId={staffId} direction="in" />, { repos });
+    const { view } = await renderForm(<RecordForm staffId={staffId} direction="out" />, { repos });
     fireEvent.press(view.getByTestId("submit"));
     const error = await waitForSync(() => view.getByTestId("form-error"));
     expect(error.props.children).toBe("至少添加一项商品");
   });
 
   it("blocks submit when a line has a non-integer qty", async () => {
-    const { view } = await renderPicked("in", "1.5");
+    const { view } = await renderPicked("out", "1.5");
     fireEvent.press(view.getByTestId("submit"));
     const error = await waitForSync(() => view.getByTestId("form-error"));
     expect(error.props.children).toBe("数量必须是正整数");
@@ -205,13 +205,13 @@ describe("RecordForm — submit blocked with a visible message (spec #06 AC3)", 
 
 describe("RecordForm — valid submit creates the record (spec #06 AC4)", () => {
   it("posts the record (snapshot at current price) and navigates back", async () => {
-    const { repos, staffId, view } = await renderPicked("in", "4");
+    const { repos, staffId, view } = await renderPicked("out", "4");
     fireEvent.press(view.getByTestId("submit"));
 
     await waitForSync(() => expect(mockBack).toHaveBeenCalled());
     const [posted] = await repos.stockRecords.list();
     expect(posted.record.staff_id).toBe(staffId);
-    expect(posted.record.direction).toBe("in");
+    expect(posted.record.direction).toBe("out");
     expect(posted.items[0].title).toBe("可乐"); // snapshot title
     expect(posted.items[0].unit_price).toBe(cents(300)); // snapshot price
     expect(posted.items[0].qty).toBe(4);
@@ -220,7 +220,7 @@ describe("RecordForm — valid submit creates the record (spec #06 AC4)", () => 
 
 describe("RecordForm — note + backdatable time (spec #06 AC5)", () => {
   it("defaults note to empty and time to now; carries the note on submit", async () => {
-    const { repos, view } = await renderPicked("in", "2");
+    const { repos, view } = await renderPicked("out", "2");
     fireEvent.changeText(view.getByTestId("note"), "单号A1");
     await flushPending(); // let setNote commit before submit reads it (same stale-closure guard as qty)
     fireEvent.press(view.getByTestId("submit"));
@@ -233,7 +233,7 @@ describe("RecordForm — note + backdatable time (spec #06 AC5)", () => {
   });
 
   it("lets the operator backdate the time", async () => {
-    const { repos, view } = await renderPicked("in", "1");
+    const { repos, view } = await renderPicked("out", "1");
     fireEvent.press(view.getByTestId("record-time-backdate")); // set to mockBackdateMs
     await flushPending(); // let setTimestamp commit before submit reads it
     fireEvent.press(view.getByTestId("submit"));
@@ -273,7 +273,7 @@ describe("RecordForm — Android dialog picker contract (spec #06 Android fix)",
   });
 
   it("mounts the picker on tap, confirms via onValueChange, and unmounts", async () => {
-    const { repos, view } = await renderPicked("in", "1");
+    const { repos, view } = await renderPicked("out", "1");
     // dialog not mounted until the trigger is tapped
     expect(() => view.getByTestId("record-time-picker")).toThrow();
     await fireEvent.press(view.getByTestId("record-time"));
@@ -294,7 +294,7 @@ describe("RecordForm — Android dialog picker contract (spec #06 Android fix)",
   });
 
   it("cancel via onDismiss unmounts without writing a new time", async () => {
-    const { repos, view } = await renderPicked("in", "1");
+    const { repos, view } = await renderPicked("out", "1");
     await fireEvent.press(view.getByTestId("record-time"));
     await fireEvent(view.getByTestId("record-time-picker"), "onDismiss");
     // Cancel unmounts the dialog…
@@ -311,7 +311,7 @@ describe("RecordForm — Android dialog picker contract (spec #06 Android fix)",
 describe("RecordForm — chip pick + stepper (spec #03 AC1/AC2)", () => {
   it("picking a chip starts a line at qty 1; tapping it again adds +1 (no duplicate line)", async () => {
     const { repos, staffId, productId } = await seed();
-    const { view } = await renderForm(<RecordForm staffId={staffId} direction="in" />, { repos });
+    const { view } = await renderForm(<RecordForm staffId={staffId} direction="out" />, { repos });
 
     await fireEvent.press(await waitForSync(() => view.getByTestId(`pick-${productId}`)));
     await flushPending();
@@ -328,7 +328,7 @@ describe("RecordForm — chip pick + stepper (spec #03 AC1/AC2)", () => {
   });
 
   it("the stepper + increases, − clamps at 1, and 删除 removes the line", async () => {
-    const { view } = await renderPicked("in", "1"); // one line, qty "1"
+    const { view } = await renderPicked("out", "1"); // one line, qty "1"
 
     // − at qty 1 clamps to 1 (never below); the operator removes a line via 删除, not −.
     await fireEvent.press(view.getByTestId("dec-0"));
@@ -362,7 +362,7 @@ describe("RecordForm — 出库 label + 备注 field (spec #03 AC2/AC3)", () => 
 
   it("renders 备注 as a label:input field", async () => {
     const { repos, staffId } = await seed();
-    const { view } = await renderForm(<RecordForm staffId={staffId} direction="in" />, { repos });
+    const { view } = await renderForm(<RecordForm staffId={staffId} direction="out" />, { repos });
     expect(await waitForSync(() => view.getByText("备注："))).toBeTruthy();
     expect(view.getByTestId("note")).toBeTruthy();
   });
@@ -381,7 +381,7 @@ describe("RecordForm — buttonized time affordance shows formatDateTime (spec #
   });
 
   it("the time affordance reflects formatDateTime(timestamp) after a dialog backdate", async () => {
-    const { repos, staffId, view } = await renderPicked("in", "1");
+    const { repos, staffId, view } = await renderPicked("out", "1");
     // Mount the dialog, pick the known backdate.
     await fireEvent.press(view.getByTestId("record-time"));
     await fireEvent(

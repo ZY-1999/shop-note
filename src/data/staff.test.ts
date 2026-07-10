@@ -7,12 +7,27 @@ import {
   labelForLevel,
   levelRank,
   DEFAULT_STAFF_LEVEL,
+  ADMIN_STAFF_ID,
 } from "@/data/staff";
 
 function setup() {
   const storage = new InMemoryAdapter();
   const staffRepo = new StaffRepository(storage, new AuditProvider(storage));
   return { storage, staffRepo };
+}
+
+/** Seed the protected '-1' admin row directly (mirrors the v3 migration seed). */
+async function seedAdmin(storage: InMemoryAdapter) {
+  await storage.insert("staff", {
+    id: ADMIN_STAFF_ID,
+    name: "管理员",
+    phone: "",
+    notes: "",
+    level: "normal",
+    voided_at: null,
+    created_at: 0,
+    updated_at: 0,
+  });
 }
 
 describe("StaffRepository — create/read", () => {
@@ -146,6 +161,51 @@ describe("StaffRepository — audit coverage", () => {
 
     const all = await staffRepo.list({ includeVoided: true });
     expect(all.find((s) => s.id === created.id)).toBeDefined();
+  });
+});
+
+describe("StaffRepository — admin '-1' protection (stock-balance-refactor)", () => {
+  test("list / listActive / search({}) / list({includeVoided:true}) all exclude '-1'", async () => {
+    const { storage, staffRepo } = setup();
+    await seedAdmin(storage);
+    await staffRepo.create({ name: "张三", phone: "138", notes: "" });
+
+    expect((await staffRepo.list()).map((s) => s.id)).not.toContain(ADMIN_STAFF_ID);
+    expect((await staffRepo.listActive()).map((s) => s.id)).not.toContain(ADMIN_STAFF_ID);
+    expect((await staffRepo.search({})).map((s) => s.id)).not.toContain(ADMIN_STAFF_ID);
+    // includeVoided still hides '-1' — it is never a manageable member.
+    expect((await staffRepo.list({ includeVoided: true })).map((s) => s.id)).not.toContain(
+      ADMIN_STAFF_ID,
+    );
+    // The real member is still there.
+    expect((await staffRepo.list()).map((s) => s.name)).toEqual(["张三"]);
+  });
+
+  test("getById('-1') still returns the admin row (record detail shows the name)", async () => {
+    const { storage, staffRepo } = setup();
+    await seedAdmin(storage);
+    const got = await staffRepo.getById(ADMIN_STAFF_ID);
+    expect(got).not.toBeNull();
+    expect(got?.name).toBe("管理员");
+  });
+
+  test("void('-1') throws — the admin row is protected from soft-delete", async () => {
+    const { storage, staffRepo } = setup();
+    await seedAdmin(storage);
+    await expect(staffRepo.void(ADMIN_STAFF_ID)).rejects.toThrow(/-1|admin|管理员/i);
+    // Row is untouched (still present, still active).
+    expect(await staffRepo.getById(ADMIN_STAFF_ID)).not.toBeNull();
+  });
+
+  test("'-1' never appears even alongside voided real members", async () => {
+    const { storage, staffRepo } = setup();
+    await seedAdmin(storage);
+    const a = await staffRepo.create({ name: "张三", phone: "", notes: "" });
+    await staffRepo.void(a.id);
+    const all = await staffRepo.list({ includeVoided: true });
+    // 张三 (voided) shows with includeVoided; '-1' never does.
+    expect(all.map((s) => s.id).sort()).toEqual([a.id].sort());
+    expect(all.map((s) => s.id)).not.toContain(ADMIN_STAFF_ID);
   });
 });
 

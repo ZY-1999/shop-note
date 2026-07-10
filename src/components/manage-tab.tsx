@@ -13,12 +13,13 @@ import {
   useUpdateProduct,
   useVoidProduct,
   useRestoreProduct,
+  useCreateStockRecord,
 } from '@/hooks/mutations';
 import { useStaff, useProducts } from '@/hooks/reads';
 import { useRepos } from '@/providers/providers';
 import { useTheme } from '@/hooks/use-theme';
 import { cents, type Cents } from '@/data/primitives';
-import { DEFAULT_STAFF_LEVEL, STAFF_LEVELS, type StaffLevel } from '@/data/staff';
+import { ADMIN_STAFF_ID, DEFAULT_STAFF_LEVEL, STAFF_LEVELS, type StaffLevel } from '@/data/staff';
 
 /**
  * The 管理 tab (spec #09) — master-data maintenance. A staff|product toggle over
@@ -32,7 +33,7 @@ import { DEFAULT_STAFF_LEVEL, STAFF_LEVELS, type StaffLevel } from '@/data/staff
  * history/snapshots are never erased (PRD: no hard delete). The dev-only smoke
  * entry (#4) stays put below the CRUD region.
  */
-type Domain = 'staff' | 'product';
+type Domain = 'staff' | 'product' | 'restock';
 
 export function ManageTab() {
   const theme = useTheme();
@@ -53,12 +54,101 @@ export function ManageTab() {
           style={[styles.segment, domain === 'product' && { backgroundColor: theme.backgroundSelected }]}>
           <Text style={[styles.segmentText, { color: domain === 'product' ? theme.text : theme.textSecondary }]}>商品</Text>
         </Pressable>
+        <Pressable
+          testID="seg-restock"
+          onPress={() => setDomain('restock')}
+          style={[styles.segment, domain === 'restock' && { backgroundColor: theme.backgroundSelected }]}>
+          <Text style={[styles.segmentText, { color: domain === 'restock' ? theme.text : theme.textSecondary }]}>补货</Text>
+        </Pressable>
       </View>
 
-      {domain === 'staff' ? <StaffManage /> : <ProductManage />}
+      {domain === 'staff' ? <StaffManage /> : domain === 'product' ? <ProductManage /> : <RestockManage />}
 
       {__DEV__ && <SmokeEntry />}
     </View>
+  );
+}
+
+/**
+ * Restock (补货) — post an `in` movement under the admin `-1` (stock-balance-
+ * refactor). The operator picks a product, enters a qty, and submits; the record
+ * lands under `ADMIN_STAFF_ID`, so the direction guard admits it and `shopAggregate`
+ * reflects the restock on the next read. This is the ONLY place stock enters the
+ * system — members only check out. (配置 segment lands in spec 04.)
+ */
+function RestockManage() {
+  const theme = useTheme();
+  const products = useProducts();
+  const createRecord = useCreateStockRecord();
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [qty, setQty] = useState('');
+  const [error, setError] = useState<string | null>(null);
+
+  const rows = products.data ?? [];
+
+  const submit = () => {
+    if (!selectedId) {
+      setError('请选择商品');
+      return;
+    }
+    const q = Number.parseInt(qty, 10);
+    if (!Number.isInteger(q) || q <= 0) {
+      setError('数量必须是正整数');
+      return;
+    }
+    setError(null);
+    createRecord.mutate(
+      { staff_id: ADMIN_STAFF_ID, direction: 'in', items: [{ product_id: selectedId, qty: q }] },
+      { onSuccess: () => { setSelectedId(null); setQty(''); } },
+    );
+  };
+
+  return (
+    <ScrollView testID="view-restock" style={styles.domain} contentContainerStyle={styles.listContent}>
+      <Text style={[styles.label, { color: theme.textSecondary }]}>选择商品补货（入库到全局库存）</Text>
+      {rows.map((item) => {
+        const voided = item.voided_at != null;
+        const selected = selectedId === item.id;
+        return (
+          <Pressable
+            key={item.id}
+            testID={`restock-pick-${item.id}`}
+            disabled={voided}
+            onPress={() => setSelectedId(item.id)}
+            style={[styles.row, { borderColor: selected ? theme.success : theme.border }]}>
+            <View style={styles.rowMain}>
+              <Text style={[styles.name, { color: voided ? theme.textSecondary : theme.text }]}>{item.title}</Text>
+              <Text style={[styles.sub, { color: theme.textSecondary }]}>
+                <MoneyText cents={item.purchase_price} />
+              </Text>
+            </View>
+            {selected && <Text style={{ color: theme.success }}>✓</Text>}
+          </Pressable>
+        );
+      })}
+      <View style={styles.field}>
+        <Text style={[styles.label, { color: theme.textSecondary }]}>数量</Text>
+        <TextInput
+          testID="restock-qty"
+          style={[styles.input, { backgroundColor: theme.inputBg, borderColor: theme.border, color: theme.text }]}
+          value={qty}
+          onChangeText={setQty}
+          keyboardType="numeric"
+        />
+      </View>
+      {error && (
+        <Text testID="restock-error" style={{ color: theme.danger }}>
+          {error}
+        </Text>
+      )}
+      <Pressable
+        testID="restock-submit"
+        onPress={submit}
+        disabled={createRecord.isPending}
+        style={[styles.createBtn, { backgroundColor: theme.success }]}>
+        <Text style={styles.createBtnText}>{createRecord.isPending ? '保存中…' : '补货入库'}</Text>
+      </Pressable>
+    </ScrollView>
   );
 }
 

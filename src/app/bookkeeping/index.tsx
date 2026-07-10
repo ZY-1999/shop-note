@@ -3,31 +3,26 @@ import { useState } from 'react';
 import { FlatList, StyleSheet, TextInput, View } from 'react-native';
 
 import { StaffRow } from '@/components/staff-row';
-import { useStaff, useStaffSummaries } from '@/hooks/reads';
+import { useStaff } from '@/hooks/reads';
 import { useTheme } from '@/hooks/use-theme';
 
 /**
  * 记账 tab home — the operator's primary landing. A searchable list of active
- * staff, each row showing that staff's current holding summary (the one-pass
- * `staffSummaries()` rollup, joined by staff_id), with 入库/出库 jumping into the
- * prefilled record form and a row tap opening staff detail.
+ * members, each row offering an 出库 affordance (jumping into the prefilled
+ * record form) and a row tap opening member detail.
  *
- * All active staff render — including zero-record / zero-inventory staff — so a
- * brand-new employee is visible without searching (spec #02 AC3/AC4, revised
- * 2026-07-10: reverses the original "hide zero-inventory in the default view").
- * `useStaff({ search })` narrows by name when searching; StaffRow renders
- * `库存：0件/0种 ¥0.00` for a staff with no summary. The summaries query is shared
- * across all rows (one invalidate refreshes every row — ADR-0005).
+ * stock-balance-refactor: members no longer hold stock, so the old per-staff
+ * holding summary (`useStaffSummaries`) is gone. The 余额 display + 充值
+ * affordance land in spec 03 (balance-domain); spec 02 leaves the row as a clean
+ * skeleton. All active members render — including zero-record members — so a
+ * brand-new member is visible without searching. `useStaff({ search })` narrows
+ * by name when searching.
  */
 export default function BookkeepingTab() {
   const theme = useTheme();
   const [search, setSearch] = useState('');
   const staff = useStaff(search ? { search } : undefined);
-  const summaries = useStaffSummaries();
-  const summaryById = new Map((summaries.data ?? []).map((s) => [s.staff_id, s]));
 
-  // All active staff render (zero-record staff included — see header). Search
-  // narrows via useStaff({ search }); no screen-level inventory filter remains.
   const rows = staff.data ?? [];
 
   return (
@@ -46,10 +41,6 @@ export default function BookkeepingTab() {
         renderItem={({ item }) => (
           <StaffRow
             staff={item}
-            summary={summaryById.get(item.id)}
-            onIn={(id) =>
-              router.push({ pathname: '/bookkeeping/record-form', params: { staff_id: id, direction: 'in' } })
-            }
             onOut={(id) =>
               router.push({ pathname: '/bookkeeping/record-form', params: { staff_id: id, direction: 'out' } })
             }

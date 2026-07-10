@@ -2,6 +2,7 @@ import { describe, expect, jest, test } from "@jest/globals";
 import { InMemoryAdapter } from "@/data/in-memory";
 import { AuditProvider } from "@/data/audit";
 import { ProductRepository } from "@/data/product";
+import { ADMIN_STAFF_ID } from "@/data/staff";
 import { StockRecordRepository } from "@/data/stock-record";
 import { cents } from "@/data/primitives";
 
@@ -13,6 +14,65 @@ function setup() {
   return { storage, audit, products, stockRecords };
 }
 
+describe("StockRecordRepository — direction guard (stock-balance-refactor)", () => {
+  test("create 'in' (restock) requires the admin staff_id '-1'; a normal member is rejected", async () => {
+    const { products, stockRecords } = setup();
+    const p = await products.create({ title: "可乐", purchase_price: cents(1995) });
+
+    await expect(
+      stockRecords.create({
+        staff_id: "s1",
+        direction: "in",
+        items: [{ product_id: p.id, qty: 1 }],
+      }),
+    ).rejects.toThrow(/admin|-1|restock/i);
+
+    // via '-1' it succeeds — restock is global.
+    const { record } = await stockRecords.create({
+      staff_id: ADMIN_STAFF_ID,
+      direction: "in",
+      items: [{ product_id: p.id, qty: 5 }],
+    });
+    expect(record.direction).toBe("in");
+    expect(record.staff_id).toBe(ADMIN_STAFF_ID);
+  });
+
+  test("create 'out' accepts any staff_id (normal members check out)", async () => {
+    const { products, stockRecords } = setup();
+    const p = await products.create({ title: "可乐", purchase_price: cents(1995) });
+    const { record } = await stockRecords.create({
+      staff_id: "s1",
+      direction: "out",
+      items: [{ product_id: p.id, qty: 1 }],
+    });
+    expect(record.staff_id).toBe("s1");
+    expect(record.direction).toBe("out");
+  });
+
+  test("update guard: flipping an 'out' record to direction 'in' forces staff_id '-1'", async () => {
+    const { products, stockRecords } = setup();
+    const p = await products.create({ title: "可乐", purchase_price: cents(1995) });
+    const { record } = await stockRecords.create({
+      staff_id: "s1",
+      direction: "out",
+      items: [{ product_id: p.id, qty: 1 }],
+    });
+
+    // flipping to 'in' while still under a normal member is blocked.
+    await expect(stockRecords.update(record.id, { direction: "in" })).rejects.toThrow(
+      /admin|-1|restock/i,
+    );
+
+    // 'in' together with '-1' is allowed — the invariant holds post-edit.
+    const updated = await stockRecords.update(record.id, {
+      direction: "in",
+      staff_id: ADMIN_STAFF_ID,
+    });
+    expect(updated.record.direction).toBe("in");
+    expect(updated.record.staff_id).toBe(ADMIN_STAFF_ID);
+  });
+});
+
 describe("StockRecordRepository — create + snapshot", () => {
   test("create freezes each item's title + unit_price from the product at posting time", async () => {
     const { products, stockRecords } = setup();
@@ -20,7 +80,7 @@ describe("StockRecordRepository — create + snapshot", () => {
     const productB = await products.create({ title: "薯片", purchase_price: cents(500) });
 
     const { record, items } = await stockRecords.create({
-      staff_id: "s1",
+      staff_id: ADMIN_STAFF_ID,
       direction: "in",
       items: [
         { product_id: productA.id, qty: 10 },
@@ -29,7 +89,7 @@ describe("StockRecordRepository — create + snapshot", () => {
     });
 
     expect(record.direction).toBe("in");
-    expect(record.staff_id).toBe("s1");
+    expect(record.staff_id).toBe(ADMIN_STAFF_ID);
     expect(items).toHaveLength(2);
 
     const itemA = items.find((i) => i.product_id === productA.id)!;
@@ -49,7 +109,7 @@ describe("StockRecordRepository — create + snapshot", () => {
     const productA = await products.create({ title: "可乐", purchase_price: cents(1995) });
 
     await stockRecords.create({
-      staff_id: "s1",
+      staff_id: ADMIN_STAFF_ID,
       direction: "in",
       items: [{ product_id: productA.id, qty: 10 }],
     });
@@ -66,7 +126,7 @@ describe("StockRecordRepository — snapshot fidelity + read shape", () => {
     const productA = await products.create({ title: "可乐", purchase_price: cents(1995) });
 
     const { record } = await stockRecords.create({
-      staff_id: "s1",
+      staff_id: ADMIN_STAFF_ID,
       direction: "in",
       items: [{ product_id: productA.id, qty: 10 }],
     });
@@ -87,7 +147,7 @@ describe("StockRecordRepository — snapshot fidelity + read shape", () => {
     const productA = await products.create({ title: "可乐", purchase_price: cents(1995) });
 
     const { record } = await stockRecords.create({
-      staff_id: "s1",
+      staff_id: ADMIN_STAFF_ID,
       direction: "in",
       note: "首批入库",
       items: [{ product_id: productA.id, qty: 10 }],
@@ -95,7 +155,7 @@ describe("StockRecordRepository — snapshot fidelity + read shape", () => {
 
     const got = await stockRecords.getById(record.id);
     expect(got).not.toBeNull();
-    expect(got!.record).toMatchObject({ staff_id: "s1", direction: "in", note: "首批入库" });
+    expect(got!.record).toMatchObject({ staff_id: ADMIN_STAFF_ID, direction: "in", note: "首批入库" });
     expect(got!.items).toHaveLength(1);
     expect(got!.items[0]).toMatchObject({ title: "可乐", unit_price: 1995, qty: 10 });
   });
@@ -111,7 +171,7 @@ describe("StockRecordRepository — timestamp", () => {
     jest.setSystemTime(fixed);
     try {
       const { record } = await stockRecords.create({
-        staff_id: "s1",
+        staff_id: ADMIN_STAFF_ID,
         direction: "in",
         items: [{ product_id: productA.id, qty: 1 }],
       });
@@ -127,7 +187,7 @@ describe("StockRecordRepository — timestamp", () => {
 
     const earlier = Date.parse("2025-01-01T00:00:00Z");
     const { record } = await stockRecords.create({
-      staff_id: "s1",
+      staff_id: ADMIN_STAFF_ID,
       direction: "in",
       timestamp: earlier,
       items: [{ product_id: productA.id, qty: 1 }],
@@ -146,12 +206,15 @@ describe("StockRecordRepository — list/filter", () => {
     const t2 = Date.parse("2026-01-02T00:00:00Z");
     const t3 = Date.parse("2026-01-03T00:00:00Z");
 
-    await stockRecords.create({ staff_id: "s1", direction: "in", timestamp: t1, items: [line] });
+    await stockRecords.create({ staff_id: ADMIN_STAFF_ID, direction: "in", timestamp: t1, items: [line] });
     await stockRecords.create({ staff_id: "s1", direction: "out", timestamp: t2, items: [line] });
-    await stockRecords.create({ staff_id: "s2", direction: "in", timestamp: t3, items: [line] });
+    await stockRecords.create({ staff_id: "s2", direction: "out", timestamp: t3, items: [line] });
 
-    expect((await stockRecords.list({ staff_id: "s1" }))).toHaveLength(2);
-    expect((await stockRecords.list({ direction: "in" }))).toHaveLength(2);
+    // staff_id filter → only s1's 'out' (the 'in' restock is under '-1').
+    expect((await stockRecords.list({ staff_id: "s1" }))).toHaveLength(1);
+    // direction filter → the single restock ('in') vs the two member checkouts ('out').
+    expect((await stockRecords.list({ direction: "in" }))).toHaveLength(1);
+    expect((await stockRecords.list({ direction: "out" }))).toHaveLength(2);
     expect((await stockRecords.list({ date_range: { from: t2, to: t3 } }))).toHaveLength(2);
   });
 
@@ -160,14 +223,14 @@ describe("StockRecordRepository — list/filter", () => {
     const productA = await products.create({ title: "可乐", purchase_price: cents(1995) });
     const line = { product_id: productA.id, qty: 1 };
 
-    // posted out of chronological order on purpose
+    // posted out of chronological order on purpose — all member checkouts ('out').
     const t1 = Date.parse("2026-01-03T00:00:00Z");
     const t2 = Date.parse("2026-01-01T00:00:00Z");
     const t3 = Date.parse("2026-01-02T00:00:00Z");
-    await stockRecords.create({ staff_id: "s1", direction: "in", timestamp: t1, items: [line] });
+    await stockRecords.create({ staff_id: "s1", direction: "out", timestamp: t1, items: [line] });
     await stockRecords.create({ staff_id: "s1", direction: "out", timestamp: t2, items: [line] });
-    await stockRecords.create({ staff_id: "s1", direction: "in", timestamp: t3, items: [line] });
-    await stockRecords.create({ staff_id: "s2", direction: "in", timestamp: t1, items: [line] });
+    await stockRecords.create({ staff_id: "s1", direction: "out", timestamp: t3, items: [line] });
+    await stockRecords.create({ staff_id: "s2", direction: "out", timestamp: t1, items: [line] });
 
     const history = await stockRecords.staffHistory("s1");
     expect(history).toHaveLength(3);
@@ -182,7 +245,7 @@ describe("StockRecordRepository — edit (resnapshot) + void", () => {
     const productB = await products.create({ title: "薯片", purchase_price: cents(500) });
 
     const { record, items } = await stockRecords.create({
-      staff_id: "s1",
+      staff_id: ADMIN_STAFF_ID,
       direction: "in",
       items: [
         { product_id: productA.id, qty: 10 },
@@ -221,7 +284,7 @@ describe("StockRecordRepository — edit (resnapshot) + void", () => {
       jest.setSystemTime(t1);
       const { record } = await stockRecords.create({
         staff_id: "s1",
-        direction: "in",
+        direction: "out",
         items: [{ product_id: productA.id, qty: 1 }],
       });
 
@@ -252,7 +315,7 @@ describe("StockRecordRepository — edit (resnapshot) + void", () => {
     const productA = await products.create({ title: "可乐", purchase_price: cents(1995) });
     const productB = await products.create({ title: "薯片", purchase_price: cents(500) });
     const { record, items } = await stockRecords.create({
-      staff_id: "s1",
+      staff_id: ADMIN_STAFF_ID,
       direction: "in",
       items: [{ product_id: productA.id, qty: 10 }],
     });
@@ -277,7 +340,7 @@ describe("StockRecordRepository — void semantics", () => {
     const { products, stockRecords } = setup();
     const productA = await products.create({ title: "可乐", purchase_price: cents(1995) });
     const { record } = await stockRecords.create({
-      staff_id: "s1",
+      staff_id: ADMIN_STAFF_ID,
       direction: "in",
       items: [{ product_id: productA.id, qty: 10 }],
     });
@@ -298,7 +361,7 @@ describe("StockRecordRepository — void semantics", () => {
     const { products, stockRecords } = setup();
     const productA = await products.create({ title: "可乐", purchase_price: cents(1995) });
     const { record } = await stockRecords.create({
-      staff_id: "s1",
+      staff_id: ADMIN_STAFF_ID,
       direction: "in",
       items: [{ product_id: productA.id, qty: 10 }],
     });
@@ -306,7 +369,7 @@ describe("StockRecordRepository — void semantics", () => {
     await stockRecords.void(record.id);
 
     expect(await stockRecords.list()).toHaveLength(0);
-    expect(await stockRecords.staffHistory("s1")).toHaveLength(0);
+    expect(await stockRecords.staffHistory(ADMIN_STAFF_ID)).toHaveLength(0);
   });
 });
 
@@ -315,7 +378,7 @@ describe("StockRecordRepository — edit/void audit", () => {
     const { storage, products, stockRecords } = setup();
     const productA = await products.create({ title: "可乐", purchase_price: cents(1995) });
     const { record } = await stockRecords.create({
-      staff_id: "s1",
+      staff_id: ADMIN_STAFF_ID,
       direction: "in",
       note: "原备注",
       items: [{ product_id: productA.id, qty: 10 }],
@@ -335,7 +398,7 @@ describe("StockRecordRepository — edit/void audit", () => {
     const { storage, products, stockRecords } = setup();
     const productA = await products.create({ title: "可乐", purchase_price: cents(1995) });
     const { record, items } = await stockRecords.create({
-      staff_id: "s1",
+      staff_id: ADMIN_STAFF_ID,
       direction: "in",
       items: [{ product_id: productA.id, qty: 10 }],
     });
@@ -359,7 +422,7 @@ describe("StockRecordRepository — resnapshot scope (negative)", () => {
     const productA = await products.create({ title: "可乐", purchase_price: cents(1995) });
     const productB = await products.create({ title: "薯片", purchase_price: cents(500) });
     const { record, items } = await stockRecords.create({
-      staff_id: "s1",
+      staff_id: ADMIN_STAFF_ID,
       direction: "in",
       items: [
         { product_id: productA.id, qty: 10 },
@@ -393,7 +456,7 @@ describe("StockRecordRepository — FK validation", () => {
     await expect(
       stockRecords.create({
         staff_id: "s1",
-        direction: "in",
+        direction: "out",
         items: [{ product_id: "nonexistent", qty: 1 }],
       }),
     ).rejects.toThrow(/product .* not found/);
@@ -403,7 +466,7 @@ describe("StockRecordRepository — FK validation", () => {
     const { products, stockRecords } = setup();
     const productA = await products.create({ title: "可乐", purchase_price: cents(1995) });
     const { record, items } = await stockRecords.create({
-      staff_id: "s1",
+      staff_id: ADMIN_STAFF_ID,
       direction: "in",
       items: [{ product_id: productA.id, qty: 1 }],
     });

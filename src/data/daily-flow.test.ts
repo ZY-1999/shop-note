@@ -2,7 +2,7 @@ import { describe, expect, test } from "@jest/globals";
 import { InMemoryAdapter } from "@/data/in-memory";
 import { AuditProvider } from "@/data/audit";
 import { ProductRepository } from "@/data/product";
-import { StaffRepository } from "@/data/staff";
+import { StaffRepository, ADMIN_STAFF_ID } from "@/data/staff";
 import { StockRecordRepository } from "@/data/stock-record";
 import { DailyFlow } from "@/data/daily-flow";
 import { cents } from "@/data/primitives";
@@ -24,23 +24,29 @@ function localNoon(year: number, month0: number, day: number): number {
   return new Date(year, month0, day, 12, 0, 0, 0).getTime();
 }
 
+/**
+ * stock-balance-refactor: restock ('in') is owned by the admin `-1`, members only
+ * check out ('out'). So a (day, staff) bucket now holds EITHER a restock (staff
+ * `-1`, in_amount) OR a member's checkouts (out_amount) — not both on one row.
+ * The derivation logic is unchanged; the fixtures route 'in' to `-1` and 'out' to
+ * a real member.
+ */
 describe("DailyFlow — core aggregation", () => {
-  test("two 'in' records, same staff + same day → one row summing their line_amounts", async () => {
-    const { products, staff, stockRecords, dailyFlow } = setup();
+  test("two 'in' records, same admin + same day → one row summing their line_amounts", async () => {
+    const { products, stockRecords, dailyFlow } = setup();
     const productP = await products.create({ title: "可乐", purchase_price: cents(500) });
-    const staffS = await staff.create({ name: "张三", phone: "138", notes: "" });
     const day = localNoon(2026, 6, 9); // local 2026-07-09 noon
 
     // line_amount 500×2 = 1000
     await stockRecords.create({
-      staff_id: staffS.id,
+      staff_id: ADMIN_STAFF_ID,
       direction: "in",
       timestamp: day,
       items: [{ product_id: productP.id, qty: 2 }],
     });
     // line_amount 500×1 = 500
     await stockRecords.create({
-      staff_id: staffS.id,
+      staff_id: ADMIN_STAFF_ID,
       direction: "in",
       timestamp: day,
       items: [{ product_id: productP.id, qty: 1 }],
@@ -49,59 +55,62 @@ describe("DailyFlow — core aggregation", () => {
     const rows = await dailyFlow.flow();
     expect(rows).toHaveLength(1);
     expect(rows[0].date).toBe("2026-07-09");
-    expect(rows[0].staff_id).toBe(staffS.id);
+    expect(rows[0].staff_id).toBe(ADMIN_STAFF_ID);
     expect(rows[0].in_amount).toBe(1500);
     expect(rows[0].out_amount).toBe(0);
   });
 });
 
-describe("DailyFlow — direction split per bucket", () => {
-  test("an 'in' (1000) and an 'out' (300), same staff + same day → both on ONE row", async () => {
+describe("DailyFlow — restock vs member checkout are separate (day, staff) rows", () => {
+  test("a restock (admin -1) and a member out, same day → two rows", async () => {
     const { products, staff, stockRecords, dailyFlow } = setup();
     const productP = await products.create({ title: "可乐", purchase_price: cents(100) });
-    const staffS = await staff.create({ name: "张三", phone: "138", notes: "" });
+    const member = await staff.create({ name: "张三", phone: "138", notes: "" });
     const day = localNoon(2026, 6, 9);
 
     await stockRecords.create({
-      staff_id: staffS.id,
+      staff_id: ADMIN_STAFF_ID,
       direction: "in",
       timestamp: day,
-      items: [{ product_id: productP.id, qty: 10 }], // 1000
+      items: [{ product_id: productP.id, qty: 10 }], // restock 1000
     });
     await stockRecords.create({
-      staff_id: staffS.id,
+      staff_id: member.id,
       direction: "out",
       timestamp: day,
-      items: [{ product_id: productP.id, qty: 3 }], // 300
+      items: [{ product_id: productP.id, qty: 3 }], // member out 300
     });
 
     const rows = await dailyFlow.flow();
-    expect(rows).toHaveLength(1); // not two
-    expect(rows[0].in_amount).toBe(1000);
-    expect(rows[0].out_amount).toBe(300);
+    expect(rows).toHaveLength(2); // one per (day, staff)
+    const restockRow = rows.find((r) => r.staff_id === ADMIN_STAFF_ID)!;
+    const memberRow = rows.find((r) => r.staff_id === member.id)!;
+    expect(restockRow.in_amount).toBe(1000);
+    expect(restockRow.out_amount).toBe(0);
+    expect(memberRow.in_amount).toBe(0);
+    expect(memberRow.out_amount).toBe(300);
   });
 });
 
 describe("DailyFlow — day ordering", () => {
   test("records on different days → distinct rows, newest day first", async () => {
-    const { products, staff, stockRecords, dailyFlow } = setup();
+    const { products, stockRecords, dailyFlow } = setup();
     const productP = await products.create({ title: "可乐", purchase_price: cents(100) });
-    const staffS = await staff.create({ name: "张三", phone: "138", notes: "" });
 
     await stockRecords.create({
-      staff_id: staffS.id,
+      staff_id: ADMIN_STAFF_ID,
       direction: "in",
       timestamp: localNoon(2026, 6, 1),
       items: [{ product_id: productP.id, qty: 1 }],
     });
     await stockRecords.create({
-      staff_id: staffS.id,
+      staff_id: ADMIN_STAFF_ID,
       direction: "in",
       timestamp: localNoon(2026, 6, 9),
       items: [{ product_id: productP.id, qty: 1 }],
     });
     await stockRecords.create({
-      staff_id: staffS.id,
+      staff_id: ADMIN_STAFF_ID,
       direction: "in",
       timestamp: localNoon(2026, 6, 5),
       items: [{ product_id: productP.id, qty: 1 }],
@@ -114,19 +123,18 @@ describe("DailyFlow — day ordering", () => {
 
 describe("DailyFlow — void exclusion", () => {
   test("voiding a record drops its line_amount from the day's totals on next read", async () => {
-    const { products, staff, stockRecords, dailyFlow } = setup();
+    const { products, stockRecords, dailyFlow } = setup();
     const productP = await products.create({ title: "可乐", purchase_price: cents(100) });
-    const staffS = await staff.create({ name: "张三", phone: "138", notes: "" });
     const day = localNoon(2026, 6, 9);
 
     await stockRecords.create({
-      staff_id: staffS.id,
+      staff_id: ADMIN_STAFF_ID,
       direction: "in",
       timestamp: day,
       items: [{ product_id: productP.id, qty: 5 }], // 500
     });
     const toVoid = await stockRecords.create({
-      staff_id: staffS.id,
+      staff_id: ADMIN_STAFF_ID,
       direction: "in",
       timestamp: day,
       items: [{ product_id: productP.id, qty: 3 }], // 300
@@ -143,13 +151,12 @@ describe("DailyFlow — void exclusion", () => {
 
 describe("DailyFlow — edit propagation", () => {
   test("editing a record's line resnapshots → day total reflects the new amount", async () => {
-    const { products, staff, stockRecords, dailyFlow } = setup();
+    const { products, stockRecords, dailyFlow } = setup();
     const productP = await products.create({ title: "可乐", purchase_price: cents(100) });
-    const staffS = await staff.create({ name: "张三", phone: "138", notes: "" });
     const day = localNoon(2026, 6, 9);
 
     const rec = await stockRecords.create({
-      staff_id: staffS.id,
+      staff_id: ADMIN_STAFF_ID,
       direction: "in",
       timestamp: day,
       items: [{ product_id: productP.id, qty: 3 }], // snapshot 300
@@ -168,12 +175,11 @@ describe("DailyFlow — edit propagation", () => {
 
 describe("DailyFlow — frozen snapshot amount", () => {
   test("changing a product's current price leaves past flow rows unchanged", async () => {
-    const { products, staff, stockRecords, dailyFlow } = setup();
+    const { products, stockRecords, dailyFlow } = setup();
     const productP = await products.create({ title: "可乐", purchase_price: cents(100) });
-    const staffS = await staff.create({ name: "张三", phone: "138", notes: "" });
 
     await stockRecords.create({
-      staff_id: staffS.id,
+      staff_id: ADMIN_STAFF_ID,
       direction: "in",
       timestamp: localNoon(2026, 6, 9),
       items: [{ product_id: productP.id, qty: 5 }], // snapshot 500
@@ -188,7 +194,7 @@ describe("DailyFlow — frozen snapshot amount", () => {
 });
 
 describe("DailyFlow — filter", () => {
-  test("staff_id filter narrows rows to that staff", async () => {
+  test("staff_id filter narrows rows to that staff (member checkouts)", async () => {
     const { products, staff, stockRecords, dailyFlow } = setup();
     const productP = await products.create({ title: "可乐", purchase_price: cents(100) });
     const s1 = await staff.create({ name: "张三", phone: "1", notes: "" });
@@ -197,13 +203,13 @@ describe("DailyFlow — filter", () => {
 
     await stockRecords.create({
       staff_id: s1.id,
-      direction: "in",
+      direction: "out",
       timestamp: day,
       items: [{ product_id: productP.id, qty: 2 }], // 200
     });
     await stockRecords.create({
       staff_id: s2.id,
-      direction: "in",
+      direction: "out",
       timestamp: day,
       items: [{ product_id: productP.id, qty: 5 }], // 500
     });
@@ -211,22 +217,21 @@ describe("DailyFlow — filter", () => {
     const rows = await dailyFlow.flow({ staff_id: s1.id });
     expect(rows).toHaveLength(1);
     expect(rows[0].staff_id).toBe(s1.id);
-    expect(rows[0].in_amount).toBe(200);
+    expect(rows[0].out_amount).toBe(200);
   });
 
   test("date_range filter narrows rows to the window", async () => {
-    const { products, staff, stockRecords, dailyFlow } = setup();
+    const { products, stockRecords, dailyFlow } = setup();
     const productP = await products.create({ title: "可乐", purchase_price: cents(100) });
-    const staffS = await staff.create({ name: "张三", phone: "138", notes: "" });
 
     await stockRecords.create({
-      staff_id: staffS.id,
+      staff_id: ADMIN_STAFF_ID,
       direction: "in",
       timestamp: localNoon(2026, 6, 1),
       items: [{ product_id: productP.id, qty: 1 }],
     });
     await stockRecords.create({
-      staff_id: staffS.id,
+      staff_id: ADMIN_STAFF_ID,
       direction: "in",
       timestamp: localNoon(2026, 6, 9),
       items: [{ product_id: productP.id, qty: 1 }],
@@ -241,7 +246,7 @@ describe("DailyFlow — filter", () => {
 
 describe("DailyFlow — derived never stored (ADR-0002)", () => {
   test("every read recomputes; DailyFlow exposes no write surface", async () => {
-    const { stockRecords, dailyFlow } = setup();
+    const { dailyFlow } = setup();
 
     // Two independent reads return equal results — no cached figure to diverge.
     expect(await dailyFlow.flow()).toEqual(await dailyFlow.flow());

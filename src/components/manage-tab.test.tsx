@@ -1,13 +1,14 @@
 import type { ReactElement } from "react";
-import { afterEach, describe, expect, it, jest } from "@jest/globals";
+import { afterEach, describe, expect, it } from "@jest/globals";
 import type { QueryClient } from "@tanstack/react-query";
 import { fireEvent } from "@testing-library/react-native";
 import { Text, View } from "react-native";
 
 import { ManageTab } from "@/components/manage-tab";
-import { useBalance } from "@/hooks/reads";
+import { useShopAggregate } from "@/hooks/reads";
 import { InMemoryAdapter } from "@/data/in-memory";
 import { setupRepos, type Repos } from "@/data/composition";
+import { ADMIN_STAFF_ID } from "@/data/staff";
 import { cents } from "@/data/primitives";
 import { renderWithProviders, type RenderWithProvidersResult } from "@/testing/render";
 import { flushPending, waitForSync } from "@/testing/async";
@@ -38,12 +39,6 @@ async function renderManage(
   activeQueryClient = res.queryClient;
   await flushPending();
   return res;
-}
-
-/** Join MoneyText's two-children output into one matchable string. */
-function money(el: { props: { children?: unknown } }): string {
-  const c = el.props.children;
-  return Array.isArray(c) ? (c as string[]).join("") : String(c ?? "");
 }
 
 async function seed() {
@@ -233,40 +228,41 @@ describe("ManageTab — product list + search + create (spec #09 AC1/AC3)", () =
 });
 
 /**
- * AC4 — a product price edit revalues every derived amount on the next read.
- * Uses a test-only <InventoryReader> mounted under the same queryClient as the
+ * A product price edit revalues every derived amount on the next read. Uses a
+ * test-only <InventoryReader> mounted under the same queryClient as the
  * ManageTab, so the cross-entity invalidation (qk.inventory from useUpdateProduct)
- * is observable: edit the price, and the open balance refetches at the new price
- * with no manual recompute. Mirrors #07/#08's cross-view-refresh posture.
+ * is observable: edit the price, and the open global aggregate refetches with no
+ * manual recompute. Reads `useShopAggregate` (members no longer hold stock).
  */
-function InventoryReader({ staffId, productId }: { staffId: string; productId: string }) {
-  const bal = useBalance(staffId, productId);
+function InventoryReader({ productId }: { productId: string }) {
+  const agg = useShopAggregate();
+  const row = (agg.data ?? []).find((a) => a.product.id === productId);
   return (
     <View testID="inventory-reader">
-      <Text>{bal.data ? `qty:${bal.data.qty}` : "none"}</Text>
+      <Text>{row ? `qty:${row.total_qty}` : "none"}</Text>
     </View>
   );
 }
 
 describe("ManageTab — product price edit revalues inventory (spec #09 AC4)", () => {
-  it("editing a product's price reflows the open balance on the next read", async () => {
-    const { repos, staffId, colaId } = await seed(); // 可乐 @ 300¢
-    // post cola×4 so there's a balance to revalue (qty 4, cost 1200¢ at 300¢)
+  it("editing a product's price reflows the open global aggregate on the next read", async () => {
+    const { repos, colaId } = await seed(); // 可乐 @ 300¢
+    // restock cola×4 via admin -1 so there's a global qty to read (4 units)
     await repos.stockRecords.create({
-      staff_id: staffId,
+      staff_id: ADMIN_STAFF_ID,
       direction: "in",
       items: [{ product_id: colaId, qty: 4 }],
     });
     const { view } = await renderManage(
       <View>
         <ManageTab />
-        <InventoryReader staffId={staffId} productId={colaId} />
+        <InventoryReader productId={colaId} />
       </View>,
       { repos },
     );
     await fireEvent.press(view.getByTestId("seg-product"));
     await waitForSync(() => view.getByTestId(`manage-product-${colaId}`));
-    await waitForSync(() => view.getByText("qty:4")); // balance loaded: 4 units
+    await waitForSync(() => view.getByText("qty:4")); // global aggregate loaded: 4 units
 
     // open the product's edit form via row tap, change its price 300¢ → 700¢
     await fireEvent.press(view.getByTestId(`manage-product-${colaId}`));
@@ -274,7 +270,7 @@ describe("ManageTab — product price edit revalues inventory (spec #09 AC4)", (
     await fireEvent.changeText(view.getByTestId("product-price-input"), "7");
     await fireEvent.press(view.getByTestId("product-submit"));
 
-    // useUpdateProduct invalidated qk.inventory → balance refetches at the new price
+    // useUpdateProduct invalidated qk.inventory → aggregate refetches at the new price
     await waitForSync(async () => {
       const p = await repos.products.getById(colaId);
       expect(p?.purchase_price).toBe(cents(700));
@@ -286,10 +282,10 @@ describe("ManageTab — product price edit revalues inventory (spec #09 AC4)", (
 
 describe("ManageTab — product void/restore + snapshot preservation (spec #09 AC5)", () => {
   it("voids a product then restores it; record snapshots stay intact", async () => {
-    const { repos, staffId, colaId } = await seed();
-    // post a record so there's a snapshot to preserve across the void
+    const { repos, colaId } = await seed();
+    // restock a record so there's a snapshot to preserve across the void
     const { record } = await repos.stockRecords.create({
-      staff_id: staffId,
+      staff_id: ADMIN_STAFF_ID,
       direction: "in",
       items: [{ product_id: colaId, qty: 2 }],
     });
@@ -316,6 +312,56 @@ describe("ManageTab — product void/restore + snapshot preservation (spec #09 A
     await waitForSync(() => expect(() => view.getByText("已删除")).toThrow());
     const restored = await repos.products.getById(colaId);
     expect(restored?.voided_at).toBeNull();
+  });
+});
+
+describe("ManageTab — restock segment (stock-balance-refactor AC3)", () => {
+  it("switches to the 补货 segment which lists products to pick", async () => {
+    const { repos, colaId } = await seed();
+    const { view } = await renderManage(<ManageTab />, { repos });
+    await fireEvent.press(view.getByTestId("seg-restock"));
+    await waitForSync(() => view.getByTestId("view-restock"));
+    await waitForSync(() => view.getByTestId(`restock-pick-${colaId}`));
+  });
+
+  it("blocks restock when no product is selected", async () => {
+    const { repos } = await seed();
+    const { view } = await renderManage(<ManageTab />, { repos });
+    await fireEvent.press(view.getByTestId("seg-restock"));
+    await waitForSync(() => view.getByTestId("restock-submit"));
+    await fireEvent.press(view.getByTestId("restock-submit"));
+    const error = await waitForSync(() => view.getByTestId("restock-error"));
+    expect(error.props.children).toBe("请选择商品");
+  });
+
+  it("picking a product + qty restocks under admin -1 → shopAggregate reflects it", async () => {
+    const { repos, colaId } = await seed();
+    const { view } = await renderManage(<ManageTab />, { repos });
+    await fireEvent.press(view.getByTestId("seg-restock"));
+    await waitForSync(() => view.getByTestId(`restock-pick-${colaId}`));
+
+    await fireEvent.press(view.getByTestId(`restock-pick-${colaId}`));
+    await fireEvent.changeText(view.getByTestId("restock-qty"), "10");
+    await fireEvent.press(view.getByTestId("restock-submit"));
+
+    // the restock landed under admin -1 → global shopAggregate qty for 可乐 is 10.
+    await waitForSync(async () => {
+      const agg = (await repos.inventory.shopAggregate()).find((a) => a.product.id === colaId);
+      expect(agg?.total_qty).toBe(10);
+    });
+    const [posted] = await repos.stockRecords.list();
+    expect(posted.record.staff_id).toBe(ADMIN_STAFF_ID);
+    expect(posted.record.direction).toBe("in");
+
+    // a member out ×3 then brings the global stock to 7 (US1 + US6 data layer).
+    const member = (await repos.staff.list())[0];
+    await repos.stockRecords.create({
+      staff_id: member.id,
+      direction: "out",
+      items: [{ product_id: colaId, qty: 3 }],
+    });
+    const agg2 = (await repos.inventory.shopAggregate()).find((a) => a.product.id === colaId);
+    expect(agg2?.total_qty).toBe(7);
   });
 });
 

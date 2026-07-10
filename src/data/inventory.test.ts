@@ -2,7 +2,7 @@ import { describe, expect, test } from "@jest/globals";
 import { InMemoryAdapter } from "@/data/in-memory";
 import { AuditProvider } from "@/data/audit";
 import { ProductRepository } from "@/data/product";
-import { StaffRepository } from "@/data/staff";
+import { StaffRepository, ADMIN_STAFF_ID } from "@/data/staff";
 import { StockRecordRepository } from "@/data/stock-record";
 import { Inventory } from "@/data/inventory";
 import { cents } from "@/data/primitives";
@@ -17,128 +17,134 @@ function setup() {
   return { storage, audit, products, staff, stockRecords, inventory };
 }
 
-describe("Inventory — balance", () => {
-  test("balance = in qty − out qty for a (staff, product)", async () => {
-    const { products, staff, stockRecords, inventory } = setup();
-    const productP = await products.create({ title: "可乐", purchase_price: cents(1995) });
-    const staffS = await staff.create({ name: "张三", phone: "138", notes: "" });
+/**
+ * Global-inventory model (stock-balance-refactor): `shopAggregate` is the single
+ * derived read — `Σ restock('in' via admin -1) − Σ member 'out'` per product,
+ * across every staff. Members no longer hold stock; the per-staff balance /
+ * staffInventory / staffSummaries reads are gone. Negative total_qty = 欠货
+ * (invariant #5) — a member may check out more than the global stock holds.
+ */
+describe("Inventory — global shopAggregate", () => {
+  test("shopAggregate = Σ restock (in via -1) − Σ member out", async () => {
+    const { products, stockRecords, inventory } = setup();
+    const p = await products.create({ title: "可乐", purchase_price: cents(1995) });
 
     await stockRecords.create({
-      staff_id: staffS.id,
+      staff_id: ADMIN_STAFF_ID,
       direction: "in",
-      items: [{ product_id: productP.id, qty: 10 }],
+      items: [{ product_id: p.id, qty: 10 }],
     });
     await stockRecords.create({
-      staff_id: staffS.id,
+      staff_id: "member",
       direction: "out",
-      items: [{ product_id: productP.id, qty: 3 }],
+      items: [{ product_id: p.id, qty: 3 }],
     });
 
-    const bal = await inventory.balance(staffS.id, productP.id);
-    expect(bal.qty).toBe(7);
-    expect(bal.cost_amount).toBe(1995 * 7); // current price × balance
-  });
-});
-
-describe("Inventory — void/edit propagation", () => {
-  test("voiding an 'out' record immediately reflects in balance (no recompute call)", async () => {
-    const { products, staff, stockRecords, inventory } = setup();
-    const productP = await products.create({ title: "可乐", purchase_price: cents(1995) });
-    const staffS = await staff.create({ name: "张三", phone: "138", notes: "" });
-
-    await stockRecords.create({ staff_id: staffS.id, direction: "in", items: [{ product_id: productP.id, qty: 10 }] });
-    const out = await stockRecords.create({ staff_id: staffS.id, direction: "out", items: [{ product_id: productP.id, qty: 3 }] });
-
-    expect((await inventory.balance(staffS.id, productP.id)).qty).toBe(7);
-
-    await stockRecords.void(out.record.id);
-
-    expect((await inventory.balance(staffS.id, productP.id)).qty).toBe(10); // out voided → back to 10
+    const row = (await inventory.shopAggregate()).find((a) => a.product.id === p.id)!;
+    expect(row.total_qty).toBe(7); // 10 − 3
+    expect(row.total_cost).toBe(1995 * 7); // current price × qty
   });
 
-  test("editing an 'out' record's qty propagates to balance (no drift)", async () => {
-    const { products, staff, stockRecords, inventory } = setup();
-    const productP = await products.create({ title: "可乐", purchase_price: cents(1995) });
-    const staffS = await staff.create({ name: "张三", phone: "138", notes: "" });
+  test("voiding a record propagates to shopAggregate on the next read", async () => {
+    const { products, stockRecords, inventory } = setup();
+    const p = await products.create({ title: "可乐", purchase_price: cents(1995) });
 
-    await stockRecords.create({ staff_id: staffS.id, direction: "in", items: [{ product_id: productP.id, qty: 10 }] });
-    const out = await stockRecords.create({ staff_id: staffS.id, direction: "out", items: [{ product_id: productP.id, qty: 3 }] });
+    const restock = await stockRecords.create({
+      staff_id: ADMIN_STAFF_ID,
+      direction: "in",
+      items: [{ product_id: p.id, qty: 10 }],
+    });
+    await stockRecords.create({
+      staff_id: "member",
+      direction: "out",
+      items: [{ product_id: p.id, qty: 3 }],
+    });
 
-    expect((await inventory.balance(staffS.id, productP.id)).qty).toBe(7);
+    expect((await inventory.shopAggregate()).find((a) => a.product.id === p.id)!.total_qty).toBe(7);
 
-    // edit out qty 3→5
+    await stockRecords.void(restock.record.id); // restock gone → only the -3 out remains
+    expect((await inventory.shopAggregate()).find((a) => a.product.id === p.id)!.total_qty).toBe(-3);
+  });
+
+  test("editing a record's qty propagates to shopAggregate (no drift)", async () => {
+    const { products, stockRecords, inventory } = setup();
+    const p = await products.create({ title: "可乐", purchase_price: cents(1995) });
+
+    await stockRecords.create({
+      staff_id: ADMIN_STAFF_ID,
+      direction: "in",
+      items: [{ product_id: p.id, qty: 10 }],
+    });
+    const out = await stockRecords.create({
+      staff_id: "member",
+      direction: "out",
+      items: [{ product_id: p.id, qty: 3 }],
+    });
+
+    expect((await inventory.shopAggregate()).find((a) => a.product.id === p.id)!.total_qty).toBe(7);
+
+    // edit member out qty 3→5
     await stockRecords.update(out.record.id, {
-      items: [{ id: out.items[0].id, product_id: productP.id, qty: 5 }],
+      items: [{ id: out.items[0].id, product_id: p.id, qty: 5 }],
+    });
+    expect((await inventory.shopAggregate()).find((a) => a.product.id === p.id)!.total_qty).toBe(5);
+  });
+
+  test("cost revaluation: total_cost follows the product's current price; qty unchanged", async () => {
+    const { products, stockRecords, inventory } = setup();
+    const p = await products.create({ title: "可乐", purchase_price: cents(1995) });
+
+    await stockRecords.create({
+      staff_id: ADMIN_STAFF_ID,
+      direction: "in",
+      items: [{ product_id: p.id, qty: 10 }],
     });
 
-    expect((await inventory.balance(staffS.id, productP.id)).qty).toBe(5); // 10 − 5
+    const row = (a: { total_qty: number; total_cost: number }) => a;
+    expect(row((await inventory.shopAggregate()).find((a) => a.product.id === p.id)!)).toMatchObject({
+      total_qty: 10,
+      total_cost: 1995 * 10,
+    });
+
+    await products.update(p.id, { purchase_price: cents(2495) });
+
+    expect(row((await inventory.shopAggregate()).find((a) => a.product.id === p.id)!)).toMatchObject({
+      total_qty: 10, // qty unchanged
+      total_cost: 2495 * 10, // revalued to current price
+    });
   });
 });
 
-describe("Inventory — cost revaluation", () => {
-  test("cost_amount reflects the product's current price with no record change", async () => {
-    const { products, staff, stockRecords, inventory } = setup();
-    const productP = await products.create({ title: "可乐", purchase_price: cents(1995) });
-    const staffS = await staff.create({ name: "张三", phone: "138", notes: "" });
+describe("Inventory — 欠货 (negative global stock)", () => {
+  test("member out exceeding restock yields negative total_qty, no error (invariant #5)", async () => {
+    const { products, stockRecords, inventory } = setup();
+    const p = await products.create({ title: "可乐", purchase_price: cents(1995) });
 
-    await stockRecords.create({ staff_id: staffS.id, direction: "in", items: [{ product_id: productP.id, qty: 10 }] });
+    // No restock yet — a member checking out drives the global stock negative.
+    await stockRecords.create({
+      staff_id: "member",
+      direction: "out",
+      items: [{ product_id: p.id, qty: 5 }],
+    });
 
-    expect((await inventory.balance(staffS.id, productP.id)).cost_amount).toBe(1995 * 10);
-
-    await products.update(productP.id, { purchase_price: cents(2495) });
-
-    expect((await inventory.balance(staffS.id, productP.id)).cost_amount).toBe(2495 * 10);
+    const row = (await inventory.shopAggregate()).find((a) => a.product.id === p.id)!;
+    expect(row.total_qty).toBe(-5);
+    expect(row.total_cost).toBe(-5 * 1995);
   });
 });
 
-describe("Inventory — negative inventory", () => {
-  test("a staff with only an 'out' has negative balance, returned without error", async () => {
-    const { products, staff, stockRecords, inventory } = setup();
-    const productP = await products.create({ title: "可乐", purchase_price: cents(1995) });
-    const staffS = await staff.create({ name: "张三", phone: "138", notes: "" });
-
-    await stockRecords.create({ staff_id: staffS.id, direction: "out", items: [{ product_id: productP.id, qty: 5 }] });
-
-    const bal = await inventory.balance(staffS.id, productP.id);
-    expect(bal.qty).toBe(-5);
-    expect(bal.cost_amount).toBe(-5 * 1995);
-
-    const inv = await inventory.staffInventory(staffS.id);
-    const entry = inv.find((b) => b.product.id === productP.id)!;
-    expect(entry.qty).toBe(-5);
-    expect(entry.cost_amount).toBe(-5 * 1995);
-  });
-});
-
-describe("Inventory — shop aggregate", () => {
-  test("shopAggregate sums balances across staff", async () => {
-    const { products, staff, stockRecords, inventory } = setup();
-    const productP = await products.create({ title: "可乐", purchase_price: cents(1995) });
-    const s1 = await staff.create({ name: "张三", phone: "1", notes: "" });
-    const s2 = await staff.create({ name: "李四", phone: "2", notes: "" });
-
-    // s1: in 10, out 3 → 7
-    await stockRecords.create({ staff_id: s1.id, direction: "in", items: [{ product_id: productP.id, qty: 10 }] });
-    await stockRecords.create({ staff_id: s1.id, direction: "out", items: [{ product_id: productP.id, qty: 3 }] });
-    // s2: out 3 → -3
-    await stockRecords.create({ staff_id: s2.id, direction: "out", items: [{ product_id: productP.id, qty: 3 }] });
-
-    const agg = await inventory.shopAggregate();
-    const productAgg = agg.find((a) => a.product.id === productP.id)!;
-    expect(productAgg.total_qty).toBe(4); // 7 + (-3)
-    expect(productAgg.total_cost).toBe(4 * 1995);
-  });
-});
-
-describe("Inventory — no-drift", () => {
+describe("Inventory — no-drift + read-only", () => {
   test("every read recomputes from the ledger; Inventory exposes no write surface", async () => {
-    const { products, staff, stockRecords, inventory } = setup();
-    const productP = await products.create({ title: "可乐", purchase_price: cents(1995) });
-    const staffS = await staff.create({ name: "张三", phone: "138", notes: "" });
-    await stockRecords.create({ staff_id: staffS.id, direction: "in", items: [{ product_id: productP.id, qty: 10 }] });
+    const { products, stockRecords, inventory } = setup();
+    const p = await products.create({ title: "可乐", purchase_price: cents(1995) });
+    await stockRecords.create({
+      staff_id: ADMIN_STAFF_ID,
+      direction: "in",
+      items: [{ product_id: p.id, qty: 10 }],
+    });
 
     // Two independent reads return equal results — no cached figure to diverge.
-    expect(await inventory.balance(staffS.id, productP.id)).toEqual(await inventory.balance(staffS.id, productP.id));
+    expect(await inventory.shopAggregate()).toEqual(await inventory.shopAggregate());
 
     // Compile-time: the projection is read-only — no save/persist/cache exists.
     // @ts-expect-error — no saveBalance
@@ -148,78 +154,26 @@ describe("Inventory — no-drift", () => {
   });
 });
 
-describe("Inventory — staff summaries", () => {
-  test("one pass rolls up per-staff variety / total_qty / total_amount / has_negative", async () => {
-    const { products, staff, stockRecords, inventory } = setup();
-    const pA = await products.create({ title: "可乐", purchase_price: cents(100) });
-    const pB = await products.create({ title: "雪碧", purchase_price: cents(200) });
-    const s1 = await staff.create({ name: "张三", phone: "1", notes: "" });
-    const s2 = await staff.create({ name: "李四", phone: "2", notes: "" });
-
-    // s1: pA in10 out3 → 7 ; pB in2 → 2  ⇒ variety 2, total_qty 9, amount 700+400, no neg
-    await stockRecords.create({ staff_id: s1.id, direction: "in", items: [{ product_id: pA.id, qty: 10 }] });
-    await stockRecords.create({ staff_id: s1.id, direction: "out", items: [{ product_id: pA.id, qty: 3 }] });
-    await stockRecords.create({ staff_id: s1.id, direction: "in", items: [{ product_id: pB.id, qty: 2 }] });
-    // s2: pA out5 → -5 ⇒ variety 1, total_qty -5, amount -500, has_negative
-    await stockRecords.create({ staff_id: s2.id, direction: "out", items: [{ product_id: pA.id, qty: 5 }] });
-
-    const byId = new Map((await inventory.staffSummaries()).map((s) => [s.staff_id, s]));
-    const r1 = byId.get(s1.id)!;
-    expect(r1.variety).toBe(2);
-    expect(r1.total_qty).toBe(9);
-    expect(r1.total_amount).toBe(100 * 7 + 200 * 2);
-    expect(r1.has_negative).toBe(false);
-
-    const r2 = byId.get(s2.id)!;
-    expect(r2.variety).toBe(1);
-    expect(r2.total_qty).toBe(-5);
-    expect(r2.total_amount).toBe(-5 * 100);
-    expect(r2.has_negative).toBe(true);
-  });
-
-  test("a net-zero product balance does not count toward variety", async () => {
-    const { products, staff, stockRecords, inventory } = setup();
-    const pA = await products.create({ title: "可乐", purchase_price: cents(100) });
-    const s1 = await staff.create({ name: "张三", phone: "1", notes: "" });
-    await stockRecords.create({ staff_id: s1.id, direction: "in", items: [{ product_id: pA.id, qty: 5 }] });
-    await stockRecords.create({ staff_id: s1.id, direction: "out", items: [{ product_id: pA.id, qty: 5 }] });
-
-    const summaries = await inventory.staffSummaries();
-    expect(summaries).toHaveLength(1);
-    expect(summaries[0].variety).toBe(0);
-    expect(summaries[0].total_qty).toBe(0);
-    expect(summaries[0].has_negative).toBe(false);
-  });
-
-  test("total_amount revalues with the product's current price (no stored figure)", async () => {
-    const { products, staff, stockRecords, inventory } = setup();
-    const pA = await products.create({ title: "可乐", purchase_price: cents(100) });
-    const s1 = await staff.create({ name: "张三", phone: "1", notes: "" });
-    await stockRecords.create({ staff_id: s1.id, direction: "in", items: [{ product_id: pA.id, qty: 10 }] });
-
-    expect((await inventory.staffSummaries())[0].total_amount).toBe(100 * 10);
-    await products.update(pA.id, { purchase_price: cents(250) });
-    expect((await inventory.staffSummaries())[0].total_amount).toBe(250 * 10);
-  });
-});
-
 describe("Inventory — voided record/product handling", () => {
-  test("voided records excluded; voided products still resolve for historical balances", async () => {
-    const { products, staff, stockRecords, inventory } = setup();
-    const productP = await products.create({ title: "可乐", purchase_price: cents(1995) });
-    const staffS = await staff.create({ name: "张三", phone: "138", notes: "" });
+  test("voided records excluded; voided products still resolve for historical totals", async () => {
+    const { products, stockRecords, inventory } = setup();
+    const p = await products.create({ title: "可乐", purchase_price: cents(1995) });
 
-    const inn = await stockRecords.create({ staff_id: staffS.id, direction: "in", items: [{ product_id: productP.id, qty: 10 }] });
-    await stockRecords.create({ staff_id: staffS.id, direction: "out", items: [{ product_id: productP.id, qty: 3 }] });
+    await stockRecords.create({
+      staff_id: ADMIN_STAFF_ID,
+      direction: "in",
+      items: [{ product_id: p.id, qty: 10 }],
+    });
+    await stockRecords.create({
+      staff_id: "member",
+      direction: "out",
+      items: [{ product_id: p.id, qty: 3 }],
+    });
 
-    // void the 'in' record → balance becomes -3 (only the out remains)
-    await stockRecords.void(inn.record.id);
-    expect((await inventory.balance(staffS.id, productP.id)).qty).toBe(-3);
-
-    // void the product → historical balance still resolves with its price
-    await products.void(productP.id);
-    const bal = await inventory.balance(staffS.id, productP.id);
-    expect(bal.qty).toBe(-3);
-    expect(bal.cost_amount).toBe(-3 * 1995); // product still resolves
+    // void the product → historical total still resolves with its price.
+    await products.void(p.id);
+    const row = (await inventory.shopAggregate()).find((a) => a.product.id === p.id)!;
+    expect(row.total_qty).toBe(7); // 10 in − 3 out
+    expect(row.total_cost).toBe(7 * 1995); // product still resolves at its price
   });
 });

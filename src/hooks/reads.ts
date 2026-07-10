@@ -1,6 +1,6 @@
 import { useQuery, type UseQueryResult } from "@tanstack/react-query";
 import { useRepos } from "@/providers/providers";
-import type { Aggregate, Balance, StaffSummary } from "@/data/inventory";
+import type { Aggregate } from "@/data/inventory";
 import type { Product } from "@/data/product";
 import type { Staff } from "@/data/staff";
 import type { DailyFlowRow } from "@/data/daily-flow";
@@ -82,34 +82,6 @@ export function useShopAggregate(): UseQueryResult<Aggregate[]> {
   return useQuery<Aggregate[]>({
     queryKey: qk.inventory.shopAggregate(),
     queryFn: () => repos.inventory.shopAggregate(),
-  });
-}
-
-/** Per-staff holding rollup for the 记账 list + 汇总 by-staff view (one ledger pass). */
-export function useStaffSummaries(): UseQueryResult<StaffSummary[]> {
-  const repos = useRepos();
-  return useQuery<StaffSummary[]>({
-    queryKey: qk.inventory.staffSummaries(),
-    queryFn: () => repos.inventory.staffSummaries(),
-  });
-}
-
-export function useStaffInventory(staffId: string): UseQueryResult<Balance[]> {
-  const repos = useRepos();
-  return useQuery<Balance[]>({
-    queryKey: qk.inventory.staff(staffId),
-    queryFn: () => repos.inventory.staffInventory(staffId),
-  });
-}
-
-export function useBalance(
-  staffId: string,
-  productId: string,
-): UseQueryResult<{ qty: number; cost_amount: number }> {
-  const repos = useRepos();
-  return useQuery({
-    queryKey: qk.inventory.balance(staffId, productId),
-    queryFn: () => repos.inventory.balance(staffId, productId),
   });
 }
 

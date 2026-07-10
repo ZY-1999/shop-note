@@ -5,34 +5,27 @@ import { Ionicons } from '@expo/vector-icons';
 import { MoneyText } from '@/components/money-text';
 import { LevelBadge } from '@/components/level-badge';
 import { formatDate, formatTime } from '@/components/date-format';
-import { useStaffById, useStaffInventory, useStockRecords } from '@/hooks/reads';
+import { useStaffById, useStockRecords } from '@/hooks/reads';
 import { useTheme } from '@/hooks/use-theme';
 import { cents } from '@/data/primitives';
 import type { Direction, StockItem } from '@/data/stock-record';
 
 /**
- * The staff look-back screen. Two read-only regions over the derived read
- * models, both rendered as **container cards** mirroring the 库存卡 (the card
- * border wraps its header + expanded children, height grows with `gap`):
- *  1. 库存 — a collapsible card (per-product holdings + their current-price
- *     total, `holdingsOpen` default collapsed).
- *  2. 记录 — a `共 N 条 / 入库 / 出库` summary + a movement history grouped by
- *     local day (newest-first). Each day is itself a collapsible card
- *     (`openDays` set, default collapsed): the day header carries that day's
- *     入库 / 出库 totals + a chevron; record rows render inside the card only
- *     when the day is open. Each record row still taps through to its detail.
+ * The member look-back screen (stock-balance-refactor placeholder skeleton).
  *
- * Spec #04 (page-refactor) reshaped this from a flat `ScrollView` into a day-
- * grouped `FlatList`; the containment spec later wrapped both regions in cards
- * and made day sections collapsible (default collapsed), reusing summary-tab's
- * `card`/`cardHead`/`cardTitle`/`subRow` styles + `openDays` model. Each FlatList
- * item is one whole DAY SECTION (the day card + its record rows nested together),
- * so `visibleDays` caps how many days render and a batch boundary can never split
- * a day — the wholeness invariant is structural, not enforced by slice
- * arithmetic. `onEndReached` reveals the next days; a `加载更多` footer is the
- * same reveal via an explicit tap (more discoverable, a fallback when
- * onEndReached doesn't fire on short lists). Holdings are the current-price cost
- * view; record amounts are the frozen `line_amount` snapshot (ADR-0002).
+ * Members no longer hold stock, so the old per-staff 「库存」 holdings card
+ * (`useStaffInventory`) is gone; its slot is reserved for spec 03's 余额分区 +
+ * 充值历史. What remains is the movement history: a `共 N 条 / 入库 / 出库`
+ * summary + a day-grouped history (newest-first). Under the new model a member's
+ * records are all `out` (checkouts) — `in` restock lives under the admin `-1` —
+ * so a member's 入库 total is typically 0; the day grouping + frozen line_amount
+ * snapshot display are unchanged.
+ *
+ * Each day is a collapsible card (`openDays` set, default collapsed): the day
+ * header carries that day's 入库 / 出库 totals + a chevron; record rows render
+ * inside only when open. Each FlatList item is one whole DAY SECTION, so
+ * `visibleDays` caps how many days render and a batch boundary can never split a
+ * day. Record amounts are the frozen `line_amount` snapshot (ADR-0002).
  * Navigation is delegated (`onOpenRecord`); the route wires the router.
  */
 const DIRECTION_LABEL: Record<Direction, string> = { in: '入库', out: '出库' };
@@ -57,16 +50,11 @@ interface DaySection {
 export function StaffDetail({ staffId, onOpenRecord }: StaffDetailProps) {
   const theme = useTheme();
   const staff = useStaffById(staffId);
-  const holdings = useStaffInventory(staffId);
   const records = useStockRecords({ staff_id: staffId });
-  const [holdingsOpen, setHoldingsOpen] = useState(false); // default collapsed
-  // Per-day collapse (containment spec): empty set = every day collapsed. A day
-  // header tap toggles its date in the set; record rows render only when open.
+  // Per-day collapse: empty set = every day collapsed. A day header tap toggles
+  // its date in the set; record rows render only when open.
   const [openDays, setOpenDays] = useState<Set<string>>(new Set());
   const [visibleDays, setVisibleDays] = useState(INITIAL_DAYS);
-
-  const holdingsList = holdings.data ?? [];
-  const holdingsTotal = holdingsList.reduce((sum, h) => sum + h.cost_amount, 0);
 
   // Group records by local calendar day (newest-first), folding each item's frozen
   // line_amount into the day + section totals. Pure derived shape — never stored.
@@ -179,25 +167,6 @@ export function StaffDetail({ staffId, onOpenRecord }: StaffDetailProps) {
         <View style={styles.header}>
           <Text style={[styles.name, { color: theme.text }]}>{staff.data?.name ?? '加载中'}</Text>
           {staff.data && <LevelBadge level={staff.data.level} />}
-
-          <View style={[styles.card, { borderColor: theme.border }]}>
-            <Pressable
-              testID="holdings-toggle"
-              onPress={() => setHoldingsOpen((v) => !v)}
-              style={styles.cardHead}>
-              <Text style={[styles.cardTitle, { color: theme.text }]}>库存</Text>
-              <MoneyText testID="holdings-total" cents={cents(holdingsTotal)} />
-              <Ionicons name={holdingsOpen ? 'chevron-up' : 'chevron-down'} size={16} color={theme.textSecondary} />
-            </Pressable>
-            {holdingsOpen &&
-              holdingsList.map((h) => (
-                <View key={h.product.id} testID={`holding-${h.product.id}`} style={[styles.subRow, { borderColor: theme.border }]}>
-                  <Text style={[styles.title, { color: theme.text }]}>{h.product.title}</Text>
-                  <Text style={[styles.qty, { color: theme.text }]}>{h.qty}件</Text>
-                  <MoneyText cents={cents(h.cost_amount)} />
-                </View>
-              ))}
-          </View>
 
           <View testID="record-summary" style={[styles.summary, { borderColor: theme.border }]}>
             <Text style={{ color: theme.text }}>共 {recordCount} 条</Text>

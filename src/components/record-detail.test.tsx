@@ -8,6 +8,7 @@ import { RecordDetail } from "@/components/record-detail";
 import { StaffDetail } from "@/components/staff-detail";
 import { InMemoryAdapter } from "@/data/in-memory";
 import { setupRepos, type Repos } from "@/data/composition";
+import { ADMIN_STAFF_ID } from "@/data/staff";
 import { cents } from "@/data/primitives";
 import { renderWithProviders, type RenderWithProvidersResult } from "@/testing/render";
 import { flushPending, waitForSync } from "@/testing/async";
@@ -77,8 +78,11 @@ function money(el: { props: { children?: unknown } }): string {
 }
 
 /**
- * Seed one staff + one product + one 'in' record (qty 4 @ 300¢ → line ¥12.00),
- * with a known timestamp + note so the header assertions are deterministic.
+ * Seed one member + one product + one record (default restock 'in' via admin -1,
+ * qty 4 @ 300¢ → line ¥12.00), with a known timestamp + note so the header
+ * assertions are deterministic. 'in' is owned by the admin `-1` (restock); 'out'
+ * by the member — seedRecord routes the staff_id by direction so the new guard
+ * holds without each caller repeating the rule.
  */
 async function seedRecord(opts?: { qty?: number; price?: number; direction?: "in" | "out"; note?: string }) {
   const repos = setupRepos(new InMemoryAdapter());
@@ -88,9 +92,10 @@ async function seedRecord(opts?: { qty?: number; price?: number; direction?: "in
     purchase_price: cents(opts?.price ?? 300),
     category: "饮料",
   });
+  const direction = opts?.direction ?? "in";
   const { record, items } = await repos.stockRecords.create({
-    staff_id: staff.id,
-    direction: opts?.direction ?? "in",
+    staff_id: direction === "in" ? ADMIN_STAFF_ID : staff.id,
+    direction,
     timestamp: 1_700_000_000_000,
     note: opts?.note ?? "单号A1",
     items: [{ product_id: product.id, qty: opts?.qty ?? 4 }],
@@ -145,8 +150,8 @@ describe("RecordDetail — void (spec #07 AC4)", () => {
     const detail = await repos.stockRecords.getById(recordId);
     expect(detail?.record.voided_at).not.toBeNull(); // soft-deleted, data preserved
 
-    const inv = await repos.inventory.staffInventory(staffId);
-    expect(inv).toEqual([]); // dropped from the balance (voided excluded by derivation)
+    const agg = await repos.inventory.shopAggregate();
+    expect(agg).toEqual([]); // voided record excluded → global stock empty
 
     const voids = await repos.audit.queryTimeline({ entity_type: "stock_record", action: "void" });
     expect(voids.some((e) => e.entity_id === recordId)).toBe(true); // void landed in the audit log
@@ -170,10 +175,10 @@ describe("RecordDetail — edit resnapshot-merge (spec #07 AC3)", () => {
     const staff = await repos.staff.create({ name: "张三", phone: "", notes: "" });
     const cola = await repos.products.create({ title: "可乐", purchase_price: cents(300), category: "" });
     const water = await repos.products.create({ title: "矿泉水", purchase_price: cents(500), category: "" });
-    // post: cola ×2 (snapshot 300¢/600¢), water ×3 (snapshot 500¢/1500¢)
+    // post: member out cola ×2 (snapshot 300¢/600¢), water ×3 (snapshot 500¢/1500¢)
     const { record, items } = await repos.stockRecords.create({
       staff_id: staff.id,
-      direction: "in",
+      direction: "out",
       timestamp: 1_700_000_000_000,
       note: "原单",
       items: [
@@ -222,9 +227,9 @@ describe("RecordDetail — edit resnapshot-merge (spec #07 AC3)", () => {
 
 describe("RecordDetail — cross-view refresh (spec #07 AC5)", () => {
   it("a void refreshes other open views through React Query (no manual refetch)", async () => {
-    const { repos, staffId, recordId, productId } = await seedRecord();
-    // Mount BOTH the staff detail (subscribes to inventory + records) and the record
-    // detail (hosts the void) under one providers/queryClient tree — proving the
+    const { repos, staffId, recordId } = await seedRecord({ direction: "out" });
+    // Mount BOTH the staff detail (subscribes to records) and the record detail
+    // (hosts the void) under one providers/queryClient tree — proving the
     // mutation's onSuccess invalidation flows through React Query to the other
     // subscriber. (edit shares the identical invalidation keys, so void covers it.)
     const { view } = await renderDetail(
@@ -235,15 +240,9 @@ describe("RecordDetail — cross-view refresh (spec #07 AC5)", () => {
       { repos },
     );
 
-    // sanity: staff detail shows the holding (the 'in' 4 × ¥3.00) + the history row.
-    // Spec #04 made the 库存 section collapsed-by-default, so expand it first to
-    // surface the holding row (the void below must make it disappear on refresh).
-    await waitForSync(() => view.getByTestId("holdings-toggle"));
-    await fireEvent.press(view.getByTestId("holdings-toggle"));
-    await flushPending();
-    await waitForSync(() => view.getByTestId(`holding-${productId}`));
-    // Spec containment made day sections collapsed-by-default — expand the day
-    // holding this record (one day here) to surface its history row.
+    // Staff detail's day sections are collapsed-by-default — expand the day
+    // holding this member's 'out' record to surface its history row.
+    await waitForSync(() => view.getAllByTestId(/^day-/)[0]);
     await fireEvent.press(view.getAllByTestId(/^day-/)[0]);
     await flushPending();
     expect(view.getByTestId(`history-${recordId}`)).toBeTruthy();
@@ -252,9 +251,8 @@ describe("RecordDetail — cross-view refresh (spec #07 AC5)", () => {
     fireEvent.press(await waitForSync(() => view.getByTestId("void")));
     fireEvent.press(await waitForSync(() => view.getByTestId("void-confirm")));
 
-    // the holding disappears (balance recomputed — voided excluded) and the history
-    // row disappears too, both refetched live via the shared queryClient's invalidation.
-    await waitForSync(() => expect(() => view.getByTestId(`holding-${productId}`)).toThrow());
+    // the history row disappears, refetched live via the shared queryClient's
+    // invalidation (voided records excluded from the member's history on re-read).
     await waitForSync(() => expect(() => view.getByTestId(`history-${recordId}`)).toThrow());
   });
 });
