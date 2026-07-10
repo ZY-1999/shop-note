@@ -109,7 +109,7 @@ describe("记账 screen — search reveals zero-inventory staff for a first 入�
   });
 });
 
-describe("记账 screen — search narrows active staff by name (spec #05 AC1, no regression)", () => {
+describe("记账 screen — search narrows active staff by name (spec #02, no regression)", () => {
   it("shows every inventory staff, then narrows by name as the operator types", async () => {
     const { view } = await renderBook(<BookkeepingTab />, {
       seed: async (repos) => {
