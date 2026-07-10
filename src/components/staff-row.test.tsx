@@ -17,7 +17,7 @@ import type { Staff } from "@/data/staff";
  * so the row must handle `summary === undefined`.
  */
 const staff: Staff = {
-  id: "s1", name: "张三", phone: "1", notes: "", voided_at: null, created_at: 0, updated_at: 0,
+  id: "s1", name: "张三", phone: "1", notes: "", level: "normal", voided_at: null, created_at: 0, updated_at: 0,
 };
 
 describe("StaffRow — merged inventory line (spec #02 AC1)", () => {

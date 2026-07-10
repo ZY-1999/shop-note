@@ -1,7 +1,7 @@
 # 会员等级数据层 — level 字段 + 注册表 + 排序 + schema/migration
 
 Type: spec
-Status: ready-for-agent
+Status: ready-for-human # implemented via /tdd 2026-07-10 — awaits Stage 3 review
 Parent: #01
 Blocked by: None — can start immediately
 
@@ -55,3 +55,19 @@ Blocked by: None — can start immediately
 ## Rework on failure
 
 失败隔离在数据层。若迁移解法（冻结 v1 + v2 ALTER）在设备 smoke 上不成立（如 SQLite 拒绝带 CHECK+DEFAULT 的 ALTER），改的是 v2 语句形式或解法本身（如给 `runMigrations` 加列存在性 guard），仅重做本 spec；UI（#03）与改名（#02）不受影响。
+
+## Comments
+
+- 2026-07-10 — implemented via `/tdd`（7 个垂直切片：注册表 → level 字段+create 默认/显式 → auditable 覆盖 level → update level+审计 diff → 金站优先排序 → SCHEMA/COLUMNS/`ColDef.default`/createTableSql 快照 → 冻结 v1 DDL + v2 ALTER）。AC → 测试：
+  - create 默认 normal / 显式 gold — `src/data/staff.test.ts::create defaults level to 'normal' (普站)` / `::create accepts an explicit level`
+  - update level + 审计 diff — `::update can change level; audit diff shows exactly the level change`
+  - auditable 覆盖 level（create 审计 diff 含 level）— `::create audit captures level in the diff (auditable covers level)`
+  - 金站优先 + created_at 升序（list/listActive/search）— `::list/listActive/search order gold members first, then by created_at asc`
+  - 注册表单源（labelForLevel/levelRank/DEFAULT_STAFF_LEVEL）— `::StaffLevel registry — single source for labels + sort rank`
+  - SCHEMA↔COLUMNS drift-guard 含 level — `src/data/expo-sqlite-migration.test.ts::COLUMNS names match SCHEMA columns...`
+  - createTableSql('staff') 含 `level ... DEFAULT 'normal' CHECK(...)` — `::createTableSql(staff) reproduces...`
+  - 冻结 v1 staff DDL（无 level）+ v2 ALTER（DEFAULT+CHECK）+ idx 非唯一 — `::MIGRATIONS: v1 staff CREATE frozen...; v2 ALTER...`
+  - 非回归（既有 staff 行为 + 全量）— 全量 211 passed
+  - **[手动/发布门]** 真实 SQLite v2 ALTER（老库回填 + 全新库建表+迁移）设备 smoke — 未由 /tdd 跑（ADR-0004，发布前手验）
+- 加 `level` 必填字段的波及（已修，保持构建绿）：`src/components/staff-row.test.tsx` Staff fixture 补 `level`；`src/data/sql-logic.test.ts` 的 SCHEMA.staff 列清单 + buildInsert staff 快照含 level。
+- Test run: `npx jest --colors=false --forceExit` → 211 passed, 0 failed（28 suites）；`npx tsc --noEmit` clean。

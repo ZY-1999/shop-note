@@ -1,7 +1,13 @@
-import { describe, expect, test } from "@jest/globals";
+import { describe, expect, jest, test } from "@jest/globals";
 import { InMemoryAdapter } from "@/data/in-memory";
 import { AuditProvider } from "@/data/audit";
-import { StaffRepository } from "@/data/staff";
+import {
+  StaffRepository,
+  STAFF_LEVELS,
+  labelForLevel,
+  levelRank,
+  DEFAULT_STAFF_LEVEL,
+} from "@/data/staff";
 
 function setup() {
   const storage = new InMemoryAdapter();
@@ -140,5 +146,90 @@ describe("StaffRepository — audit coverage", () => {
 
     const all = await staffRepo.list({ includeVoided: true });
     expect(all.find((s) => s.id === created.id)).toBeDefined();
+  });
+});
+
+describe("StaffLevel registry — single source for labels + sort rank", () => {
+  test("labelForLevel maps codes to display labels; gold ranks above normal", async () => {
+    expect(labelForLevel("gold")).toBe("金站");
+    expect(labelForLevel("normal")).toBe("普站");
+    expect(levelRank("gold")).toBeGreaterThan(levelRank("normal"));
+    expect(DEFAULT_STAFF_LEVEL).toBe("normal");
+    expect(STAFF_LEVELS.map((l) => l.code).sort()).toEqual(["gold", "normal"]);
+  });
+});
+
+describe("StaffRepository — level", () => {
+  test("create defaults level to 'normal' (普站)", async () => {
+    const { staffRepo } = setup();
+    const created = await staffRepo.create({ name: "张三", phone: "138", notes: "" });
+    expect(created.level).toBe("normal");
+    const got = await staffRepo.getById(created.id);
+    expect(got?.level).toBe("normal");
+  });
+
+  test("create accepts an explicit level", async () => {
+    const { staffRepo } = setup();
+    const created = await staffRepo.create({
+      name: "李四",
+      phone: "139",
+      notes: "",
+      level: "gold",
+    });
+    expect(created.level).toBe("gold");
+    expect(labelForLevel(created.level)).toBe("金站");
+  });
+
+  test("create audit captures level in the diff (auditable covers level)", async () => {
+    const { storage, staffRepo } = setup();
+    await staffRepo.create({ name: "张三", phone: "138", notes: "", level: "gold" });
+
+    const created = await new AuditProvider(storage).queryTimeline({
+      entity_type: "staff",
+      action: "create",
+    });
+    expect(created).toHaveLength(1);
+    expect(created[0].diff).toEqual(
+      expect.arrayContaining([expect.objectContaining({ field: "level", new: "gold" })]),
+    );
+  });
+
+  test("update can change level; audit diff shows exactly the level change", async () => {
+    const { storage, staffRepo } = setup();
+    const created = await staffRepo.create({ name: "张三", phone: "138", notes: "" });
+
+    const updated = await staffRepo.update(created.id, { level: "gold" });
+    expect(updated.level).toBe("gold");
+    expect((await staffRepo.getById(created.id))?.level).toBe("gold");
+
+    const updates = await new AuditProvider(storage).queryTimeline({
+      entity_type: "staff",
+      action: "update",
+    });
+    expect(updates).toHaveLength(1);
+    expect(updates[0].diff).toContainEqual({ field: "level", old: "normal", new: "gold" });
+  });
+
+  test("list/listActive/search order gold members first, then by created_at asc", async () => {
+    // Distinct created_at (fake timers) so the secondary created_at-asc key is
+    // actually exercised, not just stable-sort ties.
+    jest.useFakeTimers();
+    const { staffRepo } = setup();
+    jest.setSystemTime(new Date("2026-07-10T01:00:00Z"));
+    const a = await staffRepo.create({ name: "A-normal", phone: "", notes: "" });
+    jest.setSystemTime(new Date("2026-07-10T02:00:00Z"));
+    const b = await staffRepo.create({ name: "B-gold", phone: "", notes: "", level: "gold" });
+    jest.setSystemTime(new Date("2026-07-10T03:00:00Z"));
+    const c = await staffRepo.create({ name: "C-normal", phone: "", notes: "" });
+    jest.setSystemTime(new Date("2026-07-10T04:00:00Z"));
+    const d = await staffRepo.create({ name: "D-gold", phone: "", notes: "", level: "gold" });
+    jest.useRealTimers();
+
+    // gold (B, D) before normal (A, C); within a tier, created_at asc.
+    const expected = [b.id, d.id, a.id, c.id];
+    expect((await staffRepo.list()).map((s) => s.id)).toEqual(expected);
+    expect((await staffRepo.listActive()).map((s) => s.id)).toEqual(expected);
+    expect((await staffRepo.search({ text: "gold" })).map((s) => s.id)).toEqual([b.id, d.id]);
+    expect((await staffRepo.search({ text: "normal" })).map((s) => s.id)).toEqual([a.id, c.id]);
   });
 });

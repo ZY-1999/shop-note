@@ -26,6 +26,8 @@ interface ColDef {
   readonly pk?: boolean;
   /** Default false → `NOT NULL`. */
   readonly nullable?: boolean;
+  /** Raw DEFAULT literal incl. quotes, e.g. `'normal'` → `DEFAULT 'normal'`. */
+  readonly default?: string;
   /** Raw CHECK body, e.g. `direction IN ('in', 'out')`. */
   readonly check?: string;
 }
@@ -42,6 +44,7 @@ export const COLUMNS: Record<TableName, readonly ColDef[]> = {
     { name: "name", type: "TEXT" },
     { name: "phone", type: "TEXT" },
     { name: "notes", type: "TEXT" },
+    { name: "level", type: "TEXT", default: "'normal'", check: "level IN ('normal', 'gold')" },
     { name: "voided_at", type: "INTEGER", nullable: true },
     { name: "created_at", type: "INTEGER" },
     { name: "updated_at", type: "INTEGER" },
@@ -94,6 +97,7 @@ function colSql(c: ColDef): string {
   let s = `${c.name} ${c.type}`;
   if (c.pk) s += " PRIMARY KEY NOT NULL";
   else if (!c.nullable) s += " NOT NULL";
+  if (c.default !== undefined) s += ` DEFAULT ${c.default}`;
   if (c.check) s += ` CHECK (${c.check})`;
   return s;
 }
@@ -104,10 +108,30 @@ export function createTableSql(table: TableName): string {
 }
 
 /**
+ * v1 staff `CREATE TABLE` frozen at its historical (pre-`level`) shape.
+ *
+ * `createTableSql("staff")` is generated dynamically from `COLUMNS` and now
+ * includes `level` — so it CANNOT be reused in v1: a fresh DB (user_version 0)
+ * runs v1 then v2, and if v1 CREATE already added `level`, the v2 `ALTER ...
+ * ADD COLUMN level` fails with a duplicate-column error. SQLite `ALTER TABLE
+ * ADD COLUMN` has no `IF NOT EXISTS`, so v1's staff CREATE is pinned to this
+ * literal (the schema as it was at v1). Existing v1 DBs skip it via `CREATE
+ * TABLE IF NOT EXISTS` and receive `level` through v2; fresh DBs create without
+ * `level` here then get it via v2. Both paths converge on a `staff` table with
+ * `level`. (The divergence from `COLUMNS` is intentional and documented; the
+ * drift-guard ties `COLUMNS` names to `SCHEMA` columns, not to this literal.)
+ */
+const V1_STAFF_DDL =
+  "CREATE TABLE IF NOT EXISTS staff " +
+  "(id TEXT PRIMARY KEY NOT NULL, name TEXT NOT NULL, phone TEXT NOT NULL, " +
+  "notes TEXT NOT NULL, voided_at INTEGER, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)";
+
+/**
  * Versioned migrations, applied in order. v1 is the initial schema for the 5
- * domain tables plus the `record_id` lookup index. `idx_item_record_id` is
- * NON-unique: a stock record has many items (the PRD's "唯一索引" = sole index,
- * not a uniqueness constraint).
+ * domain tables plus the `record_id` lookup index (`idx_item_record_id` is
+ * NON-unique: a stock record has many items; the PRD's "唯一索引" = sole index,
+ * not a uniqueness constraint). v2 adds `staff.level` (会员等级) with a DEFAULT
+ * so existing rows backfill to 普站 (`normal`) and a CHECK guarding the domain.
  */
 export const MIGRATIONS: ReadonlyArray<{
   readonly version: number;
@@ -116,12 +140,18 @@ export const MIGRATIONS: ReadonlyArray<{
   {
     version: 1,
     statements: [
-      createTableSql("staff"),
+      V1_STAFF_DDL,
       createTableSql("product"),
       createTableSql("stock_record"),
       createTableSql("stock_record_item"),
       createTableSql("audit_log"),
       "CREATE INDEX IF NOT EXISTS idx_item_record_id ON stock_record_item(record_id)",
+    ],
+  },
+  {
+    version: 2,
+    statements: [
+      "ALTER TABLE staff ADD COLUMN level TEXT NOT NULL DEFAULT 'normal' CHECK(level IN ('normal', 'gold'))",
     ],
   },
 ];

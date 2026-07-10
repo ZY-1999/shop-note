@@ -2,11 +2,57 @@ import { AuditProvider, type AuditAction } from "@/data/audit";
 import type { HasId, StoragePort } from "@/data/port";
 import { id, now } from "@/data/primitives";
 
+/**
+ * Member level (display word: 「会员等级」). Stored as a stable English code so
+ * rebranding the label (cf. the 出库→出单 precedent for `direction`) needs no
+ * data migration; the Chinese label lives only in {@link STAFF_LEVELS}. Two
+ * tiers today (普站 / 金站); the registry is the single source for both UI
+ * labels and the gold-first list sort, so adding a tier is one row here.
+ */
+export type StaffLevel = "normal" | "gold";
+
+export interface StaffLevelDef {
+  readonly code: StaffLevel;
+  readonly label: "普站" | "金站";
+  /** Higher rank sorts first (金站 before 普站). */
+  readonly rank: number;
+}
+
+/**
+ * Single source of truth for level codes, display labels, and sort rank. Order
+ * is rank-desc for display/sort consumers; UI reads labels via `labelForLevel`,
+ * the repo sorts via `levelRank` — neither hardcodes 「普站/金站」.
+ */
+export const STAFF_LEVELS: readonly StaffLevelDef[] = [
+  { code: "gold", label: "金站", rank: 1 },
+  { code: "normal", label: "普站", rank: 0 },
+];
+
+/** The level a new member gets when none is specified (普站). */
+export const DEFAULT_STAFF_LEVEL: StaffLevel = "normal";
+
+/** Display label for a level code (e.g. 'gold' → '金站'). */
+export function labelForLevel(code: StaffLevel): string {
+  return defForLevel(code).label;
+}
+
+/** Sort rank for a level code — higher means a more senior tier (sorts first). */
+export function levelRank(code: StaffLevel): number {
+  return defForLevel(code).rank;
+}
+
+function defForLevel(code: StaffLevel): StaffLevelDef {
+  const def = STAFF_LEVELS.find((l) => l.code === code);
+  if (!def) throw new Error(`unknown staff level "${code}"`);
+  return def;
+}
+
 /** Staff master-data entity. voided_at drives soft-delete (history preserved). */
 export interface Staff extends HasId {
   name: string;
   phone: string;
   notes: string;
+  level: StaffLevel;
   voided_at: number | null;
   created_at: number;
   updated_at: number;
@@ -16,12 +62,14 @@ export interface StaffCreateInput {
   name: string;
   phone: string;
   notes: string;
+  level?: StaffLevel;
 }
 
 export interface StaffUpdatePatch {
   name?: string;
   phone?: string;
   notes?: string;
+  level?: StaffLevel;
 }
 
 /**
@@ -43,6 +91,7 @@ export class StaffRepository {
       name: input.name,
       phone: input.phone,
       notes: input.notes,
+      level: input.level ?? DEFAULT_STAFF_LEVEL,
       voided_at: null,
       created_at: ts,
       updated_at: ts,
@@ -64,18 +113,19 @@ export class StaffRepository {
   }
 
   async list(opts?: { includeVoided?: boolean }): Promise<Staff[]> {
-    const rows = await this.storage.find<Staff>("staff", {
-      orderBy: { field: "created_at", dir: "asc" },
-    });
-    if (opts?.includeVoided) return rows;
-    return rows.filter((s) => s.voided_at == null);
+    const rows = await this.storage.find<Staff>("staff");
+    const visible = opts?.includeVoided ? rows : rows.filter((s) => s.voided_at == null);
+    // Gold-first (rank desc), then created_at asc — one sort, every list view
+    // (记账, 管理) renders 金站 before 普站. rank is derived from the level
+    // code, not a stored column, so this must live here, not in the port query.
+    return visible.slice().sort(byLevelThenCreated);
   }
 
   async listActive(): Promise<Staff[]> {
-    return this.storage.find<Staff>("staff", {
+    const rows = await this.storage.find<Staff>("staff", {
       where: { voided_at: null },
-      orderBy: { field: "created_at", dir: "asc" },
     });
+    return rows.slice().sort(byLevelThenCreated);
   }
 
   async search(q: { text?: string }): Promise<Staff[]> {
@@ -155,6 +205,19 @@ function auditable(staff: Staff): Record<string, unknown> {
     name: staff.name,
     phone: staff.phone,
     notes: staff.notes,
+    level: staff.level,
     voided_at: staff.voided_at,
   };
+}
+
+/**
+ * Gold-first list order: higher level rank first, then created_at ascending
+ * (oldest within a tier first). Applied by `list` / `listActive` (and inherited
+ * by `search`) so every member list renders 金站 before 普站 with no caller-side
+ * re-sort.
+ */
+function byLevelThenCreated(a: Staff, b: Staff): number {
+  const rankDiff = levelRank(b.level) - levelRank(a.level);
+  if (rankDiff !== 0) return rankDiff;
+  return a.created_at - b.created_at;
 }

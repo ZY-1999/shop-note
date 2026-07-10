@@ -31,7 +31,7 @@ export interface TableSchema {
  */
 export const SCHEMA: Record<TableName, TableSchema> = {
   staff: {
-    columns: ["id", "name", "phone", "notes", "voided_at", "created_at", "updated_at"],
+    columns: ["id", "name", "phone", "notes", "level", "voided_at", "created_at", "updated_at"],
     jsonColumns: [],
   },
   product: {

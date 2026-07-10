@@ -14,7 +14,7 @@ describe("SCHEMA registry", () => {
       ["audit_log", "product", "staff", "stock_record", "stock_record_item"],
     );
     expect(SCHEMA.staff.columns).toEqual([
-      "id", "name", "phone", "notes", "voided_at", "created_at", "updated_at",
+      "id", "name", "phone", "notes", "level", "voided_at", "created_at", "updated_at",
     ]);
     expect(SCHEMA.product.columns).toEqual([
       "id", "title", "purchase_price", "code", "category", "voided_at", "created_at", "updated_at",
@@ -42,14 +42,14 @@ describe("SCHEMA registry", () => {
 describe("buildInsert", () => {
   test("emits INSERT with registry column order, matching placeholders, and bound params", () => {
     const staff = {
-      id: "s1", name: "张三", phone: "138", notes: "n",
+      id: "s1", name: "张三", phone: "138", notes: "n", level: "normal",
       voided_at: null, created_at: 1, updated_at: 2,
     };
     const { sql, params } = buildInsert("staff", staff);
     expect(sql).toBe(
-      "INSERT INTO staff (id, name, phone, notes, voided_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+      "INSERT INTO staff (id, name, phone, notes, level, voided_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
     );
-    expect(params).toEqual(["s1", "张三", "138", "n", null, 1, 2]);
+    expect(params).toEqual(["s1", "张三", "138", "n", "normal", null, 1, 2]);
   });
 
   test("stringifies JSON columns in the bind params (audit_log.diff)", () => {
