@@ -38,8 +38,8 @@ export function setupRepos(storage: StoragePort): Repos {
   const config = new ConfigRepository(storage, audit);
   const stockRecords = new StockRecordRepository(storage, products, audit, config);
   const inventory = new Inventory(stockRecords, products);
-  const dailyFlow = new DailyFlow(stockRecords);
   const topups = new TopupRepository(storage, audit);
+  const dailyFlow = new DailyFlow(stockRecords, topups);
   const memberBalance = new MemberBalance(topups, stockRecords);
   return { storage, audit, products, staff, stockRecords, inventory, dailyFlow, topups, memberBalance, config };
 }

@@ -1,7 +1,7 @@
 # 汇总 tab 综合: 综合流水 + 单数零售聚合 + 库存卡
 
 Type: spec
-Status: ready-for-agent
+Status: ready-for-human
 Parent: #01 (01-stock-balance-refactor.md)
 Blocked by: #03, #04
 
@@ -51,3 +51,19 @@ Blocked by: #03, #04
 ## Rework on failure
 
 汇总是集成收口——失败 redo 本 spec（dailyFlow 扩展 + summary-tab 综合流水/聚合）；前置域（库存/余额/单价）不动。
+
+## Comments
+
+- 2026-07-11 — implemented via `/tdd`（dailyFlow 扩展 → summary-tab 综合流水/聚合，双绿 259 tests）。AC → 测试：
+  - 库存卡全局 per-product + total（shopAggregate，与时间段无关）— 既有用例（spec 02 shopAggregate + summary-tab 库存卡）未回归
+  - 综合流水三类事件（补货/出库/充值）按天、最新在前；金额口径（补货/出库=Σline_amount，充值=amount）— `src/data/daily-flow.test.ts::综合流水 folds top-ups` / `::restock + member out + topup → three buckets`；`src/components/summary-tab.test.tsx::综合流水 三类事件`
+  - `-1` 补货标「补货」，不显示会员名、不作会员行 — `summary-tab.test.tsx`（-1 staff-row testID + 会员名「张三」仍展示）
+  - 出库单数零售聚合（每笔 out 用其 unit_price_snapshot 经 splitBundleRetail 派生求和）— `summary-tab.test.tsx::出库聚合`
+  - summary-tab.test 覆盖三类事件 + 聚合 + -1 隐藏；库存卡/时间段/day-collapse 不回归 — 既有用例 + 新增
+  - `tsc --noEmit` 通过；`jest` 全绿 259 passed（32 suites）
+- 数据层：`daily-flow.ts` DailyFlowRow 加 `topup_amount`；`DailyFlow` 构造加 `TopupRepository` 依赖，`flow()` 折入 topup（同 (day, staff) 桶，第三列）；`composition` 接线。
+- 流层：`useCreateTopup`/`useVoidTopup` onSuccess 加 invalidate `qk.dailyFlow`（充值进流水，本 spec 归属）。
+- UI：`summary-tab.tsx` 流水区改为 补货/出库/充值（day header + staff row + flow-summary）；`-1` 行标「补货」不显会员名；新增「出库聚合」段（splitBundleRetail per out 记录自身快照单价，Σ bundles / Σ retail）；库存卡不变。
+- **[手动/发布门]** 真实 SQLite 下综合流水派生仅设备 smoke 覆盖（ADR-0004，发布前手跑）。
+- Codemap / CONTEXT.md 术语更新归 Stage 4（下一步）。
+

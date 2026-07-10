@@ -9,7 +9,9 @@ import {
   type RangePreset,
 } from "@/components/date-format";
 import { MoneyText } from "@/components/money-text";
+import { ADMIN_STAFF_ID } from "@/data/staff";
 import { cents } from "@/data/primitives";
+import { splitBundleRetail } from "@/data/split-bundle";
 import type { Direction } from "@/data/stock-record";
 import {
   useDailyFlow,
@@ -74,9 +76,10 @@ export interface SummaryTabProps {
 interface DaySection {
   dateDash: string; // 'YYYY-MM-DD' (dailyFlow row.date) — the day key + keyExtractor
   dateSlash: string; // 'YYYY/MM/DD' — display + testID (matches formatDate)
-  dayIn: number; // Σ in_amount across the day's staff (cents)
+  dayIn: number; // Σ in_amount across the day (restock under -1) (cents)
   dayOut: number; // Σ out_amount across the day's staff (cents)
-  staffRows: { staffId: string; inAmount: number; outAmount: number }[];
+  dayTopup: number; // Σ topup_amount across the day's staff (cents)
+  staffRows: { staffId: string; inAmount: number; outAmount: number; topupAmount: number }[];
 }
 
 export function SummaryTab({
@@ -111,10 +114,11 @@ export function SummaryTab({
 
   // Group the (already newest-first) dailyFlow rows by day, folding each row into
   // the day + section totals. Pure derived shape — never stored.
-  const { sections, totalDays, inTotal, outTotal } = useMemo(() => {
+  const { sections, totalDays, inTotal, outTotal, topupTotal } = useMemo(() => {
     const byDay = new Map<string, DaySection>();
     let inT = 0;
     let outT = 0;
+    let topupT = 0;
     for (const row of flow.data ?? []) {
       let day = byDay.get(row.date);
       if (!day) {
@@ -123,18 +127,22 @@ export function SummaryTab({
           dateSlash: row.date.replace(/-/g, "/"),
           dayIn: 0,
           dayOut: 0,
+          dayTopup: 0,
           staffRows: [],
         };
         byDay.set(row.date, day);
       }
       day.dayIn += row.in_amount;
       day.dayOut += row.out_amount;
+      day.dayTopup += row.topup_amount;
       inT += row.in_amount;
       outT += row.out_amount;
+      topupT += row.topup_amount;
       day.staffRows.push({
         staffId: row.staff_id,
         inAmount: row.in_amount,
         outAmount: row.out_amount,
+        topupAmount: row.topup_amount,
       });
     }
     // flow returns newest-first; Map preserves first-seen order, so sections stay newest-first.
@@ -144,8 +152,26 @@ export function SummaryTab({
       totalDays: all.length,
       inTotal: inT,
       outTotal: outT,
+      topupTotal: topupT,
     };
   }, [flow.data]);
+
+  // 出库单数零售聚合 (US8): each 'out' record in range splits via its OWN frozen
+  // unit_price_snapshot (not the current unit price), then Σ bundles / Σ retail.
+  // A unit-price change does not re-split history — every record uses its snapshot.
+  const bundleAggregate = useMemo(() => {
+    let bundles = 0;
+    let retail = 0;
+    for (const rw of records.data ?? []) {
+      if (rw.record.direction !== "out") continue;
+      const amount = rw.items.reduce((s, i) => s + i.line_amount, 0);
+      const snapshot = rw.record.unit_price_snapshot ?? 0;
+      const split = splitBundleRetail(amount, snapshot);
+      bundles += split.bundles;
+      retail += split.retail;
+    }
+    return { bundles, retail };
+  }, [records.data]);
 
   // Day-batched slice (ADR-0007): each section is a whole day, so slicing at a day
   // boundary can never split a day's separator from its staff rows.
@@ -163,10 +189,12 @@ export function SummaryTab({
           <Text style={[styles.dayDate, { color: theme.text }]}>
             {item.dateSlash}
           </Text>
-          <Text style={{ color: theme.success }}>入库</Text>
+          <Text style={{ color: theme.success }}>补货</Text>
           <MoneyText cents={cents(item.dayIn)} />
           <Text style={{ color: theme.danger }}>出库</Text>
           <MoneyText cents={cents(item.dayOut)} />
+          <Text style={{ color: theme.success }}>充值</Text>
+          <MoneyText cents={cents(item.dayTopup)} />
           <Ionicons
             name={dayOpen ? "chevron-up" : "chevron-down"}
             size={14}
@@ -191,7 +219,8 @@ export function SummaryTab({
                   style={styles.cardHead}
                 >
                   <Text style={[styles.title, { color: theme.text }]}>
-                    {staffName.get(sr.staffId) ?? sr.staffId}
+                    {/* '-1' restock surfaces as a 「补货」 event, not a member row (US12). */}
+                    {sr.staffId === ADMIN_STAFF_ID ? "补货" : (staffName.get(sr.staffId) ?? sr.staffId)}
                   </Text>
                   <Text style={{ color: theme.success }}>入</Text>
                   <MoneyText
@@ -202,6 +231,11 @@ export function SummaryTab({
                   <MoneyText
                     testID={`staff-out-${item.dateDash}-${sr.staffId}`}
                     cents={cents(sr.outAmount)}
+                  />
+                  <Text style={{ color: theme.success }}>充</Text>
+                  <MoneyText
+                    testID={`staff-topup-${item.dateDash}-${sr.staffId}`}
+                    cents={cents(sr.topupAmount)}
                   />
                   <Ionicons
                     name={expanded ? "chevron-up" : "chevron-down"}
@@ -355,15 +389,31 @@ export function SummaryTab({
             })}
           </View>
 
-          {/* 流水 region header — the range's in/out totals (frozen line_amount, ADR-0002) */}
+          {/* 流水 region header — the range's 补货/出库/充值 totals (frozen amounts, ADR-0002) */}
           <View
             testID="flow-summary"
             style={[styles.summary, { borderColor: theme.border }]}
           >
-            <Text style={{ color: theme.success }}>入库</Text>
+            <Text style={{ color: theme.success }}>补货</Text>
             <MoneyText testID="flow-in-total" cents={cents(inTotal)} />
             <Text style={{ color: theme.danger }}>出库</Text>
             <MoneyText testID="flow-out-total" cents={cents(outTotal)} />
+            <Text style={{ color: theme.success }}>充值</Text>
+            <MoneyText testID="flow-topup-total" cents={cents(topupTotal)} />
+          </View>
+
+          {/* 出库单数零售聚合 (US8): Σ bundles / Σ retail across the range's out
+              records, each split via its OWN frozen unit_price_snapshot. */}
+          <View
+            testID="bundle-aggregate"
+            style={[styles.summary, { borderColor: theme.border }]}
+          >
+            <Text style={{ color: theme.text }}>出库聚合</Text>
+            <Text testID="bundle-aggregate-count" style={{ color: theme.text }}>
+              {bundleAggregate.bundles} 单
+            </Text>
+            <Text style={{ color: theme.textSecondary }}>零售</Text>
+            <MoneyText testID="bundle-aggregate-retail" cents={cents(bundleAggregate.retail)} />
           </View>
         </View>
       }

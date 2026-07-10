@@ -5,6 +5,7 @@ import { ProductRepository } from "@/data/product";
 import { StaffRepository, ADMIN_STAFF_ID } from "@/data/staff";
 import { ConfigRepository } from "@/data/config";
 import { StockRecordRepository } from "@/data/stock-record";
+import { TopupRepository } from "@/data/topup";
 import { DailyFlow } from "@/data/daily-flow";
 import { cents } from "@/data/primitives";
 
@@ -15,8 +16,9 @@ function setup() {
   const staff = new StaffRepository(storage, audit);
   const config = new ConfigRepository(storage, audit);
   const stockRecords = new StockRecordRepository(storage, products, audit, config);
-  const dailyFlow = new DailyFlow(stockRecords);
-  return { storage, audit, products, staff, stockRecords, dailyFlow };
+  const topups = new TopupRepository(storage, audit);
+  const dailyFlow = new DailyFlow(stockRecords, topups);
+  return { storage, audit, products, staff, stockRecords, topups, dailyFlow };
 }
 
 /** A wall-clock ms at LOCAL noon on a given (Y, M, D) — pinned so dayBucket is
@@ -243,6 +245,67 @@ describe("DailyFlow — filter", () => {
       date_range: { from: localNoon(2026, 6, 5), to: localNoon(2026, 6, 15) },
     });
     expect(rows.map((r) => r.date)).toEqual(["2026-07-09"]);
+  });
+});
+
+describe("DailyFlow — 综合流水 folds top-ups into the (day, staff) bucket (stock-balance-refactor)", () => {
+  test("a member's top-up lands in topup_amount on their (day, staff) row", async () => {
+    const { products, staff, topups, stockRecords, dailyFlow } = setup();
+    const productP = await products.create({ title: "可乐", purchase_price: cents(100) });
+    const member = await staff.create({ name: "张三", phone: "138", notes: "" });
+    const day = localNoon(2026, 6, 9);
+
+    await topups.create({ staff_id: member.id, amount: cents(10000), timestamp: day }); // ¥100
+    await stockRecords.create({
+      staff_id: member.id, direction: "out", timestamp: day,
+      items: [{ product_id: productP.id, qty: 3 }], // ¥3.00 out
+    });
+
+    const rows = await dailyFlow.flow();
+    expect(rows).toHaveLength(1);
+    expect(rows[0].staff_id).toBe(member.id);
+    expect(rows[0].topup_amount).toBe(cents(10000));
+    expect(rows[0].out_amount).toBe(300);
+    expect(rows[0].in_amount).toBe(0); // members don't restock
+  });
+
+  test("restock (-1) + member out + topup → three buckets, -1 separated from members", async () => {
+    const { products, staff, topups, stockRecords, dailyFlow } = setup();
+    const productP = await products.create({ title: "可乐", purchase_price: cents(100) });
+    const member = await staff.create({ name: "张三", phone: "138", notes: "" });
+    const day = localNoon(2026, 6, 9);
+
+    await stockRecords.create({
+      staff_id: ADMIN_STAFF_ID, direction: "in", timestamp: day,
+      items: [{ product_id: productP.id, qty: 10 }], // restock ¥10.00
+    });
+    await stockRecords.create({
+      staff_id: member.id, direction: "out", timestamp: day,
+      items: [{ product_id: productP.id, qty: 2 }], // out ¥2.00
+    });
+    await topups.create({ staff_id: member.id, amount: cents(5000), timestamp: day }); // topup ¥5.00
+
+    const rows = await dailyFlow.flow();
+    expect(rows).toHaveLength(2); // (-1, day) + (member, day)
+    const restockRow = rows.find((r) => r.staff_id === ADMIN_STAFF_ID)!;
+    const memberRow = rows.find((r) => r.staff_id === member.id)!;
+    expect(restockRow.in_amount).toBe(1000); // the -1 restock
+    expect(restockRow.out_amount).toBe(0);
+    expect(restockRow.topup_amount).toBe(0);
+    expect(memberRow.out_amount).toBe(200);
+    expect(memberRow.topup_amount).toBe(cents(5000));
+    expect(memberRow.in_amount).toBe(0);
+  });
+
+  test("voiding a top-up drops it from the flow on the next read", async () => {
+    const { staff, topups, dailyFlow } = setup();
+    const member = await staff.create({ name: "张三", phone: "", notes: "" });
+    const day = localNoon(2026, 6, 9);
+    const t = await topups.create({ staff_id: member.id, amount: cents(5000), timestamp: day });
+    expect((await dailyFlow.flow()).find((r) => r.staff_id === member.id)!.topup_amount).toBe(cents(5000));
+
+    await topups.void(t.id);
+    expect(await dailyFlow.flow()).toHaveLength(0); // voided → no bucket
   });
 });
 

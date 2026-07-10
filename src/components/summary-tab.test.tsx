@@ -255,6 +255,46 @@ function Poster({ productId }: { productId: string }) {
   );
 }
 
+describe("SummaryTab — 综合流水 三类事件 + -1 标补货 + 单数零售聚合 (stock-balance-refactor)", () => {
+  it("shows 补货 / 出库 / 充值 totals; -1 restock labeled 补货, no member name", async () => {
+    const { repos, staffId, colaId } = await setup();
+    const day = DAY(9, 10);
+    await repos.config.setUnitPrice(cents(2400)); // ¥24/unit (for the bundle aggregate below)
+    // restock (-1) + member out + member topup, all on July 9 (thisMonth)
+    await repos.stockRecords.create({ staff_id: ADMIN_STAFF_ID, direction: "in", timestamp: day, items: [{ product_id: colaId, qty: 10 }] }); // 补货 ¥30
+    await repos.stockRecords.create({ staff_id: staffId, direction: "out", timestamp: DAY(9, 14), items: [{ product_id: colaId, qty: 7 }] }); // 出库 line_amount 7×300=2100¢
+    await repos.topups.create({ staff_id: staffId, amount: cents(10000), timestamp: day }); // 充值 ¥100
+
+    const { view } = await renderTab(<SummaryTab now={NOW} onOpenStaff={jest.fn()} />, { repos });
+    await waitForSync(() => view.getByTestId("flow-summary"));
+
+    // range totals: 补货 3000¢ (¥30) / 出库 2100¢ (¥21) / 充值 10000¢ (¥100)
+    expect(money(view.getByTestId("flow-in-total"))).toMatch(/30\.00/);
+    expect(money(view.getByTestId("flow-out-total"))).toMatch(/21\.00/);
+    expect(money(view.getByTestId("flow-topup-total"))).toMatch(/100\.00/);
+
+    // expand the day → the -1 row is labeled 补货 (not a member id), the member row by name.
+    await waitForSync(() => view.getByTestId(`day-2026/07/09`));
+    await fireEvent.press(view.getByTestId(`day-2026/07/09`));
+    await flushPending();
+    // the restock surfaces as its own (-1) row, labeled 补货; the member row keeps the name.
+    expect(view.getByTestId(`staff-row-2026-07-09-${ADMIN_STAFF_ID}`)).toBeTruthy();
+    expect(view.getByText("张三")).toBeTruthy();
+  });
+
+  it("出库聚合: each out record split via its OWN snapshot, then Σ bundles / Σ retail", async () => {
+    const { repos, staffId, colaId } = await setup();
+    await repos.config.setUnitPrice(cents(2400)); // ¥24.00/unit — frozen on the checkout
+    // one out: line_amount 7 × 300¢ = 2100¢ → splitBundleRetail(2100, 2400) = {0 bundles, 2100 retail}
+    await repos.stockRecords.create({ staff_id: staffId, direction: "out", timestamp: DAY(9, 14), items: [{ product_id: colaId, qty: 7 }] });
+
+    const { view } = await renderTab(<SummaryTab now={NOW} onOpenStaff={jest.fn()} />, { repos });
+    await waitForSync(() => view.getByTestId("bundle-aggregate"));
+    expect(view.getByTestId("bundle-aggregate-count").props.children).toEqual(expect.arrayContaining([0, " 单"]));
+    expect(money(view.getByTestId("bundle-aggregate-retail"))).toMatch(/21\.00/); // 2100¢ retail
+  });
+});
+
 describe("SummaryTab — cross-view refresh (spec #05 AC7)", () => {
   it("a post elsewhere refreshes the open 汇总 view without manual refetch", async () => {
     const { repos, staffId, colaId, waterId } = await setup();
