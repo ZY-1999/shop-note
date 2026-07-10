@@ -2,6 +2,10 @@
 
 Read the exact versioned docs at https://docs.expo.dev/versions/v57.0.0/ before writing any code.
 
+### Project knowledge
+
+Long-lived, cross-task facts and gotchas live in `PROJECT_KNOWLEDGE.md` at the repo root — check it on entry / new-chat resume / cross-task decisions.
+
 ## Agent skills
 
 ### Issue tracker
