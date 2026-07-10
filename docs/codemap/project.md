@@ -2,7 +2,8 @@
 
 ## 1. Orientation
 
-- Last updated: `2026-07-09`
+- Last updated: `2026-07-10`
+- Updated: `2026-07-10` — nav-tweak: icon-only bottom tab bar + Chinese top headers driven by a single `src/navigation/tab-config.ts`; also retires the stale `unstable_native_tabs` risk note (the code already used stable `Tabs`).
 - Updated: `2026-07-09` — the production UI landed (specs #04–#09). The app is no longer the Expo template: a composition root opens `expo-sqlite` at boot (#04), and three real tabs consume the repositories through React Query — 记账 (bookkeeping: staff list + posting + staff/record detail / edit / void, #05–#07), 汇总 (summary: overview + daily flow + by-staff / by-product, #08), and 管理 (manage: staff & product CRUD + price revaluation, #09). Both ADR-0005 (UI layer architecture) and ADR-0006 (RNTL component testing) are recorded.
 - Project: `shop-note` — Expo SDK 57 / React Native app (name from [app.json](../../../app.json), slug `shop-note`, scheme `shopnote`).
 - Role / responsibility: **Production local-first shop management app.** A pure-TypeScript data layer (typed storage port, in-memory **and real `expo-sqlite`** adapters, versioned migrations, repositories, audit, derived inventory) is consumed by a React Query + RNTL UI across three tabs. On-device SQLite via `expo-sqlite`; no backend, no network calls, no cloud sync. Soft-delete everywhere (`voided_at`); history/snapshots are never erased (PRD: no hard delete).
@@ -54,7 +55,7 @@ Node: shop-note
   - `summary` (#08) — overview + daily flow + by-staff + by-product (four derived views, read-only). Main module: [summary-tab.tsx](../../../src/components/summary-tab.tsx). Entry: `summary` tab. Feature CodeMap: pending. Status: `confirmed`.
   - `manage` (#09) — staff & product CRUD (search / create / edit / soft-delete / restore) + cost-price revaluation. Main module: [manage-tab.tsx](../../../src/components/manage-tab.tsx). Entry: `manage` tab. Feature CodeMap: pending. Status: `confirmed`.
   - `boot-shell` (#04) — production composition root: open DB → build Repos → splash/error/retry. Main module: [app-provider.tsx](../../../src/providers/app-provider.tsx). Status: `confirmed`.
-  - `tab-navigation` — three-tab native navigator. Main module: [src/components/app-tabs.tsx](../../../src/components/app-tabs.tsx). Status: `confirmed`.
+  - `tab-navigation` — three-tab native navigator, icon-only bottom bar with Chinese top headers (nav-tweak). Main modules: [src/components/app-tabs.tsx](../../../src/components/app-tabs.tsx) + [src/navigation/tab-config.ts](../../../src/navigation/tab-config.ts). Status: `confirmed`.
   - `device-smoke` (dev-only) — cross-adapter equivalence proof, relocated under the 管理 tab (#04). Main module: [smoke-entry.tsx](../../../src/components/smoke-entry.tsx). Status: `confirmed` (ADR-0004).
 - Evidence: route files + component imports traced from `_layout.tsx` → `AppTabs`.
 - Validation: `npx jest` (26 suites); `expo start` → app boots through splash to 记账 tab.
@@ -66,7 +67,8 @@ Node: shop-note
 - Status: `confirmed`
 - Purpose: physical code layout under `src/`.
 - Children:
-  - `src/app/` — expo-router screens + root layout. Responsibility: routing; thin adapters over router-agnostic components. Three tab groups: `bookkeeping/` (index + `record-form` + `staff/[id]` + `record/[id]`), `summary/`, `manage/`. Key deps: `expo-router`, `react-native-safe-area-context`. Risk: `app-tabs.tsx` imports `expo-router/unstable_native_tabs` (see Risk Areas).
+  - `src/app/` — expo-router screens + root layout. Responsibility: routing; thin adapters over router-agnostic components. Three tab groups: `bookkeeping/` (index + `record-form` + `staff/[id]` + `record/[id]`), `summary/`, `manage/`. Each tab's `_layout.tsx` sets its screens' Chinese Stack-header titles (nav-tweak #2). Key deps: `expo-router`, `react-native-safe-area-context`. Tab identity + Chinese titles live in `src/navigation/tab-config.ts` (single source for the icon-only bar + top headers).
+  - `src/navigation/` — [tab-config.ts](../../../src/navigation/tab-config.ts): the single source of truth for tab identity (name / Chinese title / Ionicons icon) + `recordFormTitle()`. Consumed by `AppTabs` (icon-only bottom bar, nav-tweak #1) and each tab's `_layout.tsx` (top Stack header). Key dep: `@expo/vector-icons`. Drift-tested by [tab-config.test.ts](../../../src/navigation/tab-config.test.ts) without rendering native `<Tabs>`/`<Stack>`.
   - `src/components/` — screen-level + presentational components. Responsibility: the business UI (`staff-list-tracer`, `staff-row`, `record-form`, `record-detail`, `staff-detail`, `summary-tab`, `manage-tab`, `money-text`, `smoke-entry`) + themed primitives (`ThemedText`, `ThemedView`, `animated-icon`). Components are router-agnostic (props for nav callbacks) so RNTL can test them with no router context (ADR-0006). Risk: several `.web.tsx` platform variants exist.
   - `src/providers/` — composition + DI. Responsibility: [app-provider.tsx](../../../src/providers/app-provider.tsx) (production: async-open `ExpoSqliteAdapter`, `setupRepos`, boot/error/retry) + [providers.tsx](../../../src/providers/providers.tsx) (`AppProviders`: QueryClient + ReposProvider + MutationQueue, adapter-agnostic, the test/prod seam). Key deps: `@tanstack/react-query`, `expo-sqlite`.
   - `src/hooks/` — the data-flow layer (ADR-0005). Responsibility: [reads.ts](../../../src/hooks/reads.ts) (one `useQuery` per read), [mutations.ts](../../../src/hooks/mutations.ts) (gate-serialized writes, family-root invalidation), [query-keys.ts](../../../src/hooks/query-keys.ts) (the single registry), [mutation-queue.ts](../../../src/hooks/mutation-queue.ts) (serialization gate), `use-theme.ts`. Key deps: `@tanstack/react-query`.
@@ -124,7 +126,7 @@ Node: shop-note
 - Status: `confirmed`
 - Purpose: what the app reaches outside its own code for — the Expo/RN platform, on-device SQLite, and React Query.
 - Children:
-  - Third-party SDKs (all Expo-managed, SDK 57 pinned): `expo-router`, `expo-image`, `expo-symbols`, `expo-web-browser`, `expo-sqlite`, `expo-device`, `expo-glass-effect`, `expo-splash-screen`, `expo-status-bar`, `expo-system-ui`, `expo-font`, `expo-constants`, `expo-linking`; RN community: `react-native-reanimated`, `react-native-worklets`, `react-native-safe-area-context`, `react-native-screens`, `react-native-gesture-handler`. Data-flow: `@tanstack/react-query` v5, `@tanstack/query-core`. Test: `jest` (30), `jest-expo`, `@testing-library/react-native` v14, `ts-jest`. See [package.json](../../../package.json).
+  - Third-party SDKs (all Expo-managed, SDK 57 pinned): `expo-router`, `expo-image`, `expo-symbols`, `expo-web-browser`, `@expo/vector-icons`, `expo-sqlite`, `expo-device`, `expo-glass-effect`, `expo-splash-screen`, `expo-status-bar`, `expo-system-ui`, `expo-font`, `expo-constants`, `expo-linking`; RN community: `react-native-reanimated`, `react-native-worklets`, `react-native-safe-area-context`, `react-native-screens`, `react-native-gesture-handler`. Data-flow: `@tanstack/react-query` v5, `@tanstack/query-core`. Test: `jest` (30), `jest-expo`, `@testing-library/react-native` v14, `ts-jest`. See [package.json](../../../package.json).
   - Storage / filesystem: on-device SQLite via `expo-sqlite` — `ExpoSqliteAdapter.open()` (WAL + versioned migrations) is the device store. Tests use `InMemoryAdapter`; the device smoke uses a dedicated `shop_note_smoke.db` so production data is never touched (ADR-0004).
   - Auth / network: none.
   - Observability: none.
@@ -167,7 +169,7 @@ Node: shop-note
 - Purpose: how to prove the app still works.
 - Validation Entry:
   - Test commands: `npx jest` and `npx tsc --noEmit`.
-  - Test projects (ADR-0006, [jest.config.js](../../../jest.config.js)): **data** (ts-jest, node env, `*.test.ts`) — the pure data layer; **ui** (jest-expo + RNTL, `*.test.tsx`) — components through the real `InMemoryAdapter`. 26 suites / 172 tests total.
+  - Test projects (ADR-0006, [jest.config.js](../../../jest.config.js)): **data** (ts-jest, node env, `*.test.ts`) — the pure data layer; **ui** (jest-expo + RNTL, `*.test.tsx`) — components through the real `InMemoryAdapter`. 27 suites / 180 tests total.
   - RNTL harness: [render.tsx](../../../src/testing/render.tsx) mounts components under the real providers backed by a real `InMemoryAdapter` (never mocked Repos — only `expo-router` + native pickers are mocked). [async.ts](../../../src/testing/async.ts) provides `waitForSync` / `flushPending` — RNTL v14's `findBy*`/`waitFor` wrap each poll in `act`, which overlaps the next `fireEvent`'s act and leaks timers across tests; these helpers poll without act (see Risk Areas).
   - Lint: `npm run lint` (`expo lint`).
   - Local run: `npm start` → `a` / `i` / `w`.
@@ -184,7 +186,7 @@ Node: shop-note
 - Status: `confirmed`
 - Purpose: terrain facts that can bite the next edit.
 - Risks:
-  - **Unstable native tabs API** — [src/components/app-tabs.tsx:1](../../../src/components/app-tabs.tsx#L1) imports `expo-router/unstable_native_tabs`. Affected: tab navigation across all platforms.
+  - **Tab bar is icon-only; identity lives in config (nav-tweak)** — [src/components/app-tabs.tsx](../../../src/components/app-tabs.tsx) renders the stable `expo-router` `Tabs` (NOT `unstable-native-tabs` — SDK57 `NativeTabs` couldn't host a per-tab Stack), with `tabBarShowLabel: false` + one `@expo/vector-icons` Ionicons glyph per tab. Tab name / Chinese title / icon come from [src/navigation/tab-config.ts](../../../src/navigation/tab-config.ts), the single source shared with each tab's top Stack header title (configured in each `_layout.tsx`). Affected: tab navigation across all platforms.
   - **React Compiler experiment enabled** — [app.json](../../../app.json) `experiments.reactCompiler: true`. Verify components follow rules-of-react (one hook = one useQuery, never several behind a callable) before assuming manual memo is needed.
   - **Typed routes on** — `experiments.typedRoutes: true`; route names are type-checked, so a renamed file must update all `Href`/`router.push` references.
   - **`ExpoSqliteAdapter.withTransaction` is not reentrant** — hand-writes `BEGIN`/`COMMIT`/`ROLLBACK` on a single connection; `BEGIN` cannot nest. The `MutationQueue` (ADR-0005) serializes writes so concurrent mutations never nest a `BEGIN`. Source: `withTransaction` doc-comment in [port.ts](../../../src/data/port.ts).
@@ -211,7 +213,7 @@ Node: shop-note
 
 | Module / Package | Path                                       | Responsibility                          | Key Dependencies                                              | Risk Notes                                |
 | ---------------- | ------------------------------------------ | --------------------------------------- | ------------------------------------------------------------ | ----------------------------------------- |
-| routes           | [src/app/](../../../src/app/)              | thin screen adapters + root layout      | expo-router, react-native-safe-area-context                  | `unstable_native_tabs` in `app-tabs.tsx`  |
+| routes           | [src/app/](../../../src/app/)              | thin screen adapters + root layout      | expo-router, react-native-safe-area-context                  | icon-only `Tabs`; identity in `navigation/tab-config.ts`  |
 | components       | [src/components/](../../../src/components/) | business UI + themed primitives (router-agnostic) | react-native, @tanstack/react-query                          | `.web.tsx` siblings for some components   |
 | providers        | [src/providers/](../../../src/providers/)  | composition root + QueryClient/Repos/queue DI | @tanstack/react-query, expo-sqlite                           | AppProvider async-opens the DB            |
 | hooks            | [src/hooks/](../../../src/hooks/)          | data-flow layer: reads / mutations / keys / gate + theme | @tanstack/react-query                                 | family-root invalidation; gate-required   |
