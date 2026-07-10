@@ -11,16 +11,16 @@ import { renderWithProviders, type RenderWithProvidersResult } from "@/testing/r
 import { flushPending, waitForSync } from "@/testing/async";
 
 /**
- * Spec #07 (staff-detail-record-edit-void) — the look-back entry points, through
- * the real data stack (ADR-0006: InMemoryAdapter, no mocked Repos). No nav or
- * native deps are touched by StaffDetail itself, so nothing is mocked here.
- *
- * Async mechanics (waitForSync / flushPending / QueryClient clear) live in
- * [testing/async.ts](../testing/async.ts) — see its header for the RNTL v14 + React 19
- * rationale first won in #06.
+ * Spec #04 (page-refactor) — staff-detail through the real data stack (ADR-0006:
+ * InMemoryAdapter, no mocked Repos). Reshape: 持仓→库存 (collapsible, default
+ * collapsed, with a header total), a `共 N 条 / 入库 / 出单` record summary, history
+ * grouped by local day with a per-day separator, and ADR-0007 day-batched
+ * rendering driven by `onEndReached` (+ a `加载更多` footer that calls the same
+ * reveal, for discoverability and a stable test seam). Async mechanics
+ * (waitForSync / flushPending / QueryClient clear) live in
+ * [testing/async.ts](../testing/async.ts).
  */
 
-/** The QueryClient backing the current render — cleared after each test for isolation. */
 let activeQueryClient: QueryClient | null = null;
 
 afterEach(() => {
@@ -38,73 +38,123 @@ async function renderDetail(
   return res;
 }
 
-/** Seed one staff + one product + one 'in' record (qty 4 @ 300¢ → ¥12.00). */
-async function seed() {
+/** Join a MoneyText node's `["¥","12.00"]` children into one matchable string. */
+function moneyText(el: { props: Record<string, unknown> }): string {
+  const c = el.props.children;
+  return Array.isArray(c) ? (c as string[]).join("") : String(c);
+}
+
+/** Seed one staff + one ¥3.00 product; return them for tests to build records with. */
+async function seedStaffProduct() {
   const repos = setupRepos(new InMemoryAdapter());
   const staff = await repos.staff.create({ name: "张三", phone: "138", notes: "" });
   const product = await repos.products.create({ title: "可乐", purchase_price: cents(300), category: "饮料" });
-  const { record } = await repos.stockRecords.create({
-    staff_id: staff.id,
-    direction: "in",
-    items: [{ product_id: product.id, qty: 4 }],
-  });
-  return { repos, staffId: staff.id, productId: product.id, recordId: record.id };
+  return { repos, staffId: staff.id, productId: product.id };
 }
 
-describe("StaffDetail — holdings + history (spec #07 AC1)", () => {
-  it("shows the staff's per-product holdings and movement history", async () => {
-    const { repos, staffId, productId, recordId } = await seed();
-    const onOpenRecord = jest.fn();
-    const { view } = await renderDetail(
-      <StaffDetail staffId={staffId} onOpenRecord={onOpenRecord} />,
-      { repos },
-    );
+describe("StaffDetail — 库存 section (collapsible + total) (spec #04 AC1)", () => {
+  it("defaults collapsed, shows the holdings total in the header, and expands on tap", async () => {
+    const { repos, staffId, productId } = await seedStaffProduct();
+    await repos.stockRecords.create({
+      staff_id: staffId, direction: "in", items: [{ product_id: productId, qty: 4 }], // 4 @ 300¢ = 1200¢
+    });
+    const { view } = await renderDetail(<StaffDetail staffId={staffId} onOpenRecord={jest.fn()} />, { repos });
+    await waitForSync(() => view.getByTestId("holdings-toggle"));
 
-    expect(await waitForSync(() => view.getByText("张三"))).toBeTruthy(); // staff name header
-    expect(view.getByTestId(`holding-${productId}`)).toBeTruthy(); // holdings section renders the balance
-    expect(view.getByText("¥12.00")).toBeTruthy(); // holding amount = 300¢ × 4
-    expect(view.getByTestId(`history-${recordId}`)).toBeTruthy(); // history section renders the record
-    expect(view.getByText("入库")).toBeTruthy(); // history shows the direction
+    // Default collapsed → balance rows not rendered.
+    expect(() => view.getByTestId(`holding-${productId}`)).toThrow();
+    // Header shows the current-price total (Σ cost_amount = 1200¢ = ¥12.00).
+    expect(moneyText(view.getByTestId("holdings-total"))).toBe("¥12.00");
+
+    // Tap → expand → the per-product balance row appears.
+    await fireEvent.press(view.getByTestId("holdings-toggle"));
+    await flushPending();
+    expect(view.getByTestId(`holding-${productId}`)).toBeTruthy();
   });
 
-  it("lists history newest-first", async () => {
-    const repos = setupRepos(new InMemoryAdapter());
-    const staff = await repos.staff.create({ name: "张三", phone: "", notes: "" });
-    const product = await repos.products.create({ title: "可乐", purchase_price: cents(100), category: "" });
+  it("renames the section 库存 (not 持仓)", async () => {
+    const { repos, staffId } = await seedStaffProduct();
+    const { view } = await renderDetail(<StaffDetail staffId={staffId} onOpenRecord={jest.fn()} />, { repos });
+    await waitForSync(() => view.getByText("库存"));
+    expect(view.queryByText("持仓")).toBeNull();
+  });
+});
+
+describe("StaffDetail — record summary 共 N 条 / 入库 / 出单 (spec #04 AC2)", () => {
+  it("summarizes the record count + direction totals from the loaded records", async () => {
+    const { repos, staffId, productId } = await seedStaffProduct();
+    // in 4 @ 300¢ = 1200¢ (¥12.00) + out 2 @ 300¢ = 600¢ (¥6.00)
+    await repos.stockRecords.create({ staff_id: staffId, direction: "in", items: [{ product_id: productId, qty: 4 }] });
+    await repos.stockRecords.create({ staff_id: staffId, direction: "out", items: [{ product_id: productId, qty: 2 }] });
+
+    const { view } = await renderDetail(<StaffDetail staffId={staffId} onOpenRecord={jest.fn()} />, { repos });
+    await waitForSync(() => view.getByTestId("record-summary"));
+    expect(view.getByText("共 2 条")).toBeTruthy();
+    expect(moneyText(view.getByTestId("record-in-total"))).toBe("¥12.00");
+    expect(moneyText(view.getByTestId("record-out-total"))).toBe("¥6.00");
+  });
+});
+
+describe("StaffDetail — history grouped by local day, newest first (spec #04 AC3/AC5)", () => {
+  it("groups records under per-day separators (newest day first), labels out as 出单, and opens a record on tap", async () => {
+    const { repos, staffId, productId } = await seedStaffProduct();
     const older = await repos.stockRecords.create({
-      staff_id: staff.id,
-      direction: "in",
-      timestamp: 1_000,
-      items: [{ product_id: product.id, qty: 1 }],
+      staff_id: staffId, direction: "in",
+      timestamp: new Date(2026, 5, 9, 10, 0).getTime(), // 2026-06-09
+      items: [{ product_id: productId, qty: 1 }],
     });
     const newer = await repos.stockRecords.create({
-      staff_id: staff.id,
-      direction: "out",
-      timestamp: 5_000,
-      items: [{ product_id: product.id, qty: 1 }],
+      staff_id: staffId, direction: "out",
+      timestamp: new Date(2026, 5, 10, 14, 30).getTime(), // 2026-06-10
+      items: [{ product_id: productId, qty: 1 }],
     });
 
-    const { view } = await renderDetail(
-      <StaffDetail staffId={staff.id} onOpenRecord={jest.fn()} />,
-      { repos },
-    );
-
-    // Both rows present, then assert the newer (out) row comes before the older (in) row.
-    const newerRow = await waitForSync(() => view.getByTestId(`history-${newer.record.id}`));
-    const olderRow = view.getByTestId(`history-${older.record.id}`);
-    const rows = view.getAllByTestId(/history-/);
-    expect(rows.indexOf(newerRow)).toBeLessThan(rows.indexOf(olderRow));
-  });
-
-  it("opens the record detail when a history row is tapped", async () => {
-    const { repos, staffId, recordId } = await seed();
     const onOpenRecord = jest.fn();
-    const { view } = await renderDetail(
-      <StaffDetail staffId={staffId} onOpenRecord={onOpenRecord} />,
-      { repos },
-    );
+    const { view } = await renderDetail(<StaffDetail staffId={staffId} onOpenRecord={onOpenRecord} />, { repos });
+    await waitForSync(() => view.getByTestId("day-2026/06/10"));
 
-    fireEvent.press(await waitForSync(() => view.getByTestId(`history-${recordId}`)));
-    expect(onOpenRecord).toHaveBeenCalledWith(recordId);
+    // Two per-day separators, newest day (06/10) before older (06/09).
+    const allDays = view.getAllByTestId(/^day-/);
+    expect(allDays.indexOf(view.getByTestId("day-2026/06/10"))).toBeLessThan(allDays.indexOf(view.getByTestId("day-2026/06/09")));
+
+    // The out record is labeled 出单 (not 出库) and carries its HH:mm time.
+    // "出单" appears both in the day separator (the day's out-total label) and on
+    // the out record row — assert presence (≥1), not uniqueness.
+    expect(view.getAllByText("出单").length).toBeGreaterThan(0);
+    expect(view.queryByText("出库")).toBeNull();
+    expect(view.getByText("14:30")).toBeTruthy();
+
+    // Tapping a record row opens its detail.
+    await fireEvent.press(view.getByTestId(`history-${newer.record.id}`));
+    expect(onOpenRecord).toHaveBeenCalledWith(newer.record.id);
+    void older;
+  });
+});
+
+describe("StaffDetail — day-batched rendering (spec #04 AC4, ADR-0007)", () => {
+  it("renders the first days, holds the rest back, and reveals them whole (batch = whole days)", async () => {
+    const { repos, staffId, productId } = await seedStaffProduct();
+    // Seven records, one per distinct local day (June 1–7 2026).
+    for (let d = 1; d <= 7; d++) {
+      await repos.stockRecords.create({
+        staff_id: staffId, direction: "in",
+        timestamp: new Date(2026, 5, d, 9, 0).getTime(),
+        items: [{ product_id: productId, qty: 1 }],
+      });
+    }
+    const { view } = await renderDetail(<StaffDetail staffId={staffId} onOpenRecord={jest.fn()} />, { repos });
+    await waitForSync(() => view.getByTestId("record-summary"));
+
+    // INITIAL_DAYS (5) day separators render first; days 6–7 are held back.
+    expect(view.getAllByTestId(/^day-/)).toHaveLength(5);
+    expect(() => view.getByTestId("day-2026/06/02")).toThrow(); // the 6th day (newest-first) isn't split in
+    // A "加载更多" affordance is shown while more days remain.
+    expect(view.getByTestId("load-more-days")).toBeTruthy();
+
+    // Reveal the next batch → all 7 day separators render, whole (no split), and the affordance disappears.
+    await fireEvent.press(view.getByTestId("load-more-days"));
+    await flushPending();
+    expect(view.getAllByTestId(/^day-/)).toHaveLength(7);
+    expect(view.queryByTestId("load-more-days")).toBeNull();
   });
 });

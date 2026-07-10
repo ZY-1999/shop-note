@@ -235,7 +235,12 @@ describe("RecordDetail — cross-view refresh (spec #07 AC5)", () => {
       { repos },
     );
 
-    // sanity: staff detail shows the holding (the 'in' 4 × ¥3.00) + the history row
+    // sanity: staff detail shows the holding (the 'in' 4 × ¥3.00) + the history row.
+    // Spec #04 made the 库存 section collapsed-by-default, so expand it first to
+    // surface the holding row (the void below must make it disappear on refresh).
+    await waitForSync(() => view.getByTestId("holdings-toggle"));
+    await fireEvent.press(view.getByTestId("holdings-toggle"));
+    await flushPending();
     await waitForSync(() => view.getByTestId(`holding-${productId}`));
     expect(view.getByTestId(`history-${recordId}`)).toBeTruthy();
 
