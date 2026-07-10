@@ -3,6 +3,7 @@ import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-
 
 import { SmokeEntry } from '@/components/smoke-entry';
 import { MoneyText } from '@/components/money-text';
+import { LevelBadge } from '@/components/level-badge';
 import {
   useCreateStaff,
   useUpdateStaff,
@@ -17,6 +18,7 @@ import { useStaff, useProducts } from '@/hooks/reads';
 import { useRepos } from '@/providers/providers';
 import { useTheme } from '@/hooks/use-theme';
 import { cents, type Cents } from '@/data/primitives';
+import { DEFAULT_STAFF_LEVEL, STAFF_LEVELS, type StaffLevel } from '@/data/staff';
 
 /**
  * The 管理 tab (spec #09) — master-data maintenance. A staff|product toggle over
@@ -109,7 +111,10 @@ function StaffManage() {
             disabled={voided}
             onPress={voided ? undefined : () => setEditingId(item.id)}>
             <View style={styles.rowMain}>
-              <Text style={[styles.name, { color: voided ? theme.textSecondary : theme.text }]}>{item.name}</Text>
+              <View style={styles.nameRow}>
+                <Text style={[styles.name, { color: voided ? theme.textSecondary : theme.text }]}>{item.name}</Text>
+                {!voided && <LevelBadge level={item.level} />}
+              </View>
               <Text style={[styles.sub, { color: theme.textSecondary }]}>{item.phone || '--'}</Text>
             </View>
             {voided ? (
@@ -154,6 +159,7 @@ function StaffForm({ staffId, onDone }: { staffId?: string; onDone: () => void }
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [notes, setNotes] = useState('');
+  const [level, setLevel] = useState<StaffLevel>(DEFAULT_STAFF_LEVEL);
   const [error, setError] = useState<string | null>(null);
   const [loaded, setLoaded] = useState(!editing);
 
@@ -167,6 +173,7 @@ function StaffForm({ staffId, onDone }: { staffId?: string; onDone: () => void }
       setName(s.name);
       setPhone(s.phone);
       setNotes(s.notes);
+      setLevel(s.level);
       setLoaded(true);
     });
     return () => { cancelled = true; };
@@ -178,7 +185,7 @@ function StaffForm({ staffId, onDone }: { staffId?: string; onDone: () => void }
       return;
     }
     setError(null);
-    const payload = { name: name.trim(), phone: phone.trim(), notes: notes.trim() };
+    const payload = { name: name.trim(), phone: phone.trim(), notes: notes.trim(), level };
     if (editing && staffId) {
       updateStaff.mutate({ staffId, patch: payload }, { onSuccess: onDone });
     } else {
@@ -217,6 +224,23 @@ function StaffForm({ staffId, onDone }: { staffId?: string; onDone: () => void }
           onChangeText={setNotes}
           multiline
         />
+      </View>
+      <View style={styles.field}>
+        <Text style={[styles.label, { color: theme.textSecondary }]}>等级</Text>
+        <View style={styles.levelSegs}>
+          {[...STAFF_LEVELS].sort((a, b) => a.rank - b.rank).map(({ code, label }) => {
+            const selected = level === code;
+            return (
+              <Pressable
+                key={code}
+                testID={`staff-level-${code}`}
+                onPress={() => setLevel(code)}
+                style={[styles.levelSeg, { borderColor: theme.border }, selected && { backgroundColor: theme.backgroundSelected }]}>
+                <Text style={{ color: selected ? theme.text : theme.textSecondary }}>{label}</Text>
+              </Pressable>
+            );
+          })}
+        </View>
       </View>
       {error && (
         <Text testID="staff-form-error" style={{ color: theme.danger }}>
@@ -445,6 +469,9 @@ const styles = StyleSheet.create({
   searchInput: { borderWidth: 1, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 8, fontSize: 15 },
   row: { flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 8, gap: 8 },
   rowMain: { flex: 1, gap: 2 },
+  nameRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  levelSegs: { flex: 1, flexDirection: 'row', borderWidth: 1, borderRadius: 8, overflow: 'hidden' },
+  levelSeg: { flex: 1, paddingVertical: 8, alignItems: 'center' },
   rowAction: { borderWidth: 1, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6 },
   voidedTag: { fontSize: 12, fontWeight: '600' },
   name: { fontSize: 16, fontWeight: '600' },

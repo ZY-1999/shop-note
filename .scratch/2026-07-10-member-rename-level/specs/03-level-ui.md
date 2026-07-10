@@ -1,7 +1,7 @@
 # 会员等级 UI — 管理表单等级选择器 + 列表/详情等级徽标
 
 Type: spec
-Status: ready-for-agent
+Status: ready-for-human # implemented via /tdd 2026-07-10 — awaits Stage 3 review
 Parent: #01
 Blocked by: #01 (level-data-foundation) # 需 Staff.level 字段 + STAFF_LEVELS 注册表
 
@@ -46,3 +46,19 @@ Blocked by: #01 (level-data-foundation) # 需 Staff.level 字段 + STAFF_LEVELS 
 ## Rework on failure
 
 失败隔离到 UI 组件。若选择器控件不合适（如 `@expo/ui` 在 SDK 57 行为异常），切回 segments 样式，仅改 `StaffForm`；徽标为独立展示，可单独调整。数据层（#01）不受影响。
+
+## Comments
+
+- 2026-07-10 — implemented via `/tdd`（2 个垂直 chunk：选择器+表单+管理行徽标 → staff-row+staff-detail 徽标）。新增共享展示组件 `src/components/level-badge.tsx`（金站显示 `labelForLevel` 文案、普站返回 null，单源不硬编码）。
+- AC → 测试：
+  - 选择器默认普站 + 可选 — `manage-tab.test.tsx::create form has a level selector...`
+  - 选金站创建 → 落库 gold + 行内金站徽标 — `::picking 金站 creates a 金站 member and shows the 金站 badge in the list`
+  - 编辑回填（金站未动保存仍金站）— `::edit form preloads the member's level...`
+  - 管理行徽标 — 同「picking 金站」断言行内「金站」
+  - 记账 `staff-row` 徽标（金站显示、普站无）— `staff-row.test.tsx::shows the 金站 badge for a gold member; no badge for a 普站 member`
+  - 会员详情头徽标（只读）— `staff-detail.test.tsx::shows the 金站 badge next to the name for a gold member`
+  - 标签走 `labelForLevel` 单源 — `level-badge.tsx` 用 `labelForLevel`，不硬编码「普站/金站」（代码检视）
+  - 非回归 — 全量 216 passed
+  - **[手动/边界]** 暗色模式 / 徽标配色（accent）/ 选择器手感 — 未由 /tdd 跑（ADR-0006，留手验）
+- 控件采用复用 manage-tab segments 样式（两段 Pressable + backgroundSelected 选中态），未引入 `@expo/ui`；等级选项按 rank 升序（普站/金站）渲染，文案来自 `STAFF_LEVELS`。
+- Test run: `npx jest --colors=false --forceExit` → 216 passed, 0 failed（28 suites）；`npx tsc --noEmit` clean。

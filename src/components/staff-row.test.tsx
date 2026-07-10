@@ -82,3 +82,18 @@ describe("StaffRow — action callbacks carry the staff id (spec #02 AC5)", () =
     expect(onOpen).toHaveBeenCalledWith("s1");
   });
 });
+
+describe("StaffRow — member level badge (member-rename-level #03)", () => {
+  it("shows the 金站 badge for a gold member; no badge for a 普站 member", async () => {
+    const gold: Staff = { ...staff, id: "s-gold", level: "gold" };
+    const goldView = await render(
+      <StaffRow staff={gold} onIn={jest.fn()} onOut={jest.fn()} onOpen={jest.fn()} />,
+    );
+    expect(goldView.getByText("金站")).toBeTruthy();
+
+    const normalView = await render(
+      <StaffRow staff={staff} onIn={jest.fn()} onOut={jest.fn()} onOpen={jest.fn()} />,
+    );
+    expect(normalView.queryByText("金站")).toBeNull();
+  });
+});

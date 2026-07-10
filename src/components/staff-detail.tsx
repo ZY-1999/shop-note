@@ -3,6 +3,7 @@ import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
 import { MoneyText } from '@/components/money-text';
+import { LevelBadge } from '@/components/level-badge';
 import { formatDate, formatTime } from '@/components/date-format';
 import { useStaffById, useStaffInventory, useStockRecords } from '@/hooks/reads';
 import { useTheme } from '@/hooks/use-theme';
@@ -177,6 +178,7 @@ export function StaffDetail({ staffId, onOpenRecord }: StaffDetailProps) {
       ListHeaderComponent={
         <View style={styles.header}>
           <Text style={[styles.name, { color: theme.text }]}>{staff.data?.name ?? '加载中'}</Text>
+          {staff.data && <LevelBadge level={staff.data.level} />}
 
           <View style={[styles.card, { borderColor: theme.border }]}>
             <Pressable

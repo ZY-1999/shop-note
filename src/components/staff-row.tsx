@@ -1,6 +1,7 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { MoneyText } from '@/components/money-text';
+import { LevelBadge } from '@/components/level-badge';
 import { useTheme } from '@/hooks/use-theme';
 import { cents } from '@/data/primitives';
 import type { StaffSummary } from '@/data/inventory';
@@ -44,6 +45,7 @@ export function StaffRow({ staff, summary, onIn, onOut, onOpen }: StaffRowProps)
       <View style={styles.main}>
         <View style={styles.header}>
           <Text style={styles.name}>{staff.name}</Text>
+          <LevelBadge level={staff.level} />
           {negative && (
             <Text style={[styles.badge, { color: theme.danger, borderColor: theme.danger }]}>
               欠货
