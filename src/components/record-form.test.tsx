@@ -50,7 +50,9 @@ jest.mock("@expo/ui/community/datetime-picker", () => {
     }) =>
       React.createElement(
         View,
-        { testID, onValueChange, onDismiss },
+        // ViewProps doesn't list onValueChange/onDismiss (the picker's own props),
+        // so assert — RNTL reads them off the View's props at fireEvent time.
+        { testID, onValueChange, onDismiss } as any,
         React.createElement(Text, null, value ? new Date(value).toISOString() : ""),
         React.createElement(
           Pressable,
@@ -273,10 +275,10 @@ describe("RecordForm — Android dialog picker contract (spec #06 Android fix)",
     const { repos, view } = await renderPicked("in", "1");
     // dialog not mounted until the trigger is tapped
     expect(() => view.getByTestId("record-time-picker")).toThrow();
-    fireEvent.press(view.getByTestId("record-time"));
+    await fireEvent.press(view.getByTestId("record-time"));
     const picker = view.getByTestId("record-time-picker");
     // OK → new timestamp + the dialog unmounts
-    fireEvent(
+    await fireEvent(
       picker,
       "onValueChange",
       { nativeEvent: { timestamp: mockBackdateMs, utcOffset: 0 } },
@@ -285,20 +287,22 @@ describe("RecordForm — Android dialog picker contract (spec #06 Android fix)",
     expect(() => view.getByTestId("record-time-picker")).toThrow();
     await flushPending(); // let setTimestamp commit before submit reads it
     fireEvent.press(view.getByTestId("submit"));
-    const [posted] = await waitForSync(async () => (await repos.stockRecords.list())[0]);
+    await waitForSync(async () => expect((await repos.stockRecords.list()).length).toBe(1));
+    const posted = (await repos.stockRecords.list())[0];
     expect(posted.record.timestamp).toBe(mockBackdateMs);
   });
 
   it("cancel via onDismiss unmounts without writing a new time", async () => {
     const { repos, view } = await renderPicked("in", "1");
-    fireEvent.press(view.getByTestId("record-time"));
-    fireEvent(view.getByTestId("record-time-picker"), "onDismiss");
+    await fireEvent.press(view.getByTestId("record-time"));
+    await fireEvent(view.getByTestId("record-time-picker"), "onDismiss");
     // Cancel unmounts the dialog…
     expect(() => view.getByTestId("record-time-picker")).toThrow();
     // …and writes nothing — submit carries the default (~now), not a dialog value.
     await flushPending();
     fireEvent.press(view.getByTestId("submit"));
-    const [posted] = await waitForSync(async () => (await repos.stockRecords.list())[0]);
+    await waitForSync(async () => expect((await repos.stockRecords.list()).length).toBe(1));
+    const posted = (await repos.stockRecords.list())[0];
     expect(posted.record.timestamp).toBeGreaterThan(Date.now() - 5000);
   });
 });
