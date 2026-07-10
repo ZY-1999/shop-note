@@ -369,5 +369,22 @@ describe("ManageTab — member level selector + badge (member-rename-level #03)"
     await waitForSync(() => view.getByText("金一"));
     expect((await repos.staff.getById(gold.id))?.level).toBe("gold");
   });
+
+  it("edit form: changing the level persists via useUpdateStaff and updates the row badge", async () => {
+    const repos = setupRepos(new InMemoryAdapter());
+    const gold = await repos.staff.create({ name: "金二", phone: "", notes: "", level: "gold" });
+    const { view } = await renderManage(<ManageTab />, { repos });
+    await waitForSync(() => view.getByTestId(`manage-staff-${gold.id}`));
+    expect(view.getByText("金站")).toBeTruthy(); // row badge before edit
+
+    await fireEvent.press(view.getByTestId(`manage-staff-${gold.id}`)); // open edit
+    await waitForSync(() => view.getByTestId("staff-name-input"));
+    await fireEvent.press(view.getByTestId("staff-level-normal")); // 金站 → 普站
+    await fireEvent.press(view.getByTestId("staff-submit"));
+
+    // back to list: badge gone (普站), repo reflects the change
+    await waitForSync(() => expect(() => view.getByText("金站")).toThrow());
+    expect((await repos.staff.getById(gold.id))?.level).toBe("normal");
+  });
 });
 

@@ -128,6 +128,19 @@ describe("记账 screen — search narrows active staff by name (spec #02, no re
   });
 });
 
+describe("记账 screen — member rename (member-rename-level #02)", () => {
+  it("uses the 会员 search placeholder (员工→会员 display rename)", async () => {
+    const { view } = await renderBook(<BookkeepingTab />, {
+      seed: async (repos) => {
+        await repos.staff.create({ name: "张三", phone: "138", notes: "" });
+      },
+    });
+    await waitForSync(() => view.getByTestId("staff-search"));
+    expect(view.getByPlaceholderText("搜索会员姓名或电话")).toBeTruthy();
+    expect(view.queryByPlaceholderText("搜索员工姓名或电话")).toBeNull();
+  });
+});
+
 describe("记账 screen — merged row from the one-pass rollup (spec #02 AC1)", () => {
   it("renders 库存：{qty}件/{variety}种 + amount on the row", async () => {
     const { view } = await renderBook(<BookkeepingTab />, {
