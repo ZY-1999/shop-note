@@ -5,6 +5,7 @@ import { fireEvent } from "@testing-library/react-native";
 import { Platform } from "react-native";
 
 import { RecordForm } from "@/components/record-form";
+import { formatDateTime } from "@/components/date-format";
 import { InMemoryAdapter } from "@/data/in-memory";
 import { setupRepos, type Repos } from "@/data/composition";
 import { cents } from "@/data/primitives";
@@ -304,5 +305,94 @@ describe("RecordForm — Android dialog picker contract (spec #06 Android fix)",
     await waitForSync(async () => expect((await repos.stockRecords.list()).length).toBe(1));
     const posted = (await repos.stockRecords.list())[0];
     expect(posted.record.timestamp).toBeGreaterThan(Date.now() - 5000);
+  });
+});
+
+describe("RecordForm — chip pick + stepper (spec #03 AC1/AC2)", () => {
+  it("picking a chip starts a line at qty 1; tapping it again adds +1 (no duplicate line)", async () => {
+    const { repos, staffId, productId } = await seed();
+    const { view } = await renderForm(<RecordForm staffId={staffId} direction="in" />, { repos });
+
+    await fireEvent.press(await waitForSync(() => view.getByTestId(`pick-${productId}`)));
+    await flushPending();
+    expect(view.getByTestId("qty-0").props.value).toBe("1"); // chip pick starts at 1 (not empty)
+
+    // Tapping the SAME chip again → +1 on the existing line, not a new line.
+    await fireEvent.press(view.getByTestId(`pick-${productId}`));
+    await flushPending();
+    expect(view.getByTestId("qty-0").props.value).toBe("2");
+    expect(() => view.getByTestId("qty-1")).toThrow(); // still one line — no duplicate
+
+    // Search is deliberately NOT cleared → the chip stays for repeat taps (spec #03).
+    expect(view.getByTestId(`pick-${productId}`)).toBeTruthy();
+  });
+
+  it("the stepper + increases, − clamps at 1, and 删除 removes the line", async () => {
+    const { view } = await renderPicked("in", "1"); // one line, qty "1"
+
+    // − at qty 1 clamps to 1 (never below); the operator removes a line via 删除, not −.
+    await fireEvent.press(view.getByTestId("dec-0"));
+    await flushPending();
+    expect(view.getByTestId("qty-0").props.value).toBe("1");
+
+    // + → 2
+    await fireEvent.press(view.getByTestId("inc-0"));
+    await flushPending();
+    expect(view.getByTestId("qty-0").props.value).toBe("2");
+
+    // − → back to 1
+    await fireEvent.press(view.getByTestId("dec-0"));
+    await flushPending();
+    expect(view.getByTestId("qty-0").props.value).toBe("1");
+
+    // 删除 removes the line entirely
+    await fireEvent.press(view.getByTestId("remove-0"));
+    await flushPending();
+    expect(() => view.getByTestId("qty-0")).toThrow();
+  });
+});
+
+describe("RecordForm — 出单 label + 备注 field (spec #03 AC2/AC3)", () => {
+  it("renders the out-direction as 出单 (not 出库)", async () => {
+    const { repos, staffId } = await seed();
+    const { view } = await renderForm(<RecordForm staffId={staffId} direction="out" />, { repos });
+    expect(await waitForSync(() => view.getByText("出单"))).toBeTruthy();
+    expect(view.queryByText("出库")).toBeNull();
+  });
+
+  it("renders 备注 as a label:input field", async () => {
+    const { repos, staffId } = await seed();
+    const { view } = await renderForm(<RecordForm staffId={staffId} direction="in" />, { repos });
+    expect(await waitForSync(() => view.getByText("备注："))).toBeTruthy();
+    expect(view.getByTestId("note")).toBeTruthy();
+  });
+});
+
+describe("RecordForm — buttonized time affordance shows formatDateTime (spec #03 AC4)", () => {
+  // The Android branch renders a Pressable affordance (inputBg + border + the
+  // formatted timestamp + an icon) that mounts the dialog picker on tap. iOS keeps
+  // its inline picker (its backdate path is covered by the spec #06 suite above).
+  const originalOS = Platform.OS;
+  beforeEach(() => {
+    Platform.OS = "android";
+  });
+  afterEach(() => {
+    Platform.OS = originalOS;
+  });
+
+  it("the time affordance reflects formatDateTime(timestamp) after a dialog backdate", async () => {
+    const { repos, staffId, view } = await renderPicked("in", "1");
+    // Mount the dialog, pick the known backdate.
+    await fireEvent.press(view.getByTestId("record-time"));
+    await fireEvent(
+      view.getByTestId("record-time-picker"),
+      "onValueChange",
+      { nativeEvent: { timestamp: mockBackdateMs, utcOffset: 0 } },
+      new Date(mockBackdateMs),
+    );
+    await flushPending(); // setTimestamp commits → the affordance re-renders
+    // The affordance now shows the local formatDateTime of the backdated timestamp.
+    expect(view.getByText(formatDateTime(mockBackdateMs))).toBeTruthy();
+    void repos;
   });
 });

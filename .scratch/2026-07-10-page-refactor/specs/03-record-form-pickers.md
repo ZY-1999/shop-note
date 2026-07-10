@@ -1,7 +1,7 @@
 # 记账录入表单 — 商品 chip + 步进器、备注 label:input、时间按钮化、出单
 
 Type: spec
-Status: ready-for-agent
+Status: ready-for-human # Stage 2 (/tdd) implemented 2026-07-10 — all ACs GREEN in jest/RNTL, tsc clean; chip+步进器+备注label+时间按钮化+出单 全覆盖，写契约/picker 契约无回归
 Parent: #01
 Blocked by: #1
 
@@ -43,3 +43,22 @@ Blocked by: #1
 ## Rework on failure
 
 隔离在 record-form + 其测试；repo 重新校验，故数量/picker bug 无法污染账本。若 EDIT 合并出问题，根因在步进器如何喂 line id（UI），非 repo 合并。
+
+---
+
+## Stage 2 evidence (implemented 2026-07-10)
+
+`npx jest` → 28 suites / 202 passed（含本 spec 5 个新测试 + 既有 #06/#07 全部无回归）；`npx tsc --noEmit` → exit 0。
+
+- **AC1（chip 拣选：点 = qty 1，再点已选 = +1 不重复建行）** → `src/components/record-form.test.tsx` "picking a chip starts a line at qty 1; tapping it again adds +1 (no duplicate line)"（首点 `qty-0`.value=`"1"`；再点同一 `pick-${id}` → `"2"`；`qty-1` 仍不存在 = 无重复行；且 `pick-${id}` 仍在 = 搜索未清，spec 锁定）。GREEN。
+- **AC2（步进器 −/[input]/+，− 在 1 时钳位，删行走删除，直输 + 即时金额）** → "the stepper + increases, − clamps at 1, and 删除 removes the line"（dec-0 在 qty=1 时按下仍 `"1"` 不破 1；inc-0 → `"2"`；dec-0 → `"1"`；remove-0 → qty-0 消失）+ 既有 "updates the line amount and total as the operator types a qty"（直输数量即时金额/合计，×2 `¥12.00`，改 10 → 合计 `30.00`）。GREEN。
+- **AC3（备注 label:input 单行）** → "renders 备注 as a label:input field"（`getByText("备注：")` + `testID="note"` TextInput）。GREEN。
+- **AC4（时间按钮化 formatDateTime + 图标，Android dialog confirm/cancel unmount 契约保留，iOS inline 保留）** → "the time affordance reflects formatDateTime(timestamp) after a dialog backdate"（Android：tap `record-time` 挂载 `record-time-picker` → onValueChange 回写 → 按钮文本 = `formatDateTime(mockBackdateMs)`）+ 既有 "mounts the picker on tap, confirms via onValueChange, and unmounts"（onValueChange 后 `record-time-picker` 卸载 + 提交时间正确）+ "cancel via onDismiss unmounts without writing a new time"（onDismiss 卸载 + 不写时间）+ "lets the operator backdate the time"（iOS inline `record-time-backdate` 路径）。GREEN。
+- **AC5（out = 出单，in = 入库）** → "renders the out-direction as 出单 (not 出库)"（`getByText("出单")` + `queryByText("出库")` null）；`DIRECTION_LABEL = { in:'入库', out:'出单' }`。GREEN。
+- **AC6（写契约不变：校验仍阻、payload 结构不变、EDIT 稳定 item id 合并、out 超持仓不阻）** → 既有 "blocks submit with no items" + "blocks submit when a line has a non-integer qty"（校验）+ "posts the record (snapshot at current price) and navigates back"（payload：staff_id/direction/timestamp/items + 价格快照）+ "posts an out exceeding current holdings"（out 超持仓不阻）+ edit 模式由 `record-detail.test.tsx` 覆盖（稳定 id 合并，本 spec 全量跑过无回归）。GREEN。
+
+**改动范围**：`src/components/record-form.tsx`（chip 拣选 + `QtyStepper` 内部子件 + 备注 label:input field + Android 时间按钮 `formatDateTime`+Ionicons + `DIRECTION_LABEL.out='出单'`）+ `src/components/record-form.test.tsx`（+5 新测试，既有 #06/#07 测试保留）。消费 #01 的 `formatDateTime`。`<RecordForm staffId direction edit? onSaved?>` 签名不变；`validateRecordForm` 规则、create/update payload、EDIT 合并契约全不变。
+
+**力学要点**：chip 拣选后**不清搜索框**（spec 锁定——chip 留住可重复点 +1）；`pickProduct` 找到既有行则 `qtyInt+1`，否则新建 `qty:'1'`；步进器 `−` 在 `qtyInt<=1` 时 disabled+钳位，删除走独立「删除」按钮；Android 时间按钮化但 dialog mount/unmount 契约（onValueChange 确认卸载 / onDismiss 取消卸载）原样保留（commits b0b6cd9/7aea40b，PROJECT_KNOWLEDGE 不可回退项）；测试沿用 `waitForSync`/`flushPending`/`queryClient.clear`。
+
+Commit: see `feat(record-form): 商品 chip + 步进器 + 备注 label:input + 时间按钮化 + 出单 (#03)` (this spec's Stage 2 commit).

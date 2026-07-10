@@ -1,9 +1,11 @@
 import DateTimePicker, { type DateTimePickerChangeEvent } from '@expo/ui/community/datetime-picker';
+import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { useState } from 'react';
 import { Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { MoneyText } from '@/components/money-text';
+import { formatDateTime } from '@/components/date-format';
 import { validateRecordForm } from '@/components/record-form-validation';
 import { useCreateStockRecord, useUpdateStockRecord } from '@/hooks/mutations';
 import { useProducts, useStaffById } from '@/hooks/reads';
@@ -13,27 +15,26 @@ import type { Direction } from '@/data/stock-record';
 import type { Product } from '@/data/product';
 
 /**
- * The record form (spec #06 post + #07 edit) — the UI's only write path into
- * the movement ledger. In CREATE mode (opened from a 记账 row's 入库/出库 button)
- * it posts a new record; in EDIT mode (embedded in #07's RecordDetail) it is
- * preloaded with the record's existing lines and calls update instead.
+ * The record form — the UI's only write path into the movement ledger. In CREATE
+ * mode (opened from a 记账 row's 入库/出单 button) it posts a new record; in EDIT
+ * mode (embedded in RecordDetail) it is preloaded with the record's existing
+ * lines and calls update instead.
  *
- * The operator searches a product (`useProducts`), taps to add a line, enters a
- * qty, and sees each line's amount + the running total LIVE (derived in render —
- * single source of truth, React-Compiler-friendly). Optional note + backdatable
- * time. Submit runs structural validation (a line needs a product and an integer
- * qty > 0 — mirroring the repo's `RangeError` guard).
+ * Spec #03 (page-refactor) reshaped the line-entry UX without touching the write
+ * contract: product search results render as chips (tap = add a line at qty 1;
+ * tap an ALREADY-picked product = +1 on its line, no duplicate — and search is
+ * deliberately NOT cleared so the chip stays for repeat taps); each line has a
+ * `− [qty] +` stepper (− clamps at 1; remove a line via 删除); 备注 is a
+ * label:input field; the time control is a buttonized affordance
+ * (`formatDateTime` + an icon) that mounts the picker.
  *
- * The one subtle contract in EDIT mode (spec #07 deep-module note): each
- * preloaded line carries its stable item `id` through submit. That id is what
- * lets the repo's merge tell TOUCHED lines (resnapshot at the product's current
- * price/title) from UNTOUCHED ones (keep their original posting-time snapshot).
- * Hide that behind the form — the operator just edits lines.
+ * The one subtle contract in EDIT mode (unchanged): each preloaded line carries
+ * its stable item `id` through submit — what lets the repo's merge tell TOUCHED
+ * lines (resnapshot) from UNTOUCHED ones (keep their posting-time snapshot).
  *
  * Deliberately does NOT check stock sufficiency: an `out` over holdings is
  * allowed (produces 欠货 downstream — PRD invariant). Router-agnostic: the route
- * file reads params and passes them as props, so the form is RNTL-testable
- * directly (create mode); edit mode is driven by the `edit` prop from RecordDetail.
+ * file reads params and passes them as props, so the form is RNTL-testable.
  */
 interface PickedLine {
   /** Stable item id when editing — drives the repo's touched/untouched merge. Undefined for new lines. */
@@ -69,7 +70,12 @@ export interface RecordFormProps {
   onSaved?: () => void;
 }
 
-const DIRECTION_LABEL: Record<Direction, string> = { in: '入库', out: '出库' };
+const DIRECTION_LABEL: Record<Direction, string> = { in: '入库', out: '出单' };
+
+/** Parsed integer qty (floored; empty/non-numeric → 0) for stepper math. */
+function qtyInt(qty: string): number {
+  return Math.floor(Number(qty) || 0);
+}
 
 /** Safe per-line amount: 0 when qty is empty/non-integer, else price × qty (both integer → cents-safe). */
 function lineAmount(line: PickedLine): number {
@@ -102,9 +108,17 @@ export function RecordForm({ staffId, direction, edit, onSaved }: RecordFormProp
   const total = linesWithAmount.reduce((sum, l) => sum + l.amount, 0);
   const pending = edit ? updateRecord.isPending : createRecord.isPending;
 
+  // Chip pick (spec #03): a product already on a line → +1 on that line (no
+  // duplicate); otherwise add a new line at qty 1. Search is deliberately NOT
+  // cleared so the chip stays tappable for repeat +1s.
   const pickProduct = (p: Product) => {
-    setLines((prev) => [...prev, { productId: p.id, title: p.title, price: p.purchase_price, qty: '' }]);
-    setSearch('');
+    setLines((prev) => {
+      const existing = prev.findIndex((l) => l.productId === p.id);
+      if (existing >= 0) {
+        return prev.map((l, i) => (i === existing ? { ...l, qty: String(qtyInt(l.qty) + 1) } : l));
+      }
+      return [...prev, { productId: p.id, title: p.title, price: p.purchase_price, qty: '1' }];
+    });
     setError(null);
   };
   const setQty = (index: number, qty: string) => {
@@ -164,30 +178,36 @@ export function RecordForm({ staffId, direction, edit, onSaved }: RecordFormProp
         value={search}
         onChangeText={setSearch}
       />
-      {products.data?.map((p) => (
-        <Pressable
-          key={p.id}
-          testID={`pick-${p.id}`}
-          onPress={() => pickProduct(p)}
-          style={[styles.match, { borderColor: theme.border }]}>
-          <Text style={{ color: theme.text }}>{p.title}</Text>
-        </Pressable>
-      ))}
+      {products.data && products.data.length > 0 && (
+        <View style={styles.chips}>
+          {products.data.map((p) => {
+            const picked = lines.some((l) => l.productId === p.id);
+            return (
+              <Pressable
+                key={p.id}
+                testID={`pick-${p.id}`}
+                onPress={() => pickProduct(p)}
+                style={[styles.chip, { borderColor: picked ? theme.success : theme.border, backgroundColor: picked ? theme.backgroundSelected : theme.inputBg }]}>
+                <Text style={{ color: theme.text }}>
+                  {p.title}
+                  {picked ? ` ×${lines.find((l) => l.productId === p.id)?.qty}` : ''}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+      )}
 
       {linesWithAmount.map((line, i) => (
         <View key={`${line.productId}-${i}`} style={[styles.line, { borderColor: theme.border }]}>
-          <Text style={[styles.lineTitle, { color: theme.text }]}>{line.title}</Text>
-          <TextInput
-            testID={`qty-${i}`}
-            style={[styles.qtyInput, { backgroundColor: theme.inputBg, borderColor: theme.border, color: theme.text }]}
-            keyboardType="numeric"
-            value={line.qty}
-            onChangeText={(v) => setQty(i, v)}
-          />
-          <MoneyText cents={cents(line.amount)} />
-          <Pressable testID={`remove-${i}`} onPress={() => removeLine(i)}>
-            <Text style={{ color: theme.danger }}>删除</Text>
-          </Pressable>
+          <View style={styles.lineTop}>
+            <Text style={[styles.lineTitle, { color: theme.text }]}>{line.title}</Text>
+            <MoneyText cents={cents(line.amount)} />
+            <Pressable testID={`remove-${i}`} onPress={() => removeLine(i)}>
+              <Text style={{ color: theme.danger }}>删除</Text>
+            </Pressable>
+          </View>
+          <QtyStepper index={i} qty={line.qty} onSetQty={setQty} />
         </View>
       ))}
 
@@ -196,23 +216,32 @@ export function RecordForm({ staffId, direction, edit, onSaved }: RecordFormProp
         <MoneyText cents={cents(total)} testID="running-total" />
       </View>
 
-      <TextInput
-        testID="note"
-        style={[styles.input, { backgroundColor: theme.inputBg, borderColor: theme.border, color: theme.text }]}
-        placeholder="备注（单号 / 原因）"
-        placeholderTextColor={theme.textSecondary}
-        value={note}
-        onChangeText={setNote}
-      />
+      <View style={styles.field}>
+        <Text style={[styles.fieldLabel, { color: theme.textSecondary }]}>备注：</Text>
+        <TextInput
+          testID="note"
+          style={[styles.input, styles.fieldInput, { backgroundColor: theme.inputBg, borderColor: theme.border, color: theme.text }]}
+          placeholder="单号 / 原因"
+          placeholderTextColor={theme.textSecondary}
+          value={note}
+          onChangeText={setNote}
+        />
+      </View>
+
       <View style={styles.timeRow}>
         <Text style={[styles.timeLabel, { color: theme.textSecondary }]}>时间</Text>
-        {/* Android: dialog picker — tap the timestamp to mount it; unmount on
+        {/* Android: dialog picker — the affordance is a styled Pressable
+            (formatDateTime + an icon); tapping mounts the dialog, unmount on
             confirm (onValueChange) or cancel (onDismiss) per the dialog contract.
             iOS: inline picker stays mounted, nudges fire onValueChange directly. */}
         {Platform.OS === 'android' ? (
           <>
-            <Pressable testID="record-time" onPress={() => setShowTime(true)}>
-              <Text style={{ color: theme.text }}>{new Date(timestamp).toLocaleString()}</Text>
+            <Pressable
+              testID="record-time"
+              onPress={() => setShowTime(true)}
+              style={[styles.timeBtn, { backgroundColor: theme.inputBg, borderColor: theme.border }]}>
+              <Text style={{ color: theme.text }}>{formatDateTime(timestamp)}</Text>
+              <Ionicons name="time-outline" size={16} color={theme.textSecondary} />
             </Pressable>
             {showTime && (
               <DateTimePicker
@@ -254,20 +283,59 @@ export function RecordForm({ staffId, direction, edit, onSaved }: RecordFormProp
   );
 }
 
+/** `− [qty] +` per line (spec #03). − clamps at 1 (disabled there); 删除 removes the line. */
+function QtyStepper({ index, qty, onSetQty }: { index: number; qty: string; onSetQty: (i: number, qty: string) => void }) {
+  const theme = useTheme();
+  const atMin = qtyInt(qty) <= 1;
+  return (
+    <View style={styles.stepper}>
+      <Pressable
+        testID={`dec-${index}`}
+        onPress={() => onSetQty(index, String(Math.max(1, qtyInt(qty) - 1)))}
+        disabled={atMin}
+        style={[styles.stepBtn, { borderColor: theme.border }, atMin && { opacity: 0.4 }]}>
+        <Text style={styles.stepBtnText}>−</Text>
+      </Pressable>
+      <TextInput
+        testID={`qty-${index}`}
+        style={[styles.qtyInput, { backgroundColor: theme.inputBg, borderColor: theme.border, color: theme.text }]}
+        keyboardType="numeric"
+        value={qty}
+        onChangeText={(v) => onSetQty(index, v)}
+      />
+      <Pressable
+        testID={`inc-${index}`}
+        onPress={() => onSetQty(index, String(qtyInt(qty) + 1))}
+        style={[styles.stepBtn, { borderColor: theme.border }]}>
+        <Text style={styles.stepBtnText}>+</Text>
+      </Pressable>
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   container: { flex: 1, padding: 12, gap: 8 },
   header: { flexDirection: 'row', alignItems: 'baseline', gap: 12, paddingVertical: 4 },
   direction: { fontSize: 18, fontWeight: '700' },
   staffName: { fontSize: 16 },
   input: { borderWidth: 1, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10, fontSize: 15 },
-  match: { borderWidth: 1, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10 },
-  line: { flexDirection: 'row', alignItems: 'center', gap: 8, borderWidth: 1, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 8 },
+  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  chip: { borderWidth: 1, borderRadius: 999, paddingHorizontal: 12, paddingVertical: 6 },
+  line: { borderWidth: 1, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 8, gap: 8 },
+  lineTop: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   lineTitle: { flex: 1, fontSize: 15 },
-  qtyInput: { width: 70, borderWidth: 1, borderRadius: 8, paddingHorizontal: 8, paddingVertical: 6, fontSize: 15 },
+  stepper: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  stepBtn: { width: 32, height: 32, borderWidth: 1, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
+  stepBtnText: { fontSize: 18, fontWeight: '600' },
+  qtyInput: { width: 60, borderWidth: 1, borderRadius: 8, paddingHorizontal: 8, paddingVertical: 6, fontSize: 15, textAlign: 'center' },
   totalRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', gap: 12, paddingVertical: 8 },
   totalLabel: { fontSize: 15 },
+  field: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  fieldLabel: { fontSize: 13, fontWeight: '500' },
+  fieldInput: { flex: 1 },
   timeRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 4 },
   timeLabel: { fontSize: 15 },
+  timeBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, borderWidth: 1, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 8 },
   submit: { borderRadius: 8, paddingVertical: 14, alignItems: 'center', marginTop: 8 },
   submitText: { color: '#fff', fontSize: 16, fontWeight: '600' },
 });
