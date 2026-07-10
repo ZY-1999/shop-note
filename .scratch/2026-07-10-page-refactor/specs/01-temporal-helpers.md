@@ -1,7 +1,7 @@
 # 纯函数 helpers — 日期格式化 + 时间段区间
 
 Type: spec
-Status: ready-for-agent
+Status: ready-for-human # Stage 2 (/tdd) implemented 2026-07-10 — all ACs GREEN in jest (data project), tsc clean; pure helpers, no device surface
 Parent: #01
 Blocked by: None — can start immediately
 
@@ -45,3 +45,22 @@ Blocked by: None — can start immediately
 ## Rework on failure
 
 隔离；某个格式/边界错 → 改 helper + 其单测，消费方在 render 时现算、自动跟随。
+
+---
+
+## Stage 2 evidence (implemented 2026-07-10)
+
+`npx jest src/components/date-format.test.ts` → 11 passed / 1 suite (data project); `npx tsc --noEmit` → exit 0.
+
+- **AC1 (formatDate/formatDateTime/formatTime, 本地天, 边界)** → `src/components/date-format.test.ts` "formats an epoch-ms timestamp as local YYYY/MM/DD with zero-padding"（`formatDate` → `2026/06/09`）+ "formats as local HH:mm with zero-padding"（`formatTime` → `09:05` / `14:30`）+ "formats as local YYYY/MM/DD HH:mm"（`formatDateTime`）+ "rolls the year/month boundary on local calendar day (story 4)"（Dec 31 23:59 → `2025/12/31`；Jan 1 00:05 → `2026/01/01 00:05`，月/年翻滚 + 个位补零）。GREEN。
+- **AC2 (rangeFor 四 preset, 周一首, 跨月/跨年)** → "thisMonth spans local 1st 00:00:00.000 → last day 23:59:59.999"（from = 6/1 00:00:00.000, to = 6/30 23:59:59.999）+ "lastMonth spans the whole previous local month"（5/1 → 5/31）+ "lastMonth rolls into the previous year when now is in January"（1 月 now → 2025/12/1 → 2025/12/31，跨年）+ "thisWeek starts on Monday (Thursday → prior Monday)"（周四 → 周一 6/8，止于周日 6/14 23:59:59.999）+ "thisWeek treats Sunday as the end, not the start"（周日 now → 仍归当周周一 6/8，非 6/15——证明周一为周首、周日为周末）+ "lastWeek spans the Monday→Sunday before now's week"（6/1 → 6/7）。GREEN。
+- **AC3 (纯函数, 无 RN import, node jest)** → 模块零 React/RN import；测试文件 `*.test.ts` 命中 `jest.config.js` 的 `dataLayerProject`（ts-jest + node env），PASS。范式同 `record-form-validation.ts`。GREEN。
+- **AC4 (now 可注入, 确定性)** → 每个 rangeFor 测试都注入固定 `now` 断言精确 epoch ms；"output is driven by the injected now, not the wall clock"（两个不同 `now` → 不同 `from`，证明输出由 `now` 驱动、不被墙钟耦合）。GREEN。
+
+**口径**：`formatDate` 用本地 `getFullYear/getMonth/getDate + padStart`，是 [daily-flow.ts](../../../src/data/daily-flow.ts) `dayBucket` 的展示双胞胎（同本地天口径、`/` 分隔）；`rangeFor` 的 `from/to` 均本地天 00:00:00.000 / 23:59:59.999 边界，周首日周一（`(getDay()+6)%7`）。
+
+**消费方未动**：本 spec 仅落 helper + 单测；`#03`（formatDateTime）/ `#04`（formatDate + formatTime）/ `#05`（formatDate + formatTime + rangeFor）各自接线。
+
+**无 device surface**：纯函数、无 UI、无原生模块——jest/node 即覆盖行为，无 device-pending 项。
+
+Commit: see `feat(date-format): 时间 helpers — formatDate/DateTime/Time + rangeFor (#01)` (this spec's Stage 2 commit).
