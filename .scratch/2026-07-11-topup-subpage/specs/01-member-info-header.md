@@ -1,7 +1,7 @@
 # 会员信息 header 组件提取
 
 Type: spec
-Status: ready-for-agent
+Status: done
 Parent: #01
 Blocked by: None — can start immediately
 
@@ -40,3 +40,16 @@ Blocked by: None — can start immediately
 ## Rework on failure
 
 failure is isolated; redo this spec only（组件无消费者前可独立验证）。
+
+## Evidence — done 2026-07-11
+
+Shipped `MemberInfoHeader({ staffId: string })`（`src/components/member-info-header.tsx`）— 纯展示，两行（名 + LevelBadge / 余额 + MoneyText），内部 `useStaffById` + `useMemberBalance`，无 state / 无 callback / 无 border。
+
+5/5 AC 覆盖（`src/components/member-info-header.test.tsx`）：
+1. 金站会员 name + level-badge + Σ topup − Σ out 余额 ✓
+2. 普站会员 name 渲染、level-badge 省略 ✓
+3. 负余额 → 欠款 ¥X.XX（danger）✓
+4. 无 button / text-input / border（`root.props.style` 为空对象）✓
+5. renderWithProviders 直挂、props 仅 staffId、loading 兜底「加载中」+ ¥0.00 ✓
+
+`npx tsc --noEmit` clean；既有 staff-row 4/4 不受影响。无 Rework triggered。
