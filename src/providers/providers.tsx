@@ -56,9 +56,16 @@ export function ReposProvider({
  * QueryClient defaults for local-only data (ADR-0005). There is no remote source
  * to refetch from — a value is fresh until a local mutate invalidates it — so:
  * staleTime/gcTime Infinity (never evict, never mark stale), refetch on focus
- * and mount both off, retry off (a local read either works or throws; retries
- * can't help). This is what lets derived reads (inventory/dailyFlow) stay pure
- * + recomputed (ADR-0002) with no stale window.
+ * off, retry off (a local read either works or throws; retries can't help).
+ *
+ * `refetchOnMount: true` is what makes re-entry fresh. A query invalidated while
+ * NO component observes it (e.g. posting a record from the 记账 list while
+ * member-detail is unmounted) is marked stale but not refetched; remounting its
+ * screen must then refetch — otherwise the page shows the pre-invalidate cache.
+ * Combined with staleTime:Infinity this stays free: a query that wasn't
+ * invalidated is still fresh, so remount never re-fetches it. This is what lets
+ * derived reads (inventory/dailyFlow) stay pure + recomputed (ADR-0002) with no
+ * stale window.
  */
 export function createQueryClient(): QueryClient {
   return new QueryClient({
@@ -67,7 +74,7 @@ export function createQueryClient(): QueryClient {
         staleTime: Infinity,
         gcTime: Infinity,
         refetchOnWindowFocus: false,
-        refetchOnMount: false,
+        refetchOnMount: true,
         retry: false,
       },
     },
