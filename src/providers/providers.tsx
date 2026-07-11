@@ -1,5 +1,6 @@
 import { createContext, useContext, useMemo, type ReactNode } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { ToastProvider } from "@/components/toast";
 import type { Repos } from "@/data/composition";
 import { MutationQueue } from "@/hooks/mutation-queue";
 
@@ -88,7 +89,7 @@ export function AppProviders({
   return (
     <QueryClientProvider client={client}>
       <ReposProvider repos={repos} queue={queue}>
-        {children}
+        <ToastProvider>{children}</ToastProvider>
       </ReposProvider>
     </QueryClientProvider>
   );

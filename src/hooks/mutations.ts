@@ -1,5 +1,6 @@
 import { useMutation, useQueryClient, type UseMutationResult } from "@tanstack/react-query";
 import { useMutationQueue, useRepos } from "@/providers/providers";
+import { useToast } from "@/components/toast";
 import type { StaffCreateInput, StaffUpdatePatch, Staff } from "@/data/staff";
 import type {
   ProductCreateInput,
@@ -22,6 +23,10 @@ import { qk } from "@/hooks/query-keys";
  * non-reentrant transaction. `onSuccess` invalidates the family root, so every
  * read hook under it refetches — no caller-side refetch anywhere.
  *
+ * Every mutation also surfaces outcome feedback via the toast bubble
+ * ([toast.tsx](../components/toast.tsx)): a success message on commit, and the
+ * repo's own error message on throw — so a failed save is never silent.
+ *
  * This file owns `useCreateStaff` as the canonical pattern. Each feature spec
  * adds its own mutation in the same shape (e.g. #6 → `useCreateStockRecord`).
  */
@@ -30,11 +35,14 @@ export function useCreateStaff(): UseMutationResult<Staff, Error, StaffCreateInp
   const repos = useRepos();
   const queue = useMutationQueue();
   const queryClient = useQueryClient();
+  const toast = useToast();
   return useMutation<Staff, Error, StaffCreateInput>({
     mutationFn: (input) => queue.run(() => repos.staff.create(input)),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: qk.staff.all });
+      toast.success("会员已创建");
     },
+    onError: (e: Error) => toast.error(e.message),
   });
 }
 
@@ -47,11 +55,14 @@ export function useUpdateStaff(): UseMutationResult<Staff, Error, { staffId: str
   const repos = useRepos();
   const queue = useMutationQueue();
   const queryClient = useQueryClient();
+  const toast = useToast();
   return useMutation<Staff, Error, { staffId: string; patch: StaffUpdatePatch }>({
     mutationFn: ({ staffId, patch }) => queue.run(() => repos.staff.update(staffId, patch)),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: qk.staff.all });
+      toast.success("会员已更新");
     },
+    onError: (e: Error) => toast.error(e.message),
   });
 }
 
@@ -66,11 +77,14 @@ export function useVoidStaff(): UseMutationResult<Staff, Error, string> {
   const repos = useRepos();
   const queue = useMutationQueue();
   const queryClient = useQueryClient();
+  const toast = useToast();
   return useMutation<Staff, Error, string>({
     mutationFn: (staffId) => queue.run(() => repos.staff.void(staffId)),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: qk.staff.all });
+      toast.success("会员已作废");
     },
+    onError: (e: Error) => toast.error(e.message),
   });
 }
 
@@ -79,11 +93,14 @@ export function useRestoreStaff(): UseMutationResult<Staff, Error, string> {
   const repos = useRepos();
   const queue = useMutationQueue();
   const queryClient = useQueryClient();
+  const toast = useToast();
   return useMutation<Staff, Error, string>({
     mutationFn: (staffId) => queue.run(() => repos.staff.restore(staffId)),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: qk.staff.all });
+      toast.success("会员已恢复");
     },
+    onError: (e: Error) => toast.error(e.message),
   });
 }
 
@@ -95,11 +112,14 @@ export function useCreateProduct(): UseMutationResult<Product, Error, ProductCre
   const repos = useRepos();
   const queue = useMutationQueue();
   const queryClient = useQueryClient();
+  const toast = useToast();
   return useMutation<Product, Error, ProductCreateInput>({
     mutationFn: (input) => queue.run(() => repos.products.create(input)),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: qk.products.all });
+      toast.success("商品已创建");
     },
+    onError: (e: Error) => toast.error(e.message),
   });
 }
 
@@ -119,12 +139,15 @@ export function useUpdateProduct(): UseMutationResult<
   const repos = useRepos();
   const queue = useMutationQueue();
   const queryClient = useQueryClient();
+  const toast = useToast();
   return useMutation<Product, Error, { productId: string; patch: ProductUpdatePatch }>({
     mutationFn: ({ productId, patch }) => queue.run(() => repos.products.update(productId, patch)),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: qk.products.all });
       void queryClient.invalidateQueries({ queryKey: qk.inventory.all });
+      toast.success("商品已更新");
     },
+    onError: (e: Error) => toast.error(e.message),
   });
 }
 
@@ -133,11 +156,14 @@ export function useVoidProduct(): UseMutationResult<Product, Error, string> {
   const repos = useRepos();
   const queue = useMutationQueue();
   const queryClient = useQueryClient();
+  const toast = useToast();
   return useMutation<Product, Error, string>({
     mutationFn: (productId) => queue.run(() => repos.products.void(productId)),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: qk.products.all });
+      toast.success("商品已作废");
     },
+    onError: (e: Error) => toast.error(e.message),
   });
 }
 
@@ -146,11 +172,14 @@ export function useRestoreProduct(): UseMutationResult<Product, Error, string> {
   const repos = useRepos();
   const queue = useMutationQueue();
   const queryClient = useQueryClient();
+  const toast = useToast();
   return useMutation<Product, Error, string>({
     mutationFn: (productId) => queue.run(() => repos.products.restore(productId)),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: qk.products.all });
+      toast.success("商品已恢复");
     },
+    onError: (e: Error) => toast.error(e.message),
   });
 }
 
@@ -166,6 +195,7 @@ export function useCreateStockRecord(): UseMutationResult<RecordWithItems, Error
   const repos = useRepos();
   const queue = useMutationQueue();
   const queryClient = useQueryClient();
+  const toast = useToast();
   return useMutation<RecordWithItems, Error, StockRecordCreateInput>({
     mutationFn: (input) => queue.run(() => repos.stockRecords.create(input)),
     onSuccess: () => {
@@ -173,7 +203,9 @@ export function useCreateStockRecord(): UseMutationResult<RecordWithItems, Error
       void queryClient.invalidateQueries({ queryKey: qk.inventory.all });
       void queryClient.invalidateQueries({ queryKey: qk.balance.all });
       void queryClient.invalidateQueries({ queryKey: qk.dailyFlow.all });
+      toast.success("记录已保存");
     },
+    onError: (e: Error) => toast.error(e.message),
   });
 }
 
@@ -193,6 +225,7 @@ export function useUpdateStockRecord(): UseMutationResult<
   const repos = useRepos();
   const queue = useMutationQueue();
   const queryClient = useQueryClient();
+  const toast = useToast();
   return useMutation<RecordWithItems, Error, { recordId: string; patch: StockRecordUpdatePatch }>({
     mutationFn: ({ recordId, patch }) => queue.run(() => repos.stockRecords.update(recordId, patch)),
     onSuccess: () => {
@@ -200,7 +233,9 @@ export function useUpdateStockRecord(): UseMutationResult<
       void queryClient.invalidateQueries({ queryKey: qk.inventory.all });
       void queryClient.invalidateQueries({ queryKey: qk.balance.all });
       void queryClient.invalidateQueries({ queryKey: qk.dailyFlow.all });
+      toast.success("记录已保存");
     },
+    onError: (e: Error) => toast.error(e.message),
   });
 }
 
@@ -214,6 +249,7 @@ export function useVoidStockRecord(): UseMutationResult<RecordWithItems, Error, 
   const repos = useRepos();
   const queue = useMutationQueue();
   const queryClient = useQueryClient();
+  const toast = useToast();
   return useMutation<RecordWithItems, Error, string>({
     mutationFn: (recordId) => queue.run(() => repos.stockRecords.void(recordId)),
     onSuccess: () => {
@@ -221,7 +257,9 @@ export function useVoidStockRecord(): UseMutationResult<RecordWithItems, Error, 
       void queryClient.invalidateQueries({ queryKey: qk.inventory.all });
       void queryClient.invalidateQueries({ queryKey: qk.balance.all });
       void queryClient.invalidateQueries({ queryKey: qk.dailyFlow.all });
+      toast.success("记录已作废");
     },
+    onError: (e: Error) => toast.error(e.message),
   });
 }
 
@@ -235,13 +273,16 @@ export function useCreateTopup(): UseMutationResult<Topup, Error, TopupCreateInp
   const repos = useRepos();
   const queue = useMutationQueue();
   const queryClient = useQueryClient();
+  const toast = useToast();
   return useMutation<Topup, Error, TopupCreateInput>({
     mutationFn: (input) => queue.run(() => repos.topups.create(input)),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: qk.topups.all });
       void queryClient.invalidateQueries({ queryKey: qk.balance.all });
       void queryClient.invalidateQueries({ queryKey: qk.dailyFlow.all });
+      toast.success("充值成功");
     },
+    onError: (e: Error) => toast.error(e.message),
   });
 }
 
@@ -250,13 +291,16 @@ export function useVoidTopup(): UseMutationResult<Topup, Error, string> {
   const repos = useRepos();
   const queue = useMutationQueue();
   const queryClient = useQueryClient();
+  const toast = useToast();
   return useMutation<Topup, Error, string>({
     mutationFn: (topupId) => queue.run(() => repos.topups.void(topupId)),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: qk.topups.all });
       void queryClient.invalidateQueries({ queryKey: qk.balance.all });
       void queryClient.invalidateQueries({ queryKey: qk.dailyFlow.all });
+      toast.success("充值已作废");
     },
+    onError: (e: Error) => toast.error(e.message),
   });
 }
 
@@ -269,10 +313,13 @@ export function useUpdateUnitPrice(): UseMutationResult<void, Error, Cents> {
   const repos = useRepos();
   const queue = useMutationQueue();
   const queryClient = useQueryClient();
+  const toast = useToast();
   return useMutation<void, Error, Cents>({
     mutationFn: (amount) => queue.run(() => repos.config.setUnitPrice(amount)),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: qk.config.all });
+      toast.success("单价已保存");
     },
+    onError: (e: Error) => toast.error(e.message),
   });
 }
