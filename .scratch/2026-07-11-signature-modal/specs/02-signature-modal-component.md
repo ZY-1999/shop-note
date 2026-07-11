@@ -1,7 +1,7 @@
 # SignatureModal 组件：SVG 画布 + 光栅化 + 受控契约
 
 Type: spec
-Status: ready-for-agent
+Status: ready-for-human
 Parent: #01 (01-signature-modal.md)
 Blocked by: #01
 
@@ -66,3 +66,15 @@ Shape:
   > - Commit: `<sha>`
 Pointers only; no narration or source pasting.
 -->
+
+> **Comment** — implemented 2026-07-11; Status → ready-for-human
+> - [x] visible=true → renders canvas + undo/clear/confirm/cancel — `signature-modal.test.tsx::renders the signature canvas + undo/clear/confirm/cancel buttons`
+> - [x] empty → confirm disabled; non-empty → enabled — `signature-modal.test.tsx::disables confirm when strokes are empty` + `enables confirm after a stroke is drawn`
+> - [x] undo to empty → confirm flips disabled — `signature-modal.test.tsx::flips confirm back to disabled after undoing the last stroke`
+> - [x] clear → strokes cleared, confirm disabled — `signature-modal.test.tsx::clears all strokes and disables confirm`
+> - [x] confirm with strokes → onConfirm called with string — `signature-modal.test.tsx::calls onConfirm with a string when confirm is pressed after drawing`
+> - [x] cancel → onCancel called, onConfirm not called — `signature-modal.test.tsx::calls onCancel and does NOT call onConfirm when cancel is pressed`
+> - [x] base64 prefix stripped in component — `signature-modal.test.tsx::strips the data:image/png;base64, prefix before passing to onConfirm`
+> - [x] router-agnostic; visible=false → no canvas — `signature-modal.test.tsx::does not render the canvas area when visible=false` + `renders without any router or provider dependency`
+> - Test run: `npx jest --forceExit` → 35 suites, 284 passed, 0 failed; `npx tsc --noEmit` clean
+> - Commit: `fe25c41`
