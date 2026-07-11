@@ -1,7 +1,7 @@
 # 记账列表行瘦身 + 充值导航接线
 
 Type: spec
-Status: ready-for-agent
+Status: done
 Parent: #01
 Blocked by: #01, #02
 
@@ -39,3 +39,18 @@ StaffRow 移除行内充值表单的全部本地状态与 useCreateTopup，左�
 ## Rework on failure
 
 failure is isolated; redo this spec only（行 + 接线自洽）。
+
+## Evidence — done 2026-07-11
+
+**Shipped:**
+- `src/components/staff-row.tsx` — `StaffRow` 移除全部行内充值 state（showTopup / amount / note / error / submitTopup）+ `useCreateTopup` + `useMemberBalance` + `MoneyText` / `LevelBadge` 直渲染；左侧 `main` 换成 `<MemberInfoHeader staffId={staff.id} />`；新增 `onTopup: (staffId) => void` prop（与 `onOut` / `onOpen` 同构），`[充值]` onPress 从 `setShowTopup` 改为 `onTopup(staff.id)`。行容器 / 右侧按钮 / `onOpen` 不变。
+- `src/app/bookkeeping/index.tsx` — StaffRow 接 `onTopup={(id) => router.push({ pathname: '/bookkeeping/topup-form', params: { staff_id: id } })}`（与 `onOut` 对称）；docstring 同步。
+
+**Tests (`src/components/staff-row.test.tsx`, 3 tests, all green):**
+1. 余额正：MemberInfoHeader 渲染 `¥100.00`，无欠款标 ✓（AC3）
+2. 余额负：`欠款 ¥10.00` danger ✓（AC3）
+3. **新增**：`[充值]` press → `onTopup(member.id)` 被调用；行内表单（`topup-form-{id}` / `topup-amount`）不出现 ✓（AC1 + AC2）
+
+移除两条行内表单用例（充值提交 / 拦截）—— 表单已上移到 spec 02 的子页面。余额同步锚点从 `balance-{id}` testID 改为余额文本（MemberInfoHeader 的 MoneyText 不带 staffId 后缀 testID，AC5）。
+
+`npx tsc --noEmit` clean。StaffRow 唯一消费者是 bookkeeping/index.tsx（已同步接线）。无 Rework triggered。

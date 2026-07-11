@@ -8,15 +8,17 @@ import { useTheme } from '@/hooks/use-theme';
 
 /**
  * 记账 tab home — the operator's primary landing. A searchable list of active
- * members, each row offering an 出库 affordance (jumping into the prefilled
- * record form) and a row tap opening member detail.
+ * members, each row offering a [充值] affordance (jumping into the top-up
+ * subpage) and an [出库] affordance (jumping into the prefilled record form),
+ * plus a row tap opening member detail.
  *
  * stock-balance-refactor: members no longer hold stock, so the old per-staff
- * holding summary (`useStaffSummaries`) is gone. The 余额 display + 充值
- * affordance land in spec 03 (balance-domain); spec 02 leaves the row as a clean
- * skeleton. All active members render — including zero-record members — so a
- * brand-new member is visible without searching. `useStaff({ search })` narrows
- * by name when searching.
+ * holding summary (`useStaffSummaries`) is gone. The 余额 display lands in the
+ * shared `<MemberInfoHeader>` (topup-subpage spec #01/03); [充值] was promoted
+ * from an inline form to a navigation target (spec #03), mirroring [出库]. All
+ * active members render — including zero-record members — so a brand-new member
+ * is visible without searching. `useStaff({ search })` narrows by name when
+ * searching.
  */
 export default function BookkeepingTab() {
   const theme = useTheme();
@@ -41,6 +43,9 @@ export default function BookkeepingTab() {
         renderItem={({ item }) => (
           <StaffRow
             staff={item}
+            onTopup={(id) =>
+              router.push({ pathname: '/bookkeeping/topup-form', params: { staff_id: id } })
+            }
             onOut={(id) =>
               router.push({ pathname: '/bookkeeping/record-form', params: { staff_id: id, direction: 'out' } })
             }
