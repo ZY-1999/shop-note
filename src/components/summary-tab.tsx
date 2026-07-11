@@ -9,9 +9,9 @@ import {
   type RangePreset,
 } from "@/components/date-format";
 import { MoneyText } from "@/components/money-text";
-import { ADMIN_STAFF_ID } from "@/data/staff";
 import { cents } from "@/data/primitives";
 import { splitBundleRetail } from "@/data/split-bundle";
+import { ADMIN_STAFF_ID } from "@/data/staff";
 import type { Direction } from "@/data/stock-record";
 import {
   useDailyFlow,
@@ -79,7 +79,12 @@ interface DaySection {
   dayIn: number; // Σ in_amount across the day (restock under -1) (cents)
   dayOut: number; // Σ out_amount across the day's staff (cents)
   dayTopup: number; // Σ topup_amount across the day's staff (cents)
-  staffRows: { staffId: string; inAmount: number; outAmount: number; topupAmount: number }[];
+  staffRows: {
+    staffId: string;
+    inAmount: number;
+    outAmount: number;
+    topupAmount: number;
+  }[];
 }
 
 export function SummaryTab({
@@ -220,7 +225,9 @@ export function SummaryTab({
                 >
                   <Text style={[styles.title, { color: theme.text }]}>
                     {/* '-1' restock surfaces as a 「补货」 event, not a member row (US12). */}
-                    {sr.staffId === ADMIN_STAFF_ID ? "补货" : (staffName.get(sr.staffId) ?? sr.staffId)}
+                    {sr.staffId === ADMIN_STAFF_ID
+                      ? "补货"
+                      : (staffName.get(sr.staffId) ?? sr.staffId)}
                   </Text>
                   <Text style={{ color: theme.success }}>入</Text>
                   <MoneyText
@@ -396,8 +403,6 @@ export function SummaryTab({
           >
             <Text style={{ color: theme.success }}>补货</Text>
             <MoneyText testID="flow-in-total" cents={cents(inTotal)} />
-            <Text style={{ color: theme.danger }}>出库</Text>
-            <MoneyText testID="flow-out-total" cents={cents(outTotal)} />
             <Text style={{ color: theme.success }}>充值</Text>
             <MoneyText testID="flow-topup-total" cents={cents(topupTotal)} />
           </View>
@@ -408,12 +413,16 @@ export function SummaryTab({
             testID="bundle-aggregate"
             style={[styles.summary, { borderColor: theme.border }]}
           >
-            <Text style={{ color: theme.text }}>出库聚合</Text>
+            <Text>出库</Text>
+            <MoneyText testID="flow-out-total" cents={cents(outTotal)} />
             <Text testID="bundle-aggregate-count" style={{ color: theme.text }}>
-              {bundleAggregate.bundles} 单
+              计 {bundleAggregate.bundles} 单
             </Text>
-            <Text style={{ color: theme.textSecondary }}>零售</Text>
-            <MoneyText testID="bundle-aggregate-retail" cents={cents(bundleAggregate.retail)} />
+            <Text>零售</Text>
+            <MoneyText
+              testID="bundle-aggregate-retail"
+              cents={cents(bundleAggregate.retail)}
+            />
           </View>
         </View>
       }

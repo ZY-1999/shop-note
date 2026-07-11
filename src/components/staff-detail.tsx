@@ -1,15 +1,15 @@
-import { useMemo, useState } from 'react';
-import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons } from "@expo/vector-icons";
+import { useMemo, useState } from "react";
+import { FlatList, Pressable, StyleSheet, Text, View } from "react-native";
 
-import { MoneyText } from '@/components/money-text';
-import { LevelBadge } from '@/components/level-badge';
-import { formatDate, formatTime } from '@/components/date-format';
-import { useMemberBalance, useStaffById, useStockRecords, useTopups } from '@/hooks/reads';
-import { useVoidTopup } from '@/hooks/mutations';
-import { useTheme } from '@/hooks/use-theme';
-import { cents } from '@/data/primitives';
-import type { Direction, StockItem } from '@/data/stock-record';
+import { formatDate, formatTime } from "@/components/date-format";
+import { MemberInfoHeader } from "@/components/member-info-header";
+import { MoneyText } from "@/components/money-text";
+import { cents } from "@/data/primitives";
+import type { Direction, StockItem } from "@/data/stock-record";
+import { useVoidTopup } from "@/hooks/mutations";
+import { useStockRecords, useTopups } from "@/hooks/reads";
+import { useTheme } from "@/hooks/use-theme";
 
 /**
  * The member look-back screen (stock-balance-refactor balance-domain).
@@ -39,7 +39,7 @@ export interface StaffDetailProps {
   onOpenRecord: (recordId: string) => void;
 }
 
-type EventKind = 'record' | 'topup';
+type EventKind = "record" | "topup";
 
 /** One merged history event (a checkout or a top-up) inside a day section. */
 interface HistoryEvent {
@@ -62,10 +62,8 @@ interface DaySection {
 
 export function StaffDetail({ staffId, onOpenRecord }: StaffDetailProps) {
   const theme = useTheme();
-  const staff = useStaffById(staffId);
   const records = useStockRecords({ staff_id: staffId });
   const topups = useTopups({ staff_id: staffId });
-  const balance = useMemberBalance(staffId);
   const voidTopup = useVoidTopup();
   const [openDays, setOpenDays] = useState<Set<string>>(new Set());
   const [visibleDays, setVisibleDays] = useState(INITIAL_DAYS);
@@ -91,13 +89,13 @@ export function StaffDetail({ staffId, onOpenRecord }: StaffDetailProps) {
       const amt = rw.items.reduce((s, i) => s + i.line_amount, 0);
       // a member's records are all 'out'; direction is tracked so an 'in' (if any)
       // wouldn't be mislabeled, but only 'out' feeds the balance/separator.
-      if (rw.record.direction === 'out') {
+      if (rw.record.direction === "out") {
         day.dayOut += amt;
         outT += amt;
       }
       day.events.push({
         id: rw.record.id,
-        kind: 'record',
+        kind: "record",
         timestamp: rw.record.timestamp,
         amount: amt,
         direction: rw.record.direction,
@@ -111,20 +109,26 @@ export function StaffDetail({ staffId, onOpenRecord }: StaffDetailProps) {
       topupT += t.amount;
       day.events.push({
         id: t.id,
-        kind: 'topup',
+        kind: "topup",
         timestamp: t.timestamp,
         amount: t.amount,
         note: t.note,
       });
     }
-    const all = [...byDay.values()].sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
+    const all = [...byDay.values()].sort((a, b) =>
+      a.date < b.date ? 1 : a.date > b.date ? -1 : 0,
+    );
     for (const day of all) day.events.sort((a, b) => b.timestamp - a.timestamp);
-    return { sections: all, totalDays: all.length, outTotal: outT, topupTotal: topupT };
+    return {
+      sections: all,
+      totalDays: all.length,
+      outTotal: outT,
+      topupTotal: topupT,
+    };
   }, [records.data, topups.data]);
 
   const visible = sections.slice(0, visibleDays);
   const recordCount = (records.data ?? []).length + (topups.data ?? []).length;
-  const balanceAmount = balance.data?.amount ?? 0;
 
   const confirmVoid = (topupId: string) => {
     voidTopup.mutate(topupId, { onSettled: () => setVoidingTopupId(null) });
@@ -134,60 +138,98 @@ export function StaffDetail({ staffId, onOpenRecord }: StaffDetailProps) {
     const dayOpen = openDays.has(item.date);
     return (
       <View style={[styles.card, { borderColor: theme.border }]}>
-        <Pressable testID={`day-${item.date}`} onPress={() => toggleDay(item.date)} style={styles.cardHead}>
-          <Text style={[styles.dayDate, { color: theme.text }]}>{item.date}</Text>
+        <Pressable
+          testID={`day-${item.date}`}
+          onPress={() => toggleDay(item.date)}
+          style={styles.cardHead}
+        >
+          <Text style={[styles.dayDate, { color: theme.text }]}>
+            {item.date}
+          </Text>
           <Text style={{ color: theme.success }}>充值</Text>
           <MoneyText cents={cents(item.dayTopup)} />
           <Text style={{ color: theme.danger }}>出库</Text>
           <MoneyText cents={cents(item.dayOut)} />
-          <Ionicons name={dayOpen ? 'chevron-up' : 'chevron-down'} size={14} color={theme.textSecondary} />
+          <Ionicons
+            name={dayOpen ? "chevron-up" : "chevron-down"}
+            size={14}
+            color={theme.textSecondary}
+          />
         </Pressable>
         {dayOpen &&
           item.events.map((e) =>
-            e.kind === 'record' ? (
+            e.kind === "record" ? (
               <Pressable
                 key={e.id}
                 testID={`history-${e.id}`}
                 onPress={() => onOpenRecord(e.id)}
-                style={[styles.subRow, { borderColor: theme.border }]}>
-                <Text style={{ color: e.direction === 'in' ? theme.success : theme.danger }}>
-                  {e.direction === 'in' ? '入库' : '出库'}
-                </Text>
-                <Text style={{ color: theme.textSecondary }}>{formatTime(e.timestamp)}</Text>
-                <Text style={[styles.title, { color: theme.text }]}>
-                  {e.items?.map((i) => `${i.title} ×${i.qty}`).join('、')}
-                </Text>
-                <MoneyText cents={cents(e.amount)} />
+                style={[styles.subRow, { borderColor: theme.border }]}
+              >
+                <View style={styles.line}>
+                  <Text style={{ marginRight: 8, color: theme.textSecondary }}>
+                    {formatTime(e.timestamp)}
+                  </Text>
+                  <Text
+                    style={{
+                      color:
+                        e.direction === "in" ? theme.success : theme.danger,
+                    }}
+                  >
+                    {e.direction === "in" ? "入库：" : "出库："}
+                  </Text>
+                  <MoneyText cents={cents(e.amount)} />
+                  <Text style={[styles.title, { color: theme.text }]}>
+                    {e.items?.map((i) => `${i.title} ×${i.qty}`).join("、")}
+                  </Text>
+                </View>
               </Pressable>
             ) : (
-              <View key={e.id} testID={`topup-${e.id}`} style={[styles.subRow, { borderColor: theme.border }]}>
-                <Text style={{ color: theme.success }}>充值</Text>
-                <Text style={{ color: theme.textSecondary }}>{formatTime(e.timestamp)}</Text>
-                <Text style={[styles.title, { color: theme.text }]}>{e.note || '—'}</Text>
-                <MoneyText cents={cents(e.amount)} />
-                {voidingTopupId === e.id ? (
-                  <>
+              <View
+                key={e.id}
+                testID={`topup-${e.id}`}
+                style={[styles.subRow, { borderColor: theme.border }]}
+              >
+                <View style={styles.line}>
+                  <Text style={{ marginRight: 8, color: theme.textSecondary }}>
+                    {formatTime(e.timestamp)}
+                  </Text>
+                  <Text style={{ color: theme.success }}>充值：</Text>
+                  <MoneyText cents={cents(e.amount)} />
+                </View>
+                <View>
+                  {voidingTopupId === e.id ? (
+                    <>
+                      <Pressable
+                        testID={`topup-confirm-${e.id}`}
+                        onPress={() => confirmVoid(e.id)}
+                        style={[
+                          styles.rowAction,
+                          { borderColor: theme.danger },
+                        ]}
+                      >
+                        <Text style={{ color: theme.danger }}>确认作废</Text>
+                      </Pressable>
+                      <Pressable
+                        testID={`topup-cancel-${e.id}`}
+                        onPress={() => setVoidingTopupId(null)}
+                        style={[
+                          styles.rowAction,
+                          { borderColor: theme.border },
+                        ]}
+                      >
+                        <Text style={{ color: theme.text }}>取消</Text>
+                      </Pressable>
+                    </>
+                  ) : (
                     <Pressable
-                      testID={`topup-confirm-${e.id}`}
-                      onPress={() => confirmVoid(e.id)}
-                      style={[styles.rowAction, { borderColor: theme.danger }]}>
-                      <Text style={{ color: theme.danger }}>确认作废</Text>
+                      testID={`topup-void-${e.id}`}
+                      onPress={() => setVoidingTopupId(e.id)}
+                      style={[styles.rowAction, { borderColor: theme.danger }]}
+                    >
+                      <Text style={{ color: theme.danger }}>作废</Text>
                     </Pressable>
-                    <Pressable
-                      testID={`topup-cancel-${e.id}`}
-                      onPress={() => setVoidingTopupId(null)}
-                      style={[styles.rowAction, { borderColor: theme.border }]}>
-                      <Text style={{ color: theme.text }}>取消</Text>
-                    </Pressable>
-                  </>
-                ) : (
-                  <Pressable
-                    testID={`topup-void-${e.id}`}
-                    onPress={() => setVoidingTopupId(e.id)}
-                    style={[styles.rowAction, { borderColor: theme.danger }]}>
-                    <Text style={{ color: theme.danger }}>作废</Text>
-                  </Pressable>
-                )}
+                  )}
+                </View>
               </View>
             ),
           )}
@@ -195,7 +237,8 @@ export function StaffDetail({ staffId, onOpenRecord }: StaffDetailProps) {
     );
   };
 
-  const revealMore = () => setVisibleDays((n) => Math.min(n + DAYS_PER_BATCH, totalDays));
+  const revealMore = () =>
+    setVisibleDays((n) => Math.min(n + DAYS_PER_BATCH, totalDays));
   const toggleDay = (date: string) =>
     setOpenDays((prev) => {
       const next = new Set(prev);
@@ -214,26 +257,24 @@ export function StaffDetail({ staffId, onOpenRecord }: StaffDetailProps) {
       onEndReachedThreshold={0.2}
       ListFooterComponent={
         visibleDays < totalDays ? (
-          <Pressable testID="load-more-days" onPress={revealMore} style={styles.loadMore}>
+          <Pressable
+            testID="load-more-days"
+            onPress={revealMore}
+            style={styles.loadMore}
+          >
             <Text style={{ color: theme.textSecondary }}>加载更多</Text>
           </Pressable>
         ) : null
       }
-      contentContainerStyle={[styles.content, { backgroundColor: theme.background }]}
+      contentContainerStyle={[
+        styles.content,
+        { backgroundColor: theme.background },
+      ]}
       ListHeaderComponent={
         <View style={styles.header}>
-          <Text style={[styles.name, { color: theme.text }]}>{staff.data?.name ?? '加载中'}</Text>
-          {staff.data && <LevelBadge level={staff.data.level} />}
-
-          <View testID="balance-section" style={[styles.card, { borderColor: theme.border }]}>
-            <View style={styles.cardHead}>
-              <Text style={[styles.cardTitle, { color: theme.text }]}>余额</Text>
-              <MoneyText testID="balance-total" cents={cents(balanceAmount)} negativeLabel="欠款" />
-            </View>
-          </View>
-
-          <View testID="record-summary" style={[styles.summary, { borderColor: theme.border }]}>
-            <Text style={{ color: theme.text }}>共 {recordCount} 条</Text>
+          <MemberInfoHeader staffId={staffId} />
+          <View testID="record-summary" style={styles.summary}>
+            <Text style={{ color: theme.text }}>共 {recordCount} 条记录</Text>
             <Text style={{ color: theme.success }}>充值</Text>
             <MoneyText testID="record-topup-total" cents={cents(topupTotal)} />
             <Text style={{ color: theme.danger }}>出库</Text>
@@ -248,14 +289,44 @@ export function StaffDetail({ staffId, onOpenRecord }: StaffDetailProps) {
 const styles = StyleSheet.create({
   content: { padding: 12, gap: 8 },
   header: { gap: 8, paddingBottom: 4 },
-  name: { fontSize: 20, fontWeight: '700', paddingVertical: 4 },
-  card: { borderWidth: 1, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10, gap: 8 },
-  cardHead: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  cardTitle: { flex: 1, fontSize: 15, fontWeight: '600' },
-  summary: { flexDirection: 'row', alignItems: 'center', gap: 8, borderWidth: 1, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10 },
-  subRow: { flexDirection: 'row', alignItems: 'center', gap: 8, borderWidth: 1, borderRadius: 8, paddingHorizontal: 16, paddingVertical: 8, marginLeft: 12 },
+  nameRow: { flexDirection: "row", alignItems: "center", gap: 8 },
+  name: { fontSize: 20, fontWeight: "700", paddingVertical: 4 },
+  card: {
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    gap: 8,
+  },
+  cardHead: { flexDirection: "row", alignItems: "center", gap: 8 },
+  summary: {
+    flexDirection: "row",
+    alignItems: "center",
+    fontSize: 15,
+    fontWeight: "600",
+    gap: 8,
+  },
+  subRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    marginLeft: 12,
+    justifyContent: "space-between",
+  },
+  line: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
   title: { flex: 1, fontSize: 15 },
-  dayDate: { flex: 1, fontSize: 13, fontWeight: '600' },
-  rowAction: { borderWidth: 1, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6 },
-  loadMore: { alignItems: 'center', paddingVertical: 12 },
+  dayDate: { flex: 1, fontSize: 13, fontWeight: "600" },
+  rowAction: {
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingHorizontal: 10,
+  },
+  loadMore: { alignItems: "center", paddingVertical: 12 },
 });

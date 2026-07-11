@@ -1,26 +1,39 @@
-import { useEffect, useRef, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
-
-import { SmokeEntry } from '@/components/smoke-entry';
-import { MoneyText } from '@/components/money-text';
-import { LevelBadge } from '@/components/level-badge';
+import { useEffect, useRef, useState } from "react";
 import {
-  useCreateStaff,
-  useUpdateStaff,
-  useVoidStaff,
-  useRestoreStaff,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from "react-native";
+
+import { LevelBadge } from "@/components/level-badge";
+import { MoneyText } from "@/components/money-text";
+import { SmokeEntry } from "@/components/smoke-entry";
+import { cents, type Cents } from "@/data/primitives";
+import {
+  ADMIN_STAFF_ID,
+  DEFAULT_STAFF_LEVEL,
+  STAFF_LEVELS,
+  type StaffLevel,
+} from "@/data/staff";
+import {
   useCreateProduct,
-  useUpdateProduct,
-  useVoidProduct,
-  useRestoreProduct,
+  useCreateStaff,
   useCreateStockRecord,
+  useRestoreProduct,
+  useRestoreStaff,
+  useUpdateProduct,
+  useUpdateStaff,
   useUpdateUnitPrice,
-} from '@/hooks/mutations';
-import { useStaff, useProducts, useUnitPrice } from '@/hooks/reads';
-import { useRepos } from '@/providers/providers';
-import { useTheme } from '@/hooks/use-theme';
-import { cents, type Cents } from '@/data/primitives';
-import { ADMIN_STAFF_ID, DEFAULT_STAFF_LEVEL, STAFF_LEVELS, type StaffLevel } from '@/data/staff';
+  useVoidProduct,
+  useVoidStaff,
+} from "@/hooks/mutations";
+import { useProducts, useStaff, useUnitPrice } from "@/hooks/reads";
+import { useTheme } from "@/hooks/use-theme";
+import { useRepos } from "@/providers/providers";
+import { ItemsSeletor, PickedLine } from "./items-selector";
 
 /**
  * The 管理 tab (spec #09) — master-data maintenance. A staff|product toggle over
@@ -34,42 +47,104 @@ import { ADMIN_STAFF_ID, DEFAULT_STAFF_LEVEL, STAFF_LEVELS, type StaffLevel } fr
  * history/snapshots are never erased (PRD: no hard delete). The dev-only smoke
  * entry (#4) stays put below the CRUD region.
  */
-type Domain = 'staff' | 'product' | 'restock' | 'config';
+type Domain = "staff" | "product" | "restock" | "config";
 
 export function ManageTab() {
   const theme = useTheme();
-  const [domain, setDomain] = useState<Domain>('staff');
+  const [domain, setDomain] = useState<Domain>("staff");
 
   return (
     <View style={[styles.container, { backgroundColor: theme.background }]}>
       <View style={[styles.segments, { borderColor: theme.border }]}>
         <Pressable
           testID="seg-staff"
-          onPress={() => setDomain('staff')}
-          style={[styles.segment, domain === 'staff' && { backgroundColor: theme.backgroundSelected }]}>
-          <Text style={[styles.segmentText, { color: domain === 'staff' ? theme.text : theme.textSecondary }]}>会员</Text>
+          onPress={() => setDomain("staff")}
+          style={[
+            styles.segment,
+            domain === "staff" && { backgroundColor: theme.backgroundSelected },
+          ]}
+        >
+          <Text
+            style={[
+              styles.segmentText,
+              { color: domain === "staff" ? theme.text : theme.textSecondary },
+            ]}
+          >
+            会员
+          </Text>
         </Pressable>
         <Pressable
           testID="seg-product"
-          onPress={() => setDomain('product')}
-          style={[styles.segment, domain === 'product' && { backgroundColor: theme.backgroundSelected }]}>
-          <Text style={[styles.segmentText, { color: domain === 'product' ? theme.text : theme.textSecondary }]}>商品</Text>
+          onPress={() => setDomain("product")}
+          style={[
+            styles.segment,
+            domain === "product" && {
+              backgroundColor: theme.backgroundSelected,
+            },
+          ]}
+        >
+          <Text
+            style={[
+              styles.segmentText,
+              {
+                color: domain === "product" ? theme.text : theme.textSecondary,
+              },
+            ]}
+          >
+            商品
+          </Text>
         </Pressable>
         <Pressable
           testID="seg-restock"
-          onPress={() => setDomain('restock')}
-          style={[styles.segment, domain === 'restock' && { backgroundColor: theme.backgroundSelected }]}>
-          <Text style={[styles.segmentText, { color: domain === 'restock' ? theme.text : theme.textSecondary }]}>补货</Text>
+          onPress={() => setDomain("restock")}
+          style={[
+            styles.segment,
+            domain === "restock" && {
+              backgroundColor: theme.backgroundSelected,
+            },
+          ]}
+        >
+          <Text
+            style={[
+              styles.segmentText,
+              {
+                color: domain === "restock" ? theme.text : theme.textSecondary,
+              },
+            ]}
+          >
+            补货
+          </Text>
         </Pressable>
         <Pressable
           testID="seg-config"
-          onPress={() => setDomain('config')}
-          style={[styles.segment, domain === 'config' && { backgroundColor: theme.backgroundSelected }]}>
-          <Text style={[styles.segmentText, { color: domain === 'config' ? theme.text : theme.textSecondary }]}>配置</Text>
+          onPress={() => setDomain("config")}
+          style={[
+            styles.segment,
+            domain === "config" && {
+              backgroundColor: theme.backgroundSelected,
+            },
+          ]}
+        >
+          <Text
+            style={[
+              styles.segmentText,
+              { color: domain === "config" ? theme.text : theme.textSecondary },
+            ]}
+          >
+            配置
+          </Text>
         </Pressable>
       </View>
 
-      {domain === 'staff' ? <StaffManage /> : domain === 'product' ? <ProductManage /> : domain === 'restock' ? <RestockManage /> : <ConfigManage />}
+      {domain === "staff" ? (
+        <StaffManage />
+      ) : domain === "product" ? (
+        <ProductManage />
+      ) : domain === "restock" ? (
+        <RestockManage />
+      ) : (
+        <ConfigManage />
+      )}
 
       {__DEV__ && <SmokeEntry />}
     </View>
@@ -86,12 +161,12 @@ function ConfigManage() {
   const theme = useTheme();
   const unitPrice = useUnitPrice();
   const updateUnitPrice = useUpdateUnitPrice();
-  const current = unitPrice.data ?? 0;
-  const [price, setPrice] = useState('0');
+  const [price, setPrice] = useState("" + (unitPrice.data ?? 0));
   const [error, setError] = useState<string | null>(null);
-  // The field initializes before the unit-price query resolves, so sync the loaded
-  // value back in — but ONLY until the operator types (dirty); after that the
-  // field is user-owned (a save refetches the same value they just entered).
+  // input 直接承载当前单价：data 加载/更新时同步进 input（冷启动显 "0"，保存成功
+  // 后 invalidate 回来的新值也回显）。dirty 在用户编辑后挡住 query 延迟 resolve 的
+  // 回写，避免覆盖正在输入的值；保存成功后复位，让新 data 重新同步进 input。
+  const [saved, setSaved] = useState(false);
   const dirty = useRef(false);
   useEffect(() => {
     if (!dirty.current && unitPrice.data != null) {
@@ -102,40 +177,69 @@ function ConfigManage() {
   const submit = () => {
     const yuan = parseFloat(price);
     if (!isFinite(yuan) || yuan < 0) {
-      setError('请输入有效单价');
+      setError("请输入有效单价");
       return;
     }
     setError(null);
-    updateUnitPrice.mutate(cents(Math.round(yuan * 100)));
+    setSaved(false);
+    updateUnitPrice.mutate(cents(Math.round(yuan * 100)), {
+      onSuccess: () => {
+        setSaved(true);
+        dirty.current = false; // 允许 invalidate 回来的新 data 重新同步进 input
+      },
+    });
   };
 
   return (
     <View testID="view-config" style={styles.form}>
-      <Text style={[styles.label, { color: theme.textSecondary }]}>
+      <Text style={{ color: theme.textSecondary }}>
         全局单价（每单 元）—— 出库时按此拆分单数 + 零售
       </Text>
       <View style={styles.field}>
-        <Text style={[styles.label, { color: theme.textSecondary }]}>单价（元）</Text>
+        <Text style={[styles.label, { color: theme.textSecondary }]}>
+          单价（元）
+        </Text>
         <TextInput
           testID="config-price-input"
-          style={[styles.input, { backgroundColor: theme.inputBg, borderColor: theme.border, color: theme.text }]}
+          style={[
+            styles.input,
+            {
+              backgroundColor: theme.inputBg,
+              borderColor: theme.border,
+              color: theme.text,
+            },
+          ]}
           value={price}
-          onChangeText={(v) => { dirty.current = true; setPrice(v); }}
+          onChangeText={(v) => {
+            dirty.current = true;
+            setSaved(false);
+            setPrice(v);
+          }}
           keyboardType="decimal-pad"
         />
       </View>
-      <Text testID="config-current" style={{ color: theme.textSecondary }}>
-        当前：{(current / 100).toFixed(2)} 元/单
-      </Text>
       {error && (
-        <Text testID="config-error" style={{ color: theme.danger }}>{error}</Text>
+        <Text testID="config-error" style={{ color: theme.danger }}>
+          {error}
+        </Text>
+      )}
+      {updateUnitPrice.isError && (
+        <Text testID="config-save-error" style={{ color: theme.danger }}>
+          保存失败：
+          {updateUnitPrice.error instanceof Error
+            ? updateUnitPrice.error.message
+            : String(updateUnitPrice.error ?? "未知错误")}
+        </Text>
       )}
       <Pressable
         testID="config-submit"
         onPress={submit}
         disabled={updateUnitPrice.isPending}
-        style={[styles.createBtn, { backgroundColor: theme.success }]}>
-        <Text style={styles.createBtnText}>{updateUnitPrice.isPending ? '保存中…' : '保存单价'}</Text>
+        style={[styles.createBtn, { backgroundColor: theme.success }]}
+      >
+        <Text style={styles.createBtnText}>
+          {updateUnitPrice.isPending ? "保存中…" : saved ? "已保存" : "保存单价"}
+        </Text>
       </Pressable>
     </View>
   );
@@ -150,62 +254,70 @@ function ConfigManage() {
  */
 function RestockManage() {
   const theme = useTheme();
-  const products = useProducts();
   const createRecord = useCreateStockRecord();
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [qty, setQty] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [note, setNote] = useState("");
 
-  const rows = products.data ?? [];
+  const [selectedItems, setSelectedItems] = useState<PickedLine[]>([]);
 
   const submit = () => {
-    if (!selectedId) {
-      setError('请选择商品');
-      return;
-    }
-    const q = Number.parseInt(qty, 10);
-    if (!Number.isInteger(q) || q <= 0) {
-      setError('数量必须是正整数');
+    if (!selectedItems || selectedItems.length < 1) {
+      setError("请选择商品");
       return;
     }
     setError(null);
     createRecord.mutate(
-      { staff_id: ADMIN_STAFF_ID, direction: 'in', items: [{ product_id: selectedId, qty: q }] },
-      { onSuccess: () => { setSelectedId(null); setQty(''); } },
+      {
+        staff_id: ADMIN_STAFF_ID,
+        direction: "in",
+        timestamp: Date.now(),
+        note: note.trim() || undefined,
+        items: selectedItems.map((l) => ({
+          product_id: l.productId,
+          qty: Number(l.qty),
+        })),
+      },
+      {
+        onSuccess: () => {
+          setSelectedItems([]);
+          setNote("");
+        },
+      },
     );
   };
 
   return (
-    <ScrollView testID="view-restock" style={styles.domain} contentContainerStyle={styles.listContent}>
-      <Text style={[styles.label, { color: theme.textSecondary }]}>选择商品补货（入库到全局库存）</Text>
-      {rows.map((item) => {
-        const voided = item.voided_at != null;
-        const selected = selectedId === item.id;
-        return (
-          <Pressable
-            key={item.id}
-            testID={`restock-pick-${item.id}`}
-            disabled={voided}
-            onPress={() => setSelectedId(item.id)}
-            style={[styles.row, { borderColor: selected ? theme.success : theme.border }]}>
-            <View style={styles.rowMain}>
-              <Text style={[styles.name, { color: voided ? theme.textSecondary : theme.text }]}>{item.title}</Text>
-              <Text style={[styles.sub, { color: theme.textSecondary }]}>
-                <MoneyText cents={item.purchase_price} />
-              </Text>
-            </View>
-            {selected && <Text style={{ color: theme.success }}>✓</Text>}
-          </Pressable>
-        );
-      })}
+    <ScrollView
+      testID="view-restock"
+      style={styles.domain}
+      contentContainerStyle={styles.listContent}
+    >
+      <Text style={{ color: theme.textSecondary }}>选择商品补货</Text>
+      <ItemsSeletor
+        value={selectedItems}
+        onChange={(value) => {
+          setSelectedItems(value);
+          setError(null);
+        }}
+      />
       <View style={styles.field}>
-        <Text style={[styles.label, { color: theme.textSecondary }]}>数量</Text>
+        <Text style={[styles.fieldLabel, { color: theme.textSecondary }]}>
+          备注
+        </Text>
         <TextInput
-          testID="restock-qty"
-          style={[styles.input, { backgroundColor: theme.inputBg, borderColor: theme.border, color: theme.text }]}
-          value={qty}
-          onChangeText={setQty}
-          keyboardType="numeric"
+          testID="note"
+          style={[
+            styles.input,
+            {
+              backgroundColor: theme.inputBg,
+              borderColor: theme.border,
+              color: theme.text,
+            },
+          ]}
+          placeholder="单号 / 原因"
+          placeholderTextColor={theme.textSecondary}
+          value={note}
+          onChangeText={setNote}
         />
       </View>
       {error && (
@@ -217,8 +329,11 @@ function RestockManage() {
         testID="restock-submit"
         onPress={submit}
         disabled={createRecord.isPending}
-        style={[styles.createBtn, { backgroundColor: theme.success }]}>
-        <Text style={styles.createBtnText}>{createRecord.isPending ? '保存中…' : '补货入库'}</Text>
+        style={[styles.createBtn, { backgroundColor: theme.success }]}
+      >
+        <Text style={styles.createBtnText}>
+          {createRecord.isPending ? "保存中…" : "补货入库"}
+        </Text>
       </Pressable>
     </ScrollView>
   );
@@ -232,7 +347,7 @@ function RestockManage() {
  */
 function StaffManage() {
   const theme = useTheme();
-  const [search, setSearch] = useState('');
+  const [search, setSearch] = useState("");
   const [creating, setCreating] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const staff = useStaff(search ? { search } : { includeVoided: true });
@@ -248,10 +363,21 @@ function StaffManage() {
   }
 
   return (
-    <ScrollView testID="view-staff" style={styles.domain} contentContainerStyle={styles.listContent}>
+    <ScrollView
+      testID="view-staff"
+      style={styles.domain}
+      contentContainerStyle={styles.listContent}
+    >
       <TextInput
         testID="staff-search"
-        style={[styles.searchInput, { backgroundColor: theme.inputBg, borderColor: theme.border, color: theme.text }]}
+        style={[
+          styles.searchInput,
+          {
+            backgroundColor: theme.inputBg,
+            borderColor: theme.border,
+            color: theme.text,
+          },
+        ]}
         placeholder="搜索会员姓名或电话"
         placeholderTextColor={theme.textSecondary}
         value={search}
@@ -260,7 +386,8 @@ function StaffManage() {
       <Pressable
         testID="staff-create"
         onPress={() => setCreating(true)}
-        style={[styles.createBtn, { backgroundColor: theme.success }]}>
+        style={[styles.createBtn, { backgroundColor: theme.success }]}
+      >
         <Text style={styles.createBtnText}>新增会员</Text>
       </Pressable>
       {rows.map((item) => {
@@ -271,21 +398,34 @@ function StaffManage() {
             testID={`manage-staff-${item.id}`}
             style={[styles.row, { borderColor: theme.border }]}
             disabled={voided}
-            onPress={voided ? undefined : () => setEditingId(item.id)}>
+            onPress={voided ? undefined : () => setEditingId(item.id)}
+          >
             <View style={styles.rowMain}>
               <View style={styles.nameRow}>
-                <Text style={[styles.name, { color: voided ? theme.textSecondary : theme.text }]}>{item.name}</Text>
+                <Text
+                  style={[
+                    styles.name,
+                    { color: voided ? theme.textSecondary : theme.text },
+                  ]}
+                >
+                  {item.name}
+                </Text>
                 {!voided && <LevelBadge level={item.level} />}
               </View>
-              <Text style={[styles.sub, { color: theme.textSecondary }]}>{item.phone || '--'}</Text>
+              <Text style={[styles.sub, { color: theme.textSecondary }]}>
+                {item.phone || "--"}
+              </Text>
             </View>
             {voided ? (
               <>
-                <Text style={[styles.voidedTag, { color: theme.danger }]}>已删除</Text>
+                <Text style={[styles.voidedTag, { color: theme.danger }]}>
+                  已删除
+                </Text>
                 <Pressable
                   testID={`staff-restore-${item.id}`}
                   onPress={() => restoreStaff.mutate(item.id)}
-                  style={[styles.rowAction, { borderColor: theme.border }]}>
+                  style={[styles.rowAction, { borderColor: theme.border }]}
+                >
                   <Text style={{ color: theme.text }}>恢复</Text>
                 </Pressable>
               </>
@@ -293,7 +433,8 @@ function StaffManage() {
               <Pressable
                 testID={`staff-void-${item.id}`}
                 onPress={() => voidStaff.mutate(item.id)}
-                style={[styles.rowAction, { borderColor: theme.danger }]}>
+                style={[styles.rowAction, { borderColor: theme.danger }]}
+              >
                 <Text style={{ color: theme.danger }}>删除</Text>
               </Pressable>
             )}
@@ -312,15 +453,21 @@ function StaffManage() {
  * the staff and submits through `useUpdateStaff`. Both invalidate qk.staff so
  * every staff read refetches; `onDone` returns to the list.
  */
-function StaffForm({ staffId, onDone }: { staffId?: string; onDone: () => void }) {
+function StaffForm({
+  staffId,
+  onDone,
+}: {
+  staffId?: string;
+  onDone: () => void;
+}) {
   const theme = useTheme();
   const repos = useRepos();
   const createStaff = useCreateStaff();
   const updateStaff = useUpdateStaff();
   const editing = staffId != null;
-  const [name, setName] = useState('');
-  const [phone, setPhone] = useState('');
-  const [notes, setNotes] = useState('');
+  const [name, setName] = useState("");
+  const [phone, setPhone] = useState("");
+  const [notes, setNotes] = useState("");
   const [level, setLevel] = useState<StaffLevel>(DEFAULT_STAFF_LEVEL);
   const [error, setError] = useState<string | null>(null);
   const [loaded, setLoaded] = useState(!editing);
@@ -338,16 +485,23 @@ function StaffForm({ staffId, onDone }: { staffId?: string; onDone: () => void }
       setLevel(s.level);
       setLoaded(true);
     });
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [staffId, repos]);
 
   const submit = () => {
     if (!name.trim()) {
-      setError('请输入姓名');
+      setError("请输入姓名");
       return;
     }
     setError(null);
-    const payload = { name: name.trim(), phone: phone.trim(), notes: notes.trim(), level };
+    const payload = {
+      name: name.trim(),
+      phone: phone.trim(),
+      notes: notes.trim(),
+      level,
+    };
     if (editing && staffId) {
       updateStaff.mutate({ staffId, patch: payload }, { onSuccess: onDone });
     } else {
@@ -363,25 +517,50 @@ function StaffForm({ staffId, onDone }: { staffId?: string; onDone: () => void }
         <Text style={[styles.label, { color: theme.textSecondary }]}>姓名</Text>
         <TextInput
           testID="staff-name-input"
-          style={[styles.input, { backgroundColor: theme.inputBg, borderColor: theme.border, color: theme.text }]}
+          style={[
+            styles.input,
+            {
+              backgroundColor: theme.inputBg,
+              borderColor: theme.border,
+              color: theme.text,
+            },
+          ]}
           value={name}
           onChangeText={setName}
         />
       </View>
       <View style={styles.field}>
-        <Text style={[styles.label, { color: theme.textSecondary }]}>电话（可选）</Text>
+        <Text style={[styles.label, { color: theme.textSecondary }]}>
+          电话（可选）
+        </Text>
         <TextInput
           testID="staff-phone-input"
-          style={[styles.input, { backgroundColor: theme.inputBg, borderColor: theme.border, color: theme.text }]}
+          style={[
+            styles.input,
+            {
+              backgroundColor: theme.inputBg,
+              borderColor: theme.border,
+              color: theme.text,
+            },
+          ]}
           value={phone}
           onChangeText={setPhone}
         />
       </View>
       <View style={styles.field}>
-        <Text style={[styles.label, { color: theme.textSecondary }]}>备注（可选）</Text>
+        <Text style={[styles.label, { color: theme.textSecondary }]}>
+          备注（可选）
+        </Text>
         <TextInput
           testID="staff-notes-input"
-          style={[styles.input, { backgroundColor: theme.inputBg, borderColor: theme.border, color: theme.text }]}
+          style={[
+            styles.input,
+            {
+              backgroundColor: theme.inputBg,
+              borderColor: theme.border,
+              color: theme.text,
+            },
+          ]}
           value={notes}
           onChangeText={setNotes}
           multiline
@@ -390,18 +569,31 @@ function StaffForm({ staffId, onDone }: { staffId?: string; onDone: () => void }
       <View style={styles.field}>
         <Text style={[styles.label, { color: theme.textSecondary }]}>等级</Text>
         <View style={styles.levelSegs}>
-          {[...STAFF_LEVELS].sort((a, b) => a.rank - b.rank).map(({ code, label }) => {
-            const selected = level === code;
-            return (
-              <Pressable
-                key={code}
-                testID={`staff-level-${code}`}
-                onPress={() => setLevel(code)}
-                style={[styles.levelSeg, { borderColor: theme.border }, selected && { backgroundColor: theme.backgroundSelected }]}>
-                <Text style={{ color: selected ? theme.text : theme.textSecondary }}>{label}</Text>
-              </Pressable>
-            );
-          })}
+          {[...STAFF_LEVELS]
+            .sort((a, b) => a.rank - b.rank)
+            .map(({ code, label }) => {
+              const selected = level === code;
+              return (
+                <Pressable
+                  key={code}
+                  testID={`staff-level-${code}`}
+                  onPress={() => setLevel(code)}
+                  style={[
+                    styles.levelSeg,
+                    { borderColor: theme.border },
+                    selected && { backgroundColor: theme.backgroundSelected },
+                  ]}
+                >
+                  <Text
+                    style={{
+                      color: selected ? theme.text : theme.textSecondary,
+                    }}
+                  >
+                    {label}
+                  </Text>
+                </Pressable>
+              );
+            })}
         </View>
       </View>
       {error && (
@@ -414,12 +606,19 @@ function StaffForm({ staffId, onDone }: { staffId?: string; onDone: () => void }
           testID="staff-submit"
           onPress={submit}
           disabled={createStaff.isPending || updateStaff.isPending}
-          style={[styles.actionBtn, { backgroundColor: theme.success }]}>
+          style={[styles.actionBtn, { backgroundColor: theme.success }]}
+        >
           <Text style={styles.createBtnText}>
-            {createStaff.isPending || updateStaff.isPending ? '保存中…' : '保存'}
+            {createStaff.isPending || updateStaff.isPending
+              ? "保存中…"
+              : "保存"}
           </Text>
         </Pressable>
-        <Pressable testID="staff-cancel" onPress={onDone} style={[styles.actionBtn, { borderColor: theme.border }]}>
+        <Pressable
+          testID="staff-cancel"
+          onPress={onDone}
+          style={[styles.actionBtn, { borderColor: theme.border }]}
+        >
           <Text style={{ color: theme.text }}>取消</Text>
         </Pressable>
       </View>
@@ -435,10 +634,12 @@ function StaffForm({ staffId, onDone }: { staffId?: string; onDone: () => void }
  */
 function ProductManage() {
   const theme = useTheme();
-  const [search, setSearch] = useState('');
+  const [search, setSearch] = useState("");
   const [creating, setCreating] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const products = useProducts(search ? { search: { text: search } } : { includeVoided: true });
+  const products = useProducts(
+    search ? { search: { text: search } } : { includeVoided: true },
+  );
   const voidProduct = useVoidProduct();
   const restoreProduct = useRestoreProduct();
   const rows = products.data ?? [];
@@ -447,14 +648,27 @@ function ProductManage() {
     return <ProductForm onDone={() => setCreating(false)} />;
   }
   if (editingId) {
-    return <ProductForm productId={editingId} onDone={() => setEditingId(null)} />;
+    return (
+      <ProductForm productId={editingId} onDone={() => setEditingId(null)} />
+    );
   }
 
   return (
-    <ScrollView testID="view-product" style={styles.domain} contentContainerStyle={styles.listContent}>
+    <ScrollView
+      testID="view-product"
+      style={styles.domain}
+      contentContainerStyle={styles.listContent}
+    >
       <TextInput
         testID="product-search"
-        style={[styles.searchInput, { backgroundColor: theme.inputBg, borderColor: theme.border, color: theme.text }]}
+        style={[
+          styles.searchInput,
+          {
+            backgroundColor: theme.inputBg,
+            borderColor: theme.border,
+            color: theme.text,
+          },
+        ]}
         placeholder="搜索商品名称"
         placeholderTextColor={theme.textSecondary}
         value={search}
@@ -463,7 +677,8 @@ function ProductManage() {
       <Pressable
         testID="product-create"
         onPress={() => setCreating(true)}
-        style={[styles.createBtn, { backgroundColor: theme.success }]}>
+        style={[styles.createBtn, { backgroundColor: theme.success }]}
+      >
         <Text style={styles.createBtnText}>新增商品</Text>
       </Pressable>
       {rows.map((item) => {
@@ -474,20 +689,31 @@ function ProductManage() {
             testID={`manage-product-${item.id}`}
             style={[styles.row, { borderColor: theme.border }]}
             disabled={voided}
-            onPress={voided ? undefined : () => setEditingId(item.id)}>
+            onPress={voided ? undefined : () => setEditingId(item.id)}
+          >
             <View style={styles.rowMain}>
-              <Text style={[styles.name, { color: voided ? theme.textSecondary : theme.text }]}>{item.title}</Text>
+              <Text
+                style={[
+                  styles.name,
+                  { color: voided ? theme.textSecondary : theme.text },
+                ]}
+              >
+                {item.title}
+              </Text>
               <Text style={[styles.sub, { color: theme.textSecondary }]}>
                 <MoneyText cents={item.purchase_price} />
               </Text>
             </View>
             {voided ? (
               <>
-                <Text style={[styles.voidedTag, { color: theme.danger }]}>已删除</Text>
+                <Text style={[styles.voidedTag, { color: theme.danger }]}>
+                  已删除
+                </Text>
                 <Pressable
                   testID={`product-restore-${item.id}`}
                   onPress={() => restoreProduct.mutate(item.id)}
-                  style={[styles.rowAction, { borderColor: theme.border }]}>
+                  style={[styles.rowAction, { borderColor: theme.border }]}
+                >
                   <Text style={{ color: theme.text }}>恢复</Text>
                 </Pressable>
               </>
@@ -495,7 +721,8 @@ function ProductManage() {
               <Pressable
                 testID={`product-void-${item.id}`}
                 onPress={() => voidProduct.mutate(item.id)}
-                style={[styles.rowAction, { borderColor: theme.danger }]}>
+                style={[styles.rowAction, { borderColor: theme.danger }]}
+              >
                 <Text style={{ color: theme.danger }}>删除</Text>
               </Pressable>
             )}
@@ -518,14 +745,20 @@ function ProductManage() {
  * cross-entity invalidation) so every derived amount revalues at the new price
  * on the next read (ADR-0002).
  */
-function ProductForm({ productId, onDone }: { productId?: string; onDone: () => void }) {
+function ProductForm({
+  productId,
+  onDone,
+}: {
+  productId?: string;
+  onDone: () => void;
+}) {
   const theme = useTheme();
   const repos = useRepos();
   const createProduct = useCreateProduct();
   const updateProduct = useUpdateProduct();
   const editing = productId != null;
-  const [title, setTitle] = useState('');
-  const [price, setPrice] = useState('');
+  const [title, setTitle] = useState("");
+  const [price, setPrice] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loaded, setLoaded] = useState(!editing);
 
@@ -541,18 +774,20 @@ function ProductForm({ productId, onDone }: { productId?: string; onDone: () => 
       setPrice((p.purchase_price / 100).toString());
       setLoaded(true);
     });
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [productId, repos]);
 
   const submit = () => {
     const trimmedTitle = title.trim();
     if (!trimmedTitle) {
-      setError('请输入名称');
+      setError("请输入名称");
       return;
     }
     const yuan = parseFloat(price);
     if (!isFinite(yuan) || yuan <= 0) {
-      setError('请输入有效单价');
+      setError("请输入有效单价");
       return;
     }
     const priceCents: Cents = cents(Math.round(yuan * 100));
@@ -560,7 +795,10 @@ function ProductForm({ productId, onDone }: { productId?: string; onDone: () => 
     const done = { onSuccess: onDone } as const;
     if (editing && productId) {
       updateProduct.mutate(
-        { productId, patch: { title: trimmedTitle, purchase_price: priceCents } },
+        {
+          productId,
+          patch: { title: trimmedTitle, purchase_price: priceCents },
+        },
         done,
       );
     } else {
@@ -579,16 +817,32 @@ function ProductForm({ productId, onDone }: { productId?: string; onDone: () => 
         <Text style={[styles.label, { color: theme.textSecondary }]}>名称</Text>
         <TextInput
           testID="product-title-input"
-          style={[styles.input, { backgroundColor: theme.inputBg, borderColor: theme.border, color: theme.text }]}
+          style={[
+            styles.input,
+            {
+              backgroundColor: theme.inputBg,
+              borderColor: theme.border,
+              color: theme.text,
+            },
+          ]}
           value={title}
           onChangeText={setTitle}
         />
       </View>
       <View style={styles.field}>
-        <Text style={[styles.label, { color: theme.textSecondary }]}>单价（元）</Text>
+        <Text style={[styles.label, { color: theme.textSecondary }]}>
+          单价（元）
+        </Text>
         <TextInput
           testID="product-price-input"
-          style={[styles.input, { backgroundColor: theme.inputBg, borderColor: theme.border, color: theme.text }]}
+          style={[
+            styles.input,
+            {
+              backgroundColor: theme.inputBg,
+              borderColor: theme.border,
+              color: theme.text,
+            },
+          ]}
           value={price}
           onChangeText={setPrice}
           keyboardType="decimal-pad"
@@ -604,12 +858,19 @@ function ProductForm({ productId, onDone }: { productId?: string; onDone: () => 
           testID="product-submit"
           onPress={submit}
           disabled={createProduct.isPending || updateProduct.isPending}
-          style={[styles.actionBtn, { backgroundColor: theme.success }]}>
+          style={[styles.actionBtn, { backgroundColor: theme.success }]}
+        >
           <Text style={styles.createBtnText}>
-            {createProduct.isPending || updateProduct.isPending ? '保存中…' : '保存'}
+            {createProduct.isPending || updateProduct.isPending
+              ? "保存中…"
+              : "保存"}
           </Text>
         </Pressable>
-        <Pressable testID="product-cancel" onPress={onDone} style={[styles.actionBtn, { borderColor: theme.border }]}>
+        <Pressable
+          testID="product-cancel"
+          onPress={onDone}
+          style={[styles.actionBtn, { borderColor: theme.border }]}
+        >
           <Text style={{ color: theme.text }}>取消</Text>
         </Pressable>
       </View>
@@ -619,27 +880,72 @@ function ProductForm({ productId, onDone }: { productId?: string; onDone: () => 
 
 const styles = StyleSheet.create({
   container: { flex: 1, padding: 12, gap: 8 },
-  segments: { flexDirection: 'row', borderWidth: 1, borderRadius: 8, overflow: 'hidden' },
-  segment: { flex: 1, paddingVertical: 10, alignItems: 'center' },
-  segmentText: { fontSize: 14, fontWeight: '600' },
+  segments: {
+    flexDirection: "row",
+    borderWidth: 1,
+    borderRadius: 8,
+    overflow: "hidden",
+  },
+  segment: { flex: 1, paddingVertical: 10, alignItems: "center" },
+  segmentText: { fontSize: 14, fontWeight: "600" },
   domain: { flex: 1 },
   form: { flex: 1, gap: 8 },
-  field: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  label: { fontSize: 13, fontWeight: '500', width: 84 },
+  field: { flexDirection: "row", alignItems: "center", gap: 8, marginTop: 8 },
+  fieldLabel: { fontSize: 14, fontWeight: "500" },
+
+  label: { fontSize: 13, fontWeight: "500", width: 84 },
   listContent: { gap: 8 },
-  input: { flex: 1, borderWidth: 1, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 8, fontSize: 15 },
-  searchInput: { borderWidth: 1, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 8, fontSize: 15 },
-  row: { flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 8, gap: 8 },
+  input: {
+    flex: 1,
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    fontSize: 15,
+  },
+  searchInput: {
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    fontSize: 15,
+  },
+  row: {
+    flexDirection: "row",
+    alignItems: "center",
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    gap: 8,
+  },
   rowMain: { flex: 1, gap: 2 },
-  nameRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  levelSegs: { flex: 1, flexDirection: 'row', borderWidth: 1, borderRadius: 8, overflow: 'hidden' },
-  levelSeg: { flex: 1, paddingVertical: 8, alignItems: 'center' },
-  rowAction: { borderWidth: 1, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6 },
-  voidedTag: { fontSize: 12, fontWeight: '600' },
-  name: { fontSize: 16, fontWeight: '600' },
+  nameRow: { flexDirection: "row", alignItems: "center", gap: 6 },
+  levelSegs: {
+    flex: 1,
+    flexDirection: "row",
+    borderWidth: 1,
+    borderRadius: 8,
+    overflow: "hidden",
+  },
+  levelSeg: { flex: 1, paddingVertical: 8, alignItems: "center" },
+  rowAction: {
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  voidedTag: { fontSize: 12, fontWeight: "600" },
+  name: { fontSize: 16, fontWeight: "600" },
   sub: { fontSize: 13 },
-  createBtn: { borderRadius: 8, paddingVertical: 10, alignItems: 'center' },
-  createBtnText: { color: '#fff', fontSize: 15, fontWeight: '600' },
-  formActions: { flexDirection: 'row', gap: 8 },
-  actionBtn: { flex: 1, borderWidth: 1, borderRadius: 8, paddingVertical: 10, alignItems: 'center' },
+  createBtn: { borderRadius: 8, paddingVertical: 10, alignItems: "center" },
+  createBtnText: { color: "#fff", fontSize: 15, fontWeight: "600" },
+  formActions: { flexDirection: "row", gap: 8 },
+  actionBtn: {
+    flex: 1,
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingVertical: 10,
+    alignItems: "center",
+  },
 });

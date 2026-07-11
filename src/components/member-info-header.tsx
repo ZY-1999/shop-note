@@ -1,10 +1,10 @@
-import { StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, View } from "react-native";
 
-import { MoneyText } from '@/components/money-text';
-import { LevelBadge } from '@/components/level-badge';
-import { useStaffById, useMemberBalance } from '@/hooks/reads';
-import { useTheme } from '@/hooks/use-theme';
-import { cents } from '@/data/primitives';
+import { LevelBadge } from "@/components/level-badge";
+import { MoneyText } from "@/components/money-text";
+import { cents } from "@/data/primitives";
+import { useMemberBalance, useStaffById } from "@/hooks/reads";
+import { useTheme } from "@/hooks/use-theme";
 
 /**
  * The unified member-info header (topup-subpage spec #01) — a pure-display
@@ -35,7 +35,7 @@ export function MemberInfoHeader({ staffId }: MemberInfoHeaderProps) {
   return (
     <View testID="member-info-header" style={styles.root}>
       <View style={styles.row1}>
-        <Text style={styles.name}>{staff.data?.name ?? '加载中'}</Text>
+        <Text style={styles.name}>{staff.data?.name ?? "加载中"}</Text>
         {staff.data && <LevelBadge level={staff.data.level} />}
       </View>
       <View style={styles.row2}>
@@ -47,9 +47,9 @@ export function MemberInfoHeader({ staffId }: MemberInfoHeaderProps) {
 }
 
 const styles = StyleSheet.create({
-  root: { gap: 2 },
-  row1: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  row2: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  name: { fontSize: 16, fontWeight: '600' },
+  root: { gap: 2, marginBottom: 8 },
+  row1: { flexDirection: "row", alignItems: "center", gap: 8 },
+  row2: { flexDirection: "row", alignItems: "center", gap: 8 },
+  name: { fontSize: 16, fontWeight: "600" },
   label: { fontSize: 13 },
 });

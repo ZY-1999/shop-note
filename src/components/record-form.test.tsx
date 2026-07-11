@@ -381,7 +381,7 @@ describe("RecordForm — 备注 field (spec #03 AC3)", () => {
   it("renders 备注 as a label:input field", async () => {
     const { repos, staffId } = await seed();
     const { view } = await renderForm(<RecordForm staffId={staffId} direction="out" />, { repos });
-    expect(await waitForSync(() => view.getByText("备注："))).toBeTruthy();
+    expect(await waitForSync(() => view.getByText("备注"))).toBeTruthy();
     expect(view.getByTestId("note")).toBeTruthy();
   });
 });

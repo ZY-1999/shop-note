@@ -1,8 +1,8 @@
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from "react-native";
 
-import { MemberInfoHeader } from '@/components/member-info-header';
-import { useTheme } from '@/hooks/use-theme';
-import type { Staff } from '@/data/staff';
+import { MemberInfoHeader } from "@/components/member-info-header";
+import type { Staff } from "@/data/staff";
+import { useTheme } from "@/hooks/use-theme";
 
 /**
  * One member row in the 记账 list (stock-balance-refactor balance-domain).
@@ -28,7 +28,11 @@ export function StaffRow({ staff, onTopup, onOut, onOpen }: StaffRowProps) {
 
   return (
     <View style={[styles.wrap, { borderColor: theme.border }]}>
-      <Pressable testID={`row-${staff.id}`} onPress={() => onOpen(staff.id)} style={styles.row}>
+      <Pressable
+        testID={`row-${staff.id}`}
+        onPress={() => onOpen(staff.id)}
+        style={styles.row}
+      >
         <View style={styles.main}>
           <MemberInfoHeader staffId={staff.id} />
         </View>
@@ -36,13 +40,15 @@ export function StaffRow({ staff, onTopup, onOut, onOpen }: StaffRowProps) {
           <Pressable
             testID={`topup-${staff.id}`}
             onPress={() => onTopup(staff.id)}
-            style={[styles.btn, { backgroundColor: theme.success }]}>
+            style={[styles.btn, { backgroundColor: theme.success }]}
+          >
             <Text style={styles.btnText}>充值</Text>
           </Pressable>
           <Pressable
             testID={`out-${staff.id}`}
             onPress={() => onOut(staff.id)}
-            style={[styles.btn, { backgroundColor: theme.danger }]}>
+            style={[styles.btn, { backgroundColor: theme.danger }]}
+          >
             <Text style={styles.btnText}>出库</Text>
           </Pressable>
         </View>
@@ -52,10 +58,16 @@ export function StaffRow({ staff, onTopup, onOut, onOpen }: StaffRowProps) {
 }
 
 const styles = StyleSheet.create({
-  wrap: { borderWidth: 1, borderRadius: 8 },
-  row: { flexDirection: 'row', alignItems: 'center', padding: 12, gap: 12 },
+  wrap: { borderWidth: 1, borderRadius: 8, marginBottom: 4 },
+  row: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    gap: 12,
+  },
   main: { flex: 1 },
-  actions: { flexDirection: 'row', gap: 8 },
+  actions: { flexDirection: "row", gap: 8 },
   btn: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 8 },
-  btnText: { color: '#fff', fontSize: 14, fontWeight: '600' },
+  btnText: { color: "#fff", fontSize: 14, fontWeight: "600" },
 });

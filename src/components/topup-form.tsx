@@ -1,14 +1,24 @@
-import DateTimePicker, { type DateTimePickerChangeEvent } from '@expo/ui/community/datetime-picker';
-import { Ionicons } from '@expo/vector-icons';
-import { router } from 'expo-router';
-import { useState } from 'react';
-import { Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import DateTimePicker, {
+  type DateTimePickerChangeEvent,
+} from "@expo/ui/community/datetime-picker";
+import { Ionicons } from "@expo/vector-icons";
+import { router } from "expo-router";
+import { useState } from "react";
+import {
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from "react-native";
 
-import { MemberInfoHeader } from '@/components/member-info-header';
-import { formatDateTime } from '@/components/date-format';
-import { useCreateTopup } from '@/hooks/mutations';
-import { useTheme } from '@/hooks/use-theme';
-import { cents } from '@/data/primitives';
+import { formatDateTime } from "@/components/date-format";
+import { MemberInfoHeader } from "@/components/member-info-header";
+import { cents } from "@/data/primitives";
+import { useCreateTopup } from "@/hooks/mutations";
+import { useTheme } from "@/hooks/use-theme";
 
 /**
  * The top-up form — the UI's only write path into the top-up ledger. Opened from
@@ -32,8 +42,8 @@ export interface TopupFormProps {
 export function TopupForm({ staffId }: TopupFormProps) {
   const theme = useTheme();
   const createTopup = useCreateTopup();
-  const [amount, setAmount] = useState('');
-  const [note, setNote] = useState('');
+  const [amount, setAmount] = useState("");
+  const [note, setNote] = useState("");
   const [timestamp, setTimestamp] = useState(Date.now());
   // Android renders the picker as a Material dialog (@expo/ui default
   // presentation='dialog'): mount opens it, unmount on confirm (onValueChange)
@@ -44,7 +54,7 @@ export function TopupForm({ staffId }: TopupFormProps) {
   const submit = () => {
     const yuan = parseFloat(amount);
     if (!isFinite(yuan) || yuan <= 0) {
-      setError('请输入有效金额');
+      setError("请输入有效金额");
       return;
     }
     setError(null);
@@ -60,42 +70,33 @@ export function TopupForm({ staffId }: TopupFormProps) {
   };
 
   return (
-    <ScrollView style={[styles.container, { backgroundColor: theme.background }]}>
+    <ScrollView
+      style={[styles.container, { backgroundColor: theme.background }]}
+    >
       <MemberInfoHeader staffId={staffId} />
 
       <View style={styles.field}>
-        <Text style={[styles.fieldLabel, { color: theme.textSecondary }]}>金额（元）</Text>
-        <TextInput
-          testID="topup-amount"
-          style={[styles.input, { backgroundColor: theme.inputBg, borderColor: theme.border, color: theme.text }]}
-          value={amount}
-          onChangeText={setAmount}
-          keyboardType="decimal-pad"
-        />
-      </View>
-
-      <View style={styles.field}>
-        <Text style={[styles.fieldLabel, { color: theme.textSecondary }]}>备注：</Text>
-        <TextInput
-          testID="topup-note"
-          style={[styles.input, styles.fieldInput, { backgroundColor: theme.inputBg, borderColor: theme.border, color: theme.text }]}
-          placeholder="单号 / 原因"
-          placeholderTextColor={theme.textSecondary}
-          value={note}
-          onChangeText={setNote}
-        />
-      </View>
-
-      <View style={styles.timeRow}>
-        <Text style={[styles.timeLabel, { color: theme.textSecondary }]}>时间</Text>
-        {Platform.OS === 'android' ? (
+        <Text style={[styles.fieldLabel, { color: theme.textSecondary }]}>
+          时间
+        </Text>
+        {Platform.OS === "android" ? (
           <>
             <Pressable
               testID="topup-time"
               onPress={() => setShowTime(true)}
-              style={[styles.timeBtn, { backgroundColor: theme.inputBg, borderColor: theme.border }]}>
-              <Text style={{ color: theme.text }}>{formatDateTime(timestamp)}</Text>
-              <Ionicons name="time-outline" size={16} color={theme.textSecondary} />
+              style={[
+                styles.timeBtn,
+                { backgroundColor: theme.inputBg, borderColor: theme.border },
+              ]}
+            >
+              <Text style={{ color: theme.text }}>
+                {formatDateTime(timestamp)}
+              </Text>
+              <Ionicons
+                name="time-outline"
+                size={16}
+                color={theme.textSecondary}
+              />
             </Pressable>
             {showTime && (
               <DateTimePicker
@@ -115,9 +116,52 @@ export function TopupForm({ staffId }: TopupFormProps) {
             testID="topup-time"
             mode="datetime"
             value={new Date(timestamp)}
-            onValueChange={(_e: DateTimePickerChangeEvent, date: Date) => setTimestamp(date.getTime())}
+            onValueChange={(_e: DateTimePickerChangeEvent, date: Date) =>
+              setTimestamp(date.getTime())
+            }
           />
         )}
+      </View>
+
+      <View style={styles.field}>
+        <Text style={[styles.fieldLabel, { color: theme.textSecondary }]}>
+          金额（元）
+        </Text>
+        <TextInput
+          testID="topup-amount"
+          style={[
+            styles.input,
+            {
+              backgroundColor: theme.inputBg,
+              borderColor: theme.border,
+              color: theme.text,
+            },
+          ]}
+          value={amount}
+          onChangeText={setAmount}
+          keyboardType="decimal-pad"
+        />
+      </View>
+
+      <View style={styles.field}>
+        <Text style={[styles.fieldLabel, { color: theme.textSecondary }]}>
+          备注
+        </Text>
+        <TextInput
+          testID="topup-note"
+          style={[
+            styles.input,
+            {
+              backgroundColor: theme.inputBg,
+              borderColor: theme.border,
+              color: theme.text,
+            },
+          ]}
+          placeholder="单号 / 原因"
+          placeholderTextColor={theme.textSecondary}
+          value={note}
+          onChangeText={setNote}
+        />
       </View>
 
       {error && (
@@ -130,8 +174,11 @@ export function TopupForm({ staffId }: TopupFormProps) {
         testID="topup-submit"
         onPress={submit}
         disabled={createTopup.isPending}
-        style={[styles.submit, { backgroundColor: theme.success }]}>
-        <Text style={styles.submitText}>{createTopup.isPending ? '提交中…' : '提交'}</Text>
+        style={[styles.submit, { backgroundColor: theme.success }]}
+      >
+        <Text style={styles.submitText}>
+          {createTopup.isPending ? "提交中…" : "提交"}
+        </Text>
       </Pressable>
     </ScrollView>
   );
@@ -139,13 +186,35 @@ export function TopupForm({ staffId }: TopupFormProps) {
 
 const styles = StyleSheet.create({
   container: { flex: 1, padding: 12, gap: 8 },
-  field: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  fieldLabel: { fontSize: 13, fontWeight: '500' },
-  input: { borderWidth: 1, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10, fontSize: 15 },
-  fieldInput: { flex: 1 },
-  timeRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 4 },
-  timeLabel: { fontSize: 15 },
-  timeBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, borderWidth: 1, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 8 },
-  submit: { borderRadius: 8, paddingVertical: 14, alignItems: 'center', marginTop: 8 },
-  submitText: { color: '#fff', fontSize: 16, fontWeight: '600' },
+  field: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    paddingVertical: 4,
+  },
+  fieldLabel: { fontSize: 14, fontWeight: "500", width: 72 },
+  input: {
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 15,
+    flex: 1,
+  },
+  timeBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  submit: {
+    borderRadius: 8,
+    paddingVertical: 14,
+    alignItems: "center",
+    marginTop: 8,
+  },
+  submitText: { color: "#fff", fontSize: 16, fontWeight: "600" },
 });

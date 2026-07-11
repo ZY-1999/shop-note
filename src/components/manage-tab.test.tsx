@@ -321,7 +321,7 @@ describe("ManageTab — restock segment (stock-balance-refactor AC3)", () => {
     const { view } = await renderManage(<ManageTab />, { repos });
     await fireEvent.press(view.getByTestId("seg-restock"));
     await waitForSync(() => view.getByTestId("view-restock"));
-    await waitForSync(() => view.getByTestId(`restock-pick-${colaId}`));
+    await waitForSync(() => view.getByTestId(`pick-${colaId}`));
   });
 
   it("blocks restock when no product is selected", async () => {
@@ -338,10 +338,10 @@ describe("ManageTab — restock segment (stock-balance-refactor AC3)", () => {
     const { repos, colaId } = await seed();
     const { view } = await renderManage(<ManageTab />, { repos });
     await fireEvent.press(view.getByTestId("seg-restock"));
-    await waitForSync(() => view.getByTestId(`restock-pick-${colaId}`));
+    await waitForSync(() => view.getByTestId(`pick-${colaId}`));
 
-    await fireEvent.press(view.getByTestId(`restock-pick-${colaId}`));
-    await fireEvent.changeText(view.getByTestId("restock-qty"), "10");
+    await fireEvent.press(view.getByTestId(`pick-${colaId}`));
+    await fireEvent.changeText(await waitForSync(() => view.getByTestId("qty-0")), "10");
     await fireEvent.press(view.getByTestId("restock-submit"));
 
     // the restock landed under admin -1 → global shopAggregate qty for 可乐 is 10.
@@ -370,8 +370,11 @@ describe("ManageTab — config segment (stock-balance-refactor US2)", () => {
     const { repos } = await seed();
     const { view } = await renderManage(<ManageTab />, { repos });
     await fireEvent.press(view.getByTestId("seg-config"));
-    await waitForSync(() => view.getByTestId("view-config"));
-    expect(view.getByTestId("config-current").props.children).toContain("0.00");
+    await waitForSync(() => view.getByTestId("config-price-input"));
+    // input 直接承载当前单价 —— 冷启动 data=0 → input 显示 "0"
+    await waitForSync(() =>
+      expect(view.getByTestId("config-price-input").props.value).toBe("0"),
+    );
   });
 
   it("pre-fills the input with an already-configured unit price once it loads", async () => {
@@ -397,10 +400,8 @@ describe("ManageTab — config segment (stock-balance-refactor US2)", () => {
     await waitForSync(async () => {
       expect(await repos.config.getUnitPrice()).toBe(cents(2400)); // ¥24.00
     });
-    // the invalidate refetches useUnitPrice → config-current re-renders to 24.00
-    await waitForSync(() =>
-      expect(view.getByTestId("config-current").props.children).toContain("24.00"),
-    );
+    // 保存成功 → 按钮给「已保存」反馈（input 值 = 输入 = 新 DB 值，需按钮让"更新"可见）
+    await waitForSync(() => expect(view.getByText("已保存")).toBeTruthy());
   });
 
   it("four segments toggle (会员 / 商品 / 补货 / 配置)", async () => {

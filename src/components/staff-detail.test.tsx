@@ -59,9 +59,12 @@ describe("StaffDetail — 余额 partition + summary (balance-domain)", () => {
     await repos.stockRecords.create({ staff_id: staffId, direction: "out", items: [{ product_id: productId, qty: 10 }] }); // ¥30
 
     const { view } = await renderDetail(<StaffDetail staffId={staffId} onOpenRecord={jest.fn()} />, { repos });
-    await waitForSync(() => view.getByTestId("balance-section"));
-    expect(moneyText(view.getByTestId("balance-total"))).toBe("¥70.00"); // 100 − 30
-    expect(view.getByText("共 2 条")).toBeTruthy();
+    // spec #05: the standalone 余额 card is now MemberInfoHeader's second row —
+    // sync on the balance text (the component's MoneyText has no per-staff testID).
+    await waitForSync(() => view.getByText("¥70.00")); // 100 − 30, settled via useMemberBalance
+    expect(view.getByTestId("member-info-header")).toBeTruthy();
+    expect(view.queryByTestId("balance-section")).toBeNull(); // 独立余额卡片不再渲染
+    expect(view.getByText("共 2 条记录")).toBeTruthy();
     expect(moneyText(view.getByTestId("record-topup-total"))).toBe("¥100.00");
     expect(moneyText(view.getByTestId("record-out-total"))).toBe("¥30.00");
   });
@@ -72,8 +75,7 @@ describe("StaffDetail — 余额 partition + summary (balance-domain)", () => {
     await repos.stockRecords.create({ staff_id: staffId, direction: "out", items: [{ product_id: productId, qty: 10 }] }); // ¥30 → −¥20
 
     const { view } = await renderDetail(<StaffDetail staffId={staffId} onOpenRecord={jest.fn()} />, { repos });
-    await waitForSync(() => view.getByTestId("balance-section"));
-    expect(moneyText(view.getByTestId("balance-total"))).toBe("欠款 ¥20.00");
+    await waitForSync(() => view.getByText("欠款 ¥20.00")); // MemberInfoHeader 欠款标 (negative)
   });
 });
 
@@ -89,13 +91,13 @@ describe("StaffDetail — 充值 history + 作废 (balance-domain US11)", () => 
     await flushPending();
 
     // the top-up row carries a 作废 affordance; balance starts at ¥70 (100 − 30).
-    expect(moneyText(view.getByTestId("balance-total"))).toBe("¥70.00");
+    await waitForSync(() => view.getByText("¥70.00")); // MemberInfoHeader 余额
     const [topup] = await repos.topups.list({ staff_id: staffId });
     await fireEvent.press(view.getByTestId(`topup-void-${topup.id}`));
     await fireEvent.press(view.getByTestId(`topup-confirm-${topup.id}`));
 
     // voiding the ¥100 top-up → balance recomputes to −¥30 (only the out remains).
-    await waitForSync(() => expect(moneyText(view.getByTestId("balance-total"))).toBe("欠款 ¥30.00"));
+    await waitForSync(() => view.getByText("欠款 ¥30.00"));
     expect((await repos.topups.list({ staff_id: staffId }))).toHaveLength(0); // voided → excluded
   });
 });

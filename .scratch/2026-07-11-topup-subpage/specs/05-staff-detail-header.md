@@ -1,7 +1,7 @@
 # 会员详情 header 对齐
 
 Type: spec
-Status: ready-for-agent
+Status: done
 Parent: #01
 Blocked by: #01
 
@@ -38,3 +38,18 @@ StaffDetail header 顶部 nameRow + 独立「余额」卡片两块替换为 Memb
 ## Rework on failure
 
 failure is isolated; redo this spec only（会员详情 header 独立）。
+
+## Evidence — done 2026-07-11
+
+**Shipped (`src/components/staff-detail.tsx`):**
+- ListHeaderComponent 的 `nameRow`（名 + LevelBadge）+ 独立 `balance-section` 卡片两块 → 换成 `<MemberInfoHeader staffId={staffId} />`，与充值/出库表单 header、记账列表行四处对齐。
+- 移除 StaffDetail 自身的 `useStaffById` + `useMemberBalance`（名/等级/余额展示全部交 MemberInfoHeader，避免重复 + rules-of-react clean）；`record-summary`（共 N 条记录 / 充值 / 出库）汇总卡片保留。
+- day-event 行布局随本次 UI 优化一并对齐（「入库：/出库：/充值：」标签 + line 容器）；非 spec05 强制项，随同一提交落地。
+
+**Tests (`src/components/staff-detail.test.tsx`, 7/7 green):**
+- 余额断言从 `balance-section`/`balance-total` testID 改为余额文本同步（MemberInfoHeader 的 MoneyText 不带 staffId 后缀 testID）：正余额 `¥70.00`、负余额 `欠款 ¥20.00`、作废后 `欠款 ¥30.00` ✓（AC1/AC2）
+- 新增 `member-info-header` testID 在场 + `balance-section` 不再渲染断言 ✓（AC1）
+- 名 + 金站等级徽标断言保留（MemberInfoHeader 第一行仍渲染）✓（AC3）
+- 汇总卡片（record-summary / record-topup-total / record-out-total）断言保留；日分组 / 作废 / 分批渲染回归全绿 ✓（AC4/AC5）
+
+MemberInfoHeader 保持真实（未 mock）—— StaffDetail 本就有 4 个 useQuery，query 负载不变，无渲染器腐败风险。`npx tsc --noEmit` clean；全量 38/38 套件通过。无 Rework triggered。
