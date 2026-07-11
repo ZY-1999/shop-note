@@ -22,7 +22,7 @@ import {
   type Point,
 } from "@/components/stroke-kernel";
 import { rasterize } from "@/components/rasterize";
-import { Colors } from "@/constants/theme";
+import { useTheme } from "@/hooks/use-theme";
 
 export interface SignatureModalProps {
   visible: boolean;
@@ -37,6 +37,7 @@ export function SignatureModal({
   onConfirm,
   onCancel,
 }: SignatureModalProps) {
+  const theme = useTheme();
   const [strokes, dispatch] = useReducer(strokeReducer, []);
   const currentStroke = useRef<Point[]>([]);
   const canvasRef = useRef<View>(null);
@@ -66,18 +67,18 @@ export function SignatureModal({
 
   return (
     <Modal visible={visible} transparent={false}>
-      <View style={styles.container}>
+      <View style={[styles.container, { backgroundColor: theme.background }]}>
         <GestureDetector gesture={pan}>
           <View
             ref={canvasRef}
-            style={styles.canvas}
+            style={[styles.canvas, { borderColor: theme.border }]}
             testID="signature-canvas"
             collapsable={false}
           >
             <Svg style={styles.svg}>
               <Path
                 d={serializePath(strokes)}
-                stroke={Colors.light.text}
+                stroke={theme.text}
                 strokeWidth={2}
                 fill="none"
               />
@@ -90,21 +91,21 @@ export function SignatureModal({
             style={styles.button}
             onPress={() => dispatch({ type: "undo" })}
           >
-            <Text style={styles.buttonText}>撤销</Text>
+            <Text style={[styles.buttonText, { color: theme.text }]}>撤销</Text>
           </Pressable>
           <Pressable
             testID="clear-btn"
             style={styles.button}
             onPress={() => dispatch({ type: "clear" })}
           >
-            <Text style={styles.buttonText}>清除</Text>
+            <Text style={[styles.buttonText, { color: theme.text }]}>清除</Text>
           </Pressable>
           <Pressable
             testID="cancel-btn"
             style={styles.button}
             onPress={onCancel}
           >
-            <Text style={styles.buttonText}>取消</Text>
+            <Text style={[styles.buttonText, { color: theme.text }]}>取消</Text>
           </Pressable>
           <Pressable
             testID="confirm-btn"
@@ -112,13 +113,13 @@ export function SignatureModal({
               styles.button,
               strokes.length === 0
                 ? styles.buttonDisabled
-                : styles.buttonActive,
+                : { backgroundColor: theme.accent },
             ]}
             onPress={handleConfirm}
             disabled={strokes.length === 0}
             accessibilityState={{ disabled: strokes.length === 0 }}
           >
-            <Text style={styles.buttonText}>确认</Text>
+            <Text style={[styles.buttonText, { color: theme.text }]}>确认</Text>
           </Pressable>
         </View>
       </View>
@@ -129,13 +130,11 @@ export function SignatureModal({
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: Colors.light.background,
     padding: 16,
   },
   canvas: {
     flex: 1,
     borderWidth: 1,
-    borderColor: Colors.light.border,
   },
   svg: {
     flex: 1,
@@ -149,14 +148,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingVertical: 12,
   },
-  buttonActive: {
-    backgroundColor: Colors.light.accent,
-  },
   buttonDisabled: {
     opacity: 0.4,
   },
   buttonText: {
     fontSize: 16,
-    color: Colors.light.text,
   },
 });
