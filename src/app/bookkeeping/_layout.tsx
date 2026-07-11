@@ -13,6 +13,7 @@ export default function BookkeepingLayout() {
     <Stack>
       <Stack.Screen name="index" options={{ title: tabIndexTitle('bookkeeping') }} />
       <Stack.Screen name="record-form" />
+      <Stack.Screen name="topup-form" />
       <Stack.Screen name="staff/[id]" options={{ title: '会员详情' }} />
       <Stack.Screen name="record/[id]" options={{ title: '记录详情' }} />
     </Stack>

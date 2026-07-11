@@ -1,7 +1,7 @@
 # 充值表单组件 + 路由（对称出库子页面）
 
 Type: spec
-Status: ready-for-agent
+Status: done
 Parent: #01
 Blocked by: #01
 
@@ -41,3 +41,18 @@ Blocked by: #01
 ## Rework on failure
 
 failure is isolated; redo this spec only（表单 + 路由自洽，不依赖 03/04/05）。
+
+## Evidence (close 2026-07-11)
+
+**Shipped:**
+- `src/components/topup-form.tsx` — `TopupForm({ staffId: string })` router-agnostic form component: amount (元→分 via `Math.round(yuan*100)`), note, dual-branch time picker (Android mount-on-demand dialog / iOS inline), submit via `useCreateTopup` → `router.back()`. Header = `<MemberInfoHeader>`.
+- `src/app/bookkeeping/topup-form.tsx` — route adapter: reads `staff_id` param, `setOptions({ title: '充值' })`.
+- `src/app/bookkeeping/_layout.tsx` — registered `Stack.Screen name="topup-form"`.
+
+**Tests (2 files, 10 tests, all green):**
+- `src/components/topup-form.test.tsx` (4 tests): AC1 amount validation (empty/zero/negative/non-numeric blocked with 就地提示), AC2 元→分 conversion + write, AC2 rounding + note + no stock record, AC6 useCreateTopup path.
+- `src/components/topup-form-picker.test.tsx` (6 tests): AC3 time defaults to now, AC5 header renders MemberInfoHeader (no direction word), AC4 router.back on submit, Android dialog contract (onValueChange confirm + onDismiss cancel), AC3 iOS backdate (last — see note below).
+
+**RNTL renderer corruption mitigation:** MemberInfoHeader is mocked to a lightweight stub in both test files (it has its own dedicated suite in spec #01). An RNTL v14 + React 19 + React Query v5 interaction causes the renderer to produce empty trees (`view.root === undefined`) after ~4-6 varied interaction tests when MemberInfoHeader's two extra `useQuery` observers are in the render tree. Splitting into two files and mocking MemberInfoHeader keeps each file well under the threshold. The iOS backdate test is placed last in the picker file because its `onValueChange` fireEvent always corrupts subsequent tests.
+
+**No Rework on failure triggered.**
