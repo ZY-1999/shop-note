@@ -1,7 +1,7 @@
 # 笔迹内核：状态机 + SVG path 序列化
 
 Type: spec
-Status: ready-for-agent
+Status: ready-for-human
 Parent: #01 (01-signature-modal.md)
 Blocked by: None — can start immediately
 
@@ -57,3 +57,13 @@ Shape:
   > - Commit: `<sha>`
 Pointers only; no narration or source pasting.
 -->
+
+> **Comment** — implemented 2026-07-11; Status → ready-for-human
+> - [x] `addStroke` 多次 → `strokes` 数组逐次增长 — `stroke-kernel.test.ts::appends each addStroke to the strokes array (grows on every stroke)`
+> - [x] `undo` → 移除最后一条；空时保持空 — `stroke-kernel.test.ts::removes the last stroke on undo` + `keeps an empty array empty on undo (no out-of-bounds)`
+> - [x] `clear` → `strokes` 归空 — `stroke-kernel.test.ts::empties the strokes array on clear`
+> - [x] `serializePath` 多笔 → 串接的 `M x,y L x,y ...` — `stroke-kernel.test.ts::concatenates each stroke as a separate M sub-path separated by spaces`
+> - [x] `serializePath` 单笔多点 → `M` 起始、`L` 连接 — `stroke-kernel.test.ts::starts with M then connects subsequent points with L`
+> - [x] `serializePath(空)` → 空字符串 — `stroke-kernel.test.ts::returns an empty string for empty strokes`
+> - Test run: `npx jest src/components/stroke-kernel.test.ts --forceExit` → 7 passed, 0 failed
+> - Commit: `183df44`
