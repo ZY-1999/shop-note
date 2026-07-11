@@ -139,7 +139,66 @@ describe("SummaryTab — flow grouped by day × staff, newest first (spec #05 AC
 
     // a per-staff row on July 8 carries its out amount (cola×2 × 300¢ = ¥6.00).
     expect(view.getByTestId(`staff-row-2026-07-08-${staffId}`)).toBeTruthy();
-    expect(money(view.getByTestId(`staff-out-2026-07-08-${staffId}`))).toMatch(/6\.00/);
+    expect(money(view.getByTestId(`flow-staff-2026-07-08-${staffId}-out-total`))).toMatch(/6\.00/);
+  });
+});
+
+describe("SummaryTab — day header uses FlowSummary (per-day bundles/retail)", () => {
+  it("each day card header shows that day's flow via FlowSummary (out/bundles/retail from the day's out records)", async () => {
+    const { repos, staffId, colaId } = await setup();
+    await repos.config.setUnitPrice(cents(500)); // ¥5.00/unit — frozen on each checkout
+    // July 9: member out cola×7 = 2100¢ (4 bundles + 100 retail), cola×1 = 300¢ (0 + 300)
+    await repos.stockRecords.create({ staff_id: staffId, direction: "out", timestamp: DAY(9, 10), items: [{ product_id: colaId, qty: 7 }] });
+    await repos.stockRecords.create({ staff_id: staffId, direction: "out", timestamp: DAY(9, 14), items: [{ product_id: colaId, qty: 1 }] });
+
+    const { view } = await renderTab(<SummaryTab now={NOW} onOpenStaff={jest.fn()} />, { repos });
+    await waitForSync(() => view.getByTestId("flow-day-2026-07-09"));
+
+    // that day: out ¥24 (2400¢), 4 bundles, retail ¥4.00 (400¢); topup ¥0
+    expect(money(view.getByTestId("flow-day-2026-07-09-out-total"))).toMatch(/24\.00/);
+    expect(view.getByTestId("flow-day-2026-07-09-bundle-count").props.children).toEqual(
+      expect.arrayContaining([4, " 单"]),
+    );
+    expect(money(view.getByTestId("flow-day-2026-07-09-retail"))).toMatch(/4\.00/);
+  });
+});
+
+describe("SummaryTab — staff row shows member level via MemberName", () => {
+  it("renders the 金站 badge next to a gold member's name in the day's staff row", async () => {
+    const repos = setupRepos(new InMemoryAdapter());
+    const gold = await repos.staff.create({ name: "金客", phone: "", notes: "", level: "gold" });
+    const cola = await repos.products.create({ title: "可乐", purchase_price: cents(300), category: "饮料" });
+    await repos.stockRecords.create({ staff_id: gold.id, direction: "out", timestamp: DAY(9, 10), items: [{ product_id: cola.id, qty: 1 }] });
+
+    const { view } = await renderTab(<SummaryTab now={NOW} onOpenStaff={jest.fn()} />, { repos });
+    await waitForSync(() => view.getByTestId("day-2026/07/09"));
+    await fireEvent.press(view.getByTestId("day-2026/07/09")); // expand → staff row renders
+    await flushPending();
+
+    expect(view.getByText("金客")).toBeTruthy();
+    expect(view.getByTestId("level-badge")).toBeTruthy();
+    expect(view.getByText("金站")).toBeTruthy();
+  });
+});
+
+describe("SummaryTab — staff row uses FlowSummary (per-member-per-day bundles/retail)", () => {
+  it("a day's staff row shows that member's flow that day via FlowSummary (out/bundles/retail)", async () => {
+    const { repos, staffId, colaId } = await setup();
+    await repos.config.setUnitPrice(cents(500)); // ¥5.00/unit
+    // July 8: member out cola×2 = 600¢ → 1 bundle + 100 retail
+    await repos.stockRecords.create({ staff_id: staffId, direction: "out", timestamp: DAY(8, 10), items: [{ product_id: colaId, qty: 2 }] });
+
+    const { view } = await renderTab(<SummaryTab now={NOW} onOpenStaff={jest.fn()} />, { repos });
+    await waitForSync(() => view.getByTestId("day-2026/07/08"));
+    await fireEvent.press(view.getByTestId("day-2026/07/08")); // expand the day → staff row renders
+    await flushPending();
+
+    // that member on July 8: out ¥6.00 (600¢), 1 bundle, retail ¥1.00 (100¢)
+    expect(money(view.getByTestId(`flow-staff-2026-07-08-${staffId}-out-total`))).toMatch(/6\.00/);
+    expect(view.getByTestId(`flow-staff-2026-07-08-${staffId}-bundle-count`).props.children).toEqual(
+      expect.arrayContaining([1, " 单"]),
+    );
+    expect(money(view.getByTestId(`flow-staff-2026-07-08-${staffId}-retail`))).toMatch(/1\.00/);
   });
 });
 

@@ -65,8 +65,8 @@ describe("StaffDetail — 余额 partition + summary (balance-domain)", () => {
     expect(view.getByTestId("member-info-header")).toBeTruthy();
     expect(view.queryByTestId("balance-section")).toBeNull(); // 独立余额卡片不再渲染
     expect(view.getByText("共 2 条记录")).toBeTruthy();
-    expect(moneyText(view.getByTestId("record-topup-total"))).toBe("¥100.00");
-    expect(moneyText(view.getByTestId("record-out-total"))).toBe("¥30.00");
+    expect(moneyText(view.getByTestId("member-flow-topup-total"))).toBe("¥100.00");
+    expect(moneyText(view.getByTestId("member-flow-out-total"))).toBe("¥30.00");
   });
 
   it("marks a negative 余额 as 欠款 (out > topup)", async () => {
@@ -76,6 +76,55 @@ describe("StaffDetail — 余额 partition + summary (balance-domain)", () => {
 
     const { view } = await renderDetail(<StaffDetail staffId={staffId} onOpenRecord={jest.fn()} onOpenTopup={jest.fn()} />, { repos });
     await waitForSync(() => view.getByText("欠款 ¥20.00")); // MemberInfoHeader 欠款标 (negative)
+  });
+});
+
+describe("StaffDetail — summary uses FlowSummary (充值/出库/计单/零售)", () => {
+  it("shows the member's overall flow via FlowSummary, bundles/retail split per out record's own snapshot", async () => {
+    const { repos, staffId, productId } = await seedStaffProduct();
+    await repos.config.setUnitPrice(cents(500)); // ¥5.00/unit — frozen on each checkout
+    await repos.topups.create({ staff_id: staffId, amount: cents(10000) }); // ¥100
+    // out cola×7 = 2100¢ → splitBundleRetail(2100, 500) = 4 bundles + 100 retail
+    await repos.stockRecords.create({ staff_id: staffId, direction: "out", items: [{ product_id: productId, qty: 7 }] });
+    // out cola×1 = 300¢ → 0 bundles + 300 retail
+    await repos.stockRecords.create({ staff_id: staffId, direction: "out", items: [{ product_id: productId, qty: 1 }] });
+
+    const { view } = await renderDetail(
+      <StaffDetail staffId={staffId} onOpenRecord={jest.fn()} onOpenTopup={jest.fn()} />,
+      { repos },
+    );
+    await waitForSync(() => view.getByTestId("member-flow"));
+
+    // overall: topup ¥100, out ¥24 (2400¢), 4 bundles, retail ¥4.00 (400¢)
+    expect(moneyText(view.getByTestId("member-flow-topup-total"))).toBe("¥100.00");
+    expect(moneyText(view.getByTestId("member-flow-out-total"))).toBe("¥24.00");
+    expect(view.getByTestId("member-flow-bundle-count").props.children).toEqual(
+      expect.arrayContaining([4, " 单"]),
+    );
+    expect(moneyText(view.getByTestId("member-flow-retail"))).toBe("¥4.00");
+  });
+});
+
+describe("StaffDetail — day header uses FlowSummary (per-day bundles/retail)", () => {
+  it("each day separator shows that day's flow via FlowSummary (out/bundles/retail from the day's out records)", async () => {
+    const { repos, staffId, productId } = await seedStaffProduct();
+    await repos.config.setUnitPrice(cents(500)); // ¥5.00/unit — frozen on each checkout
+    // both on 2026-06-10: cola×7 = 2100¢ (4 bundles + 100 retail), cola×1 = 300¢ (0 + 300)
+    await repos.stockRecords.create({ staff_id: staffId, direction: "out", timestamp: new Date(2026, 5, 10, 10, 0).getTime(), items: [{ product_id: productId, qty: 7 }] });
+    await repos.stockRecords.create({ staff_id: staffId, direction: "out", timestamp: new Date(2026, 5, 10, 14, 0).getTime(), items: [{ product_id: productId, qty: 1 }] });
+
+    const { view } = await renderDetail(
+      <StaffDetail staffId={staffId} onOpenRecord={jest.fn()} onOpenTopup={jest.fn()} />,
+      { repos },
+    );
+    await waitForSync(() => view.getByTestId("member-day-flow-2026/06/10"));
+
+    // that day: out ¥24 (2400¢), 4 bundles, retail ¥4.00 (400¢)
+    expect(moneyText(view.getByTestId("member-day-flow-2026/06/10-out-total"))).toBe("¥24.00");
+    expect(view.getByTestId("member-day-flow-2026/06/10-bundle-count").props.children).toEqual(
+      expect.arrayContaining([4, " 单"]),
+    );
+    expect(moneyText(view.getByTestId("member-day-flow-2026/06/10-retail"))).toBe("¥4.00");
   });
 });
 

@@ -4,14 +4,13 @@ import { FlatList, Pressable, StyleSheet, Text, View } from "react-native";
 
 import { formatDate } from "@/components/date-format";
 import { FlowEventRow } from "@/components/flow-event-row";
+import { FlowSummary } from "@/components/flow-summary";
 import { MemberInfoHeader } from "@/components/member-info-header";
-import { MoneyText } from "@/components/money-text";
-import { cents } from "@/data/primitives";
-import { splitBundleRetail } from "@/data/split-bundle";
+import { BottomTabInset } from "@/constants/theme";
+import { aggregateBundleRetail, splitBundleRetail } from "@/data/split-bundle";
 import type { Direction, StockItem } from "@/data/stock-record";
 import { useStockRecords, useTopups } from "@/hooks/reads";
 import { useTheme } from "@/hooks/use-theme";
-import { BottomTabInset } from "@/constants/theme";
 
 /**
  * The member look-back screen (stock-balance-refactor balance-domain).
@@ -61,10 +60,16 @@ interface DaySection {
   date: string; // YYYY/MM/DD via formatDate
   dayTopup: number; // Σ top-up amount that day (cents)
   dayOut: number; // Σ out line_amount that day (cents)
+  dayBundles: number; // Σ bundles across the day's out records (each split via its own snapshot)
+  dayRetail: number; // Σ retail across the day's out records (cents)
   events: HistoryEvent[];
 }
 
-export function StaffDetail({ staffId, onOpenRecord, onOpenTopup }: StaffDetailProps) {
+export function StaffDetail({
+  staffId,
+  onOpenRecord,
+  onOpenTopup,
+}: StaffDetailProps) {
   const theme = useTheme();
   const records = useStockRecords({ staff_id: staffId });
   const topups = useTopups({ staff_id: staffId });
@@ -80,7 +85,14 @@ export function StaffDetail({ staffId, onOpenRecord, onOpenTopup }: StaffDetailP
     const ensure = (date: string): DaySection => {
       let day = byDay.get(date);
       if (!day) {
-        day = { date, dayTopup: 0, dayOut: 0, events: [] };
+        day = {
+          date,
+          dayTopup: 0,
+          dayOut: 0,
+          dayBundles: 0,
+          dayRetail: 0,
+          events: [],
+        };
         byDay.set(date, day);
       }
       return day;
@@ -94,6 +106,13 @@ export function StaffDetail({ staffId, onOpenRecord, onOpenTopup }: StaffDetailP
       if (rw.record.direction === "out") {
         day.dayOut += amt;
         outT += amt;
+        // bundle/retail split per out record's OWN frozen snapshot (US8).
+        const split = splitBundleRetail(
+          amt,
+          rw.record.unit_price_snapshot ?? 0,
+        );
+        day.dayBundles += split.bundles;
+        day.dayRetail += split.retail;
       }
       day.events.push({
         id: rw.record.id,
@@ -132,6 +151,12 @@ export function StaffDetail({ staffId, onOpenRecord, onOpenTopup }: StaffDetailP
 
   const visible = sections.slice(0, visibleDays);
   const recordCount = (records.data ?? []).length + (topups.data ?? []).length;
+  // Member's overall bundles/retail — each out record split via its OWN frozen
+  // unit_price_snapshot (aggregateBundleRetail). Feeds the summary's FlowSummary.
+  const memberBr = useMemo(
+    () => aggregateBundleRetail(records.data ?? []),
+    [records.data],
+  );
 
   const renderDay = ({ item }: { item: DaySection }) => {
     const dayOpen = openDays.has(item.date);
@@ -140,20 +165,25 @@ export function StaffDetail({ staffId, onOpenRecord, onOpenTopup }: StaffDetailP
         <Pressable
           testID={`day-${item.date}`}
           onPress={() => toggleDay(item.date)}
-          style={styles.cardHead}
+          style={styles.dayHead}
         >
-          <Text style={[styles.dayDate, { color: theme.text }]}>
-            {item.date}
-          </Text>
-          <Text style={{ color: theme.success }}>充值</Text>
-          <MoneyText cents={cents(item.dayTopup)} />
-          <Text style={{ color: theme.danger }}>出库</Text>
-          <MoneyText cents={cents(item.dayOut)} />
-          <Ionicons
-            name={dayOpen ? "chevron-up" : "chevron-down"}
-            size={14}
-            color={theme.textSecondary}
-          />
+          <View style={styles.cardHead}>
+            <Text style={[styles.dayDate, { color: theme.text }]}>
+              {item.date}
+            </Text>
+            <FlowSummary
+              testID={`member-day-flow-${item.date}`}
+              topup={item.dayTopup}
+              out={item.dayOut}
+              bundles={item.dayBundles}
+              retail={item.dayRetail}
+            />
+            <Ionicons
+              name={dayOpen ? "chevron-up" : "chevron-down"}
+              size={14}
+              color={theme.textSecondary}
+            />
+          </View>
         </Pressable>
         {dayOpen &&
           item.events.map((e) =>
@@ -229,10 +259,13 @@ export function StaffDetail({ staffId, onOpenRecord, onOpenTopup }: StaffDetailP
           <MemberInfoHeader staffId={staffId} />
           <View testID="record-summary" style={styles.summary}>
             <Text style={{ color: theme.text }}>共 {recordCount} 条记录</Text>
-            <Text style={{ color: theme.success }}>充值</Text>
-            <MoneyText testID="record-topup-total" cents={cents(topupTotal)} />
-            <Text style={{ color: theme.danger }}>出库</Text>
-            <MoneyText testID="record-out-total" cents={cents(outTotal)} />
+            <FlowSummary
+              testID="member-flow"
+              topup={topupTotal}
+              out={outTotal}
+              bundles={memberBr.bundles}
+              retail={memberBr.retail}
+            />
           </View>
         </View>
       }
@@ -248,17 +281,23 @@ const styles = StyleSheet.create({
   card: {
     borderWidth: 1,
     borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
     gap: 8,
   },
-  cardHead: { flexDirection: "row", alignItems: "center", gap: 8 },
-  summary: {
+  cardHead: {
     flexDirection: "row",
     alignItems: "center",
-    fontSize: 15,
-    fontWeight: "600",
     gap: 8,
+    justifyContent: "space-between",
+  },
+  dayHead: { gap: 4 },
+  summary: {
+    paddingRight: 40,
+    gap: 4,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
   },
   dayDate: { flex: 1, fontSize: 13, fontWeight: "600" },
   loadMore: { alignItems: "center", paddingVertical: 12 },

@@ -9,11 +9,17 @@ import {
 } from "@/components/date-format";
 import { FlowEventRow } from "@/components/flow-event-row";
 import { FlowSummary } from "@/components/flow-summary";
+import { MemberName } from "@/components/member-name";
 import { MoneyText } from "@/components/money-text";
 import { BottomTabInset } from "@/constants/theme";
 import { cents } from "@/data/primitives";
-import { splitBundleRetail, aggregateBundleRetail } from "@/data/split-bundle";
-import { ADMIN_STAFF_ID } from "@/data/staff";
+import {
+  aggregateBundleRetail,
+  splitBundleRetail,
+  type BundleRetail,
+  type BundleRetailRecord,
+} from "@/data/split-bundle";
+import { ADMIN_STAFF_ID, DEFAULT_STAFF_LEVEL } from "@/data/staff";
 import {
   useDailyFlow,
   useShopAggregate,
@@ -107,8 +113,8 @@ export function SummaryTab({
   const records = useStockRecords({ date_range: range }); // drill-down for staff-row expand
   const topups = useTopups({ date_range: range });
   const staff = useStaff();
-  const staffName = useMemo(
-    () => new Map((staff.data ?? []).map((s) => [s.id, s.name])),
+  const staffById = useMemo(
+    () => new Map((staff.data ?? []).map((s) => [s.id, s])),
     [staff.data],
   );
 
@@ -167,36 +173,79 @@ export function SummaryTab({
     [records.data],
   );
 
+  // Per-day and per-(day, staff) bundles/retail — feeds each day card header's
+  // FlowSummary and each staff row's FlowSummary. Group the range's records once,
+  // then aggregateBundleRetail per group (it filters to 'out' internally, so
+  // restock 'in' never feeds a member-flow total). Frozen per-record snapshots.
+  const { dayBrMap, staffDayBrMap } = useMemo(() => {
+    const dayGroups = new Map<string, BundleRetailRecord[]>();
+    const staffDayGroups = new Map<string, BundleRetailRecord[]>();
+    for (const rw of records.data ?? []) {
+      const slash = formatDate(rw.record.timestamp);
+      let arr = dayGroups.get(slash);
+      if (!arr) dayGroups.set(slash, (arr = []));
+      arr.push(rw);
+      const skey = `${slash}|${rw.record.staff_id}`;
+      let sarr = staffDayGroups.get(skey);
+      if (!sarr) staffDayGroups.set(skey, (sarr = []));
+      sarr.push(rw);
+    }
+    const materialize = (groups: Map<string, BundleRetailRecord[]>) => {
+      const m = new Map<string, BundleRetail>();
+      for (const [k, g] of groups) m.set(k, aggregateBundleRetail(g));
+      return m;
+    };
+    return {
+      dayBrMap: materialize(dayGroups),
+      staffDayBrMap: materialize(staffDayGroups),
+    };
+  }, [records.data]);
+
   // Day-batched slice (ADR-0007): each section is a whole day, so slicing at a day
   // boundary can never split a day's separator from its staff rows.
   const visible = sections.slice(0, visibleDays);
 
   const renderDay = ({ item }: { item: DaySection }) => {
     const dayOpen = openDays.has(item.dateDash);
+    const dayBr = dayBrMap.get(item.dateSlash) ?? { bundles: 0, retail: 0 };
     return (
       <View style={[styles.card, { borderColor: theme.border }]}>
         <Pressable
           testID={`day-${item.dateSlash}`}
           onPress={() => toggleDay(item.dateDash)}
-          style={styles.cardHead}
+          style={styles.dayHead}
         >
-          <Text style={[styles.dayDate, { color: theme.text }]}>
-            {item.dateSlash}
-          </Text>
-          <Text style={{ color: theme.danger }}>出库</Text>
-          <MoneyText cents={cents(item.dayOut)} />
-          <Text style={{ color: theme.success }}>充值</Text>
-          <MoneyText cents={cents(item.dayTopup)} />
-          <Ionicons
-            name={dayOpen ? "chevron-up" : "chevron-down"}
-            size={14}
-            color={theme.textSecondary}
-          />
+          <View style={styles.cardHead}>
+            <Text style={[styles.dayDate, { color: theme.text }]}>
+              {item.dateSlash}
+            </Text>
+            <FlowSummary
+              testID={`flow-day-${item.dateDash}`}
+              topup={item.dayTopup}
+              out={item.dayOut}
+              bundles={dayBr.bundles}
+              retail={dayBr.retail}
+            />
+            <Ionicons
+              name={dayOpen ? "chevron-up" : "chevron-down"}
+              size={14}
+              color={theme.textSecondary}
+            />
+          </View>
         </Pressable>
         {dayOpen &&
           item.staffRows.map((sr) => {
             const key = `${item.dateDash}|${sr.staffId}`;
             const expanded = expandedStaffDay === key;
+            const srBr = staffDayBrMap.get(
+              `${item.dateSlash}|${sr.staffId}`,
+            ) ?? {
+              bundles: 0,
+              retail: 0,
+            };
+            // Restock (-1) is filtered out of the summary (member-flow only), so
+            // every row here is a member; fall back to the id / 普站 if unknown.
+            const s = staffById.get(sr.staffId);
             return (
               <View
                 key={key}
@@ -208,34 +257,45 @@ export function SummaryTab({
                     setExpandedStaffDay((cur) => (cur === key ? null : key))
                   }
                   onLongPress={() => onOpenStaff(sr.staffId)}
-                  style={styles.cardHead}
+                  style={styles.dayHead}
                 >
-                  <Text style={[styles.title, { color: theme.text }]}>
-                    {/* Restock (-1) is filtered out of the summary (member-flow only),
-                        so every row here is a member. */}
-                    {staffName.get(sr.staffId) ?? sr.staffId}
-                  </Text>
-                  <Text style={{ color: theme.danger }}>出</Text>
-                  <MoneyText
-                    testID={`staff-out-${item.dateDash}-${sr.staffId}`}
-                    cents={cents(sr.outAmount)}
-                  />
-                  <Text style={{ color: theme.success }}>充</Text>
-                  <MoneyText
-                    testID={`staff-topup-${item.dateDash}-${sr.staffId}`}
-                    cents={cents(sr.topupAmount)}
-                  />
-                  <Ionicons
-                    name={expanded ? "chevron-up" : "chevron-down"}
-                    size={14}
-                    color={theme.textSecondary}
-                  />
+                  <View style={styles.cardHead}>
+                    <MemberName
+                      name={s?.name ?? sr.staffId}
+                      level={s?.level ?? DEFAULT_STAFF_LEVEL}
+                      nameStyle={{ color: theme.text }}
+                      maxWidth={52}
+                    />
+                    <FlowSummary
+                      testID={`flow-staff-${item.dateDash}-${sr.staffId}`}
+                      topup={sr.topupAmount}
+                      out={sr.outAmount}
+                      bundles={srBr.bundles}
+                      retail={srBr.retail}
+                    />
+                    <Ionicons
+                      name={expanded ? "chevron-up" : "chevron-down"}
+                      size={14}
+                      color={theme.textSecondary}
+                    />
+                  </View>
                 </Pressable>
                 {expanded &&
                   (() => {
                     type DrillEvent =
-                      | { kind: "checkout"; id: string; timestamp: number; amount: number; unitPriceSnapshot: number | null | undefined }
-                      | { kind: "topup"; id: string; timestamp: number; amount: number };
+                      | {
+                          kind: "checkout";
+                          id: string;
+                          timestamp: number;
+                          amount: number;
+                          unitPriceSnapshot: number | null | undefined;
+                        }
+                      | {
+                          kind: "topup";
+                          id: string;
+                          timestamp: number;
+                          amount: number;
+                        };
                     const events: DrillEvent[] = [];
                     for (const rw of records.data ?? []) {
                       if (
@@ -244,7 +304,10 @@ export function SummaryTab({
                       ) {
                         continue;
                       }
-                      const amt = rw.items.reduce((s, i) => s + i.line_amount, 0);
+                      const amt = rw.items.reduce(
+                        (s, i) => s + i.line_amount,
+                        0,
+                      );
                       events.push({
                         kind: "checkout",
                         id: rw.record.id,
@@ -441,16 +504,22 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     gap: 4,
   },
-  cardHead: { flexDirection: "row", alignItems: "center", gap: 8 },
+  cardHead: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 8,
+  },
   cardTitle: { flex: 1, fontSize: 15, fontWeight: "600" },
   dayDate: { flex: 1, fontSize: 13, fontWeight: "600" },
+  dayHead: { gap: 4 },
   // Nested container card (a day card holds staff cards; a staff card holds
   // record lines) — same containment model as `card`/库存卡, just tighter so the
   // nesting reads. `gap` spaces the header from its expanded children.
   staffCard: {
     borderWidth: 1,
     borderRadius: 6,
-    paddingHorizontal: 10,
+    paddingHorizontal: 8,
     paddingVertical: 6,
     gap: 4,
   },

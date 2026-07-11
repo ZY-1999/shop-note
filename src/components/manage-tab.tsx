@@ -8,11 +8,10 @@ import {
   View,
 } from "react-native";
 
-import { LevelBadge } from "@/components/level-badge";
 import { MoneyText } from "@/components/money-text";
 import { SmokeEntry } from "@/components/smoke-entry";
-import { cents, type Cents } from "@/data/primitives";
 import { BottomTabInset } from "@/constants/theme";
+import { cents, type Cents } from "@/data/primitives";
 import {
   ADMIN_STAFF_ID,
   DEFAULT_STAFF_LEVEL,
@@ -35,6 +34,7 @@ import { useProducts, useStaff, useUnitPrice } from "@/hooks/reads";
 import { useTheme } from "@/hooks/use-theme";
 import { useRepos } from "@/providers/providers";
 import { ItemsSeletor, PickedLine } from "./items-selector";
+import { MemberName } from "./member-name";
 
 /**
  * The 管理 tab (spec #09) — master-data maintenance. A staff|product toggle over
@@ -239,7 +239,11 @@ function ConfigManage() {
         style={[styles.createBtn, { backgroundColor: theme.success }]}
       >
         <Text style={styles.createBtnText}>
-          {updateUnitPrice.isPending ? "保存中…" : saved ? "已保存" : "保存单价"}
+          {updateUnitPrice.isPending
+            ? "保存中…"
+            : saved
+              ? "已保存"
+              : "保存单价"}
         </Text>
       </Pressable>
     </View>
@@ -402,17 +406,15 @@ function StaffManage() {
             onPress={voided ? undefined : () => setEditingId(item.id)}
           >
             <View style={styles.rowMain}>
-              <View style={styles.nameRow}>
-                <Text
-                  style={[
-                    styles.name,
-                    { color: voided ? theme.textSecondary : theme.text },
-                  ]}
-                >
-                  {item.name}
-                </Text>
-                {!voided && <LevelBadge level={item.level} />}
-              </View>
+              <MemberName
+                name={item.name}
+                level={item.level}
+                nameStyle={[
+                  styles.name,
+                  { color: voided ? theme.textSecondary : theme.text },
+                ]}
+                maxWidth={230}
+              />
               <Text style={[styles.sub, { color: theme.textSecondary }]}>
                 {item.phone || "--"}
               </Text>
@@ -917,7 +919,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderRadius: 8,
     paddingHorizontal: 12,
-    paddingVertical: 8,
+    paddingVertical: 4,
     gap: 8,
   },
   rowMain: { flex: 1, gap: 2 },
