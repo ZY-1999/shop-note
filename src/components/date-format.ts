@@ -30,6 +30,18 @@ export function formatTime(ms: number): string {
   return `${hh}:${mm}`;
 }
 
+/** Local `HH:mm:ss`. */
+export function formatTimeSeconds(ms: number): string {
+  const d = new Date(ms);
+  const ss = String(d.getSeconds()).padStart(2, "0");
+  return `${formatTime(ms)}:${ss}`;
+}
+
+/** Local `YYYY/MM/DD HH:mm:ss`. */
+export function formatDateTimeSeconds(ms: number): string {
+  return `${formatDate(ms)} ${formatTimeSeconds(ms)}`;
+}
+
 export type RangePreset = "thisMonth" | "lastMonth" | "thisWeek" | "lastWeek";
 
 /**

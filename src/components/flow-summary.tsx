@@ -26,7 +26,29 @@ export interface FlowSummaryProps {
   retail: number;
 
   style?: StyleProp<ViewStyle>;
+  /**
+   * Per-instance testID prefix so multiple FlowSummarys on one screen (the 汇总
+   * range header + each day card + each member row; the member-detail summary +
+   * each day separator) don't collide. When given, root = `${testID}` and inner
+   * testIDs = `${testID}-<part>`; when omitted, the legacy single-instance
+   * defaults (`flow-summary` / `flow-topup-total` / …) are used.
+   */
+  testID?: string;
 }
+
+/**
+ * Default (single-instance) testIDs, preserved for the original 汇总 range-header
+ * caller and its tests. Each entry pairs the legacy id with the suffix used when
+ * a `testID` prefix is supplied.
+ */
+const TEST_IDS = {
+  root: { def: "flow-summary", suffix: "" },
+  lineTopup: { def: "flow-summary-line-topup", suffix: "line-topup" },
+  topup: { def: "flow-topup-total", suffix: "topup-total" },
+  out: { def: "flow-out-total", suffix: "out-total" },
+  bundles: { def: "bundle-aggregate-count", suffix: "bundle-count" },
+  retail: { def: "bundle-aggregate-retail", suffix: "retail" },
+} as const;
 
 export function FlowSummary({
   topup,
@@ -34,22 +56,25 @@ export function FlowSummary({
   bundles,
   retail,
   style,
+  testID,
 }: FlowSummaryProps) {
   const theme = useTheme();
+  const tid = (k: keyof typeof TEST_IDS) =>
+    testID ? `${testID}-${TEST_IDS[k].suffix}` : TEST_IDS[k].def;
   return (
-    <View testID="flow-summary" style={style}>
-      <View testID="flow-summary-line-topup" style={styles.row}>
+    <View testID={testID ?? TEST_IDS.root.def} style={style}>
+      <View testID={tid("lineTopup")} style={styles.row}>
         <Text style={{ color: theme.success }}>充值</Text>
-        <MoneyText testID="flow-topup-total" cents={cents(topup)} />
+        <MoneyText testID={tid("topup")} cents={cents(topup)} />
       </View>
       <View style={styles.row}>
         <Text>出库</Text>
-        <MoneyText testID="flow-out-total" cents={cents(out)} />
-        <Text testID="bundle-aggregate-count" style={{ color: theme.text }}>
+        <MoneyText testID={tid("out")} cents={cents(out)} />
+        <Text testID={tid("bundles")} style={{ color: theme.text }}>
           计 {bundles} 单
         </Text>
         <Text>零售</Text>
-        <MoneyText testID="bundle-aggregate-retail" cents={cents(retail)} />
+        <MoneyText testID={tid("retail")} cents={cents(retail)} />
       </View>
     </View>
   );

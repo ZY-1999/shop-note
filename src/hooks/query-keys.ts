@@ -39,7 +39,8 @@ export const qk = {
   },
   topups: {
     all: ["topups"] as const,
-    list: (filter?: { staff_id?: string }) => ["topups", "list", filter ?? {}] as const,
+    list: (filter?: { staff_id?: string; date_range?: { from?: number; to?: number } }) =>
+      ["topups", "list", filter ?? {}] as const,
     byId: (topupId: string) => ["topups", "byId", topupId] as const,
   },
   balance: {

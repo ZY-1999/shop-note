@@ -50,6 +50,19 @@ describe("TopupRepository — list + getById", () => {
     expect(got).not.toBeNull();
     expect(got?.voided_at).not.toBeNull();
   });
+
+  test("filters by date_range (inclusive on both ends)", async () => {
+    const { topups } = setup();
+    const t1 = new Date(2026, 5, 1, 10, 0).getTime();
+    const t2 = new Date(2026, 5, 5, 10, 0).getTime();
+    const t3 = new Date(2026, 5, 10, 10, 0).getTime();
+    await topups.create({ staff_id: "s1", amount: cents(1000), timestamp: t1 });
+    await topups.create({ staff_id: "s1", amount: cents(2000), timestamp: t2 });
+    await topups.create({ staff_id: "s1", amount: cents(3000), timestamp: t3 });
+
+    const window = await topups.list({ date_range: { from: t2, to: t3 } });
+    expect(window.map((t) => t.timestamp)).toEqual([t3, t2]);
+  });
 });
 
 describe("TopupRepository — void + audit", () => {

@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
+import { formatDateTimeSeconds } from '@/components/date-format';
 import { MoneyText } from '@/components/money-text';
 import { RecordForm } from '@/components/record-form';
 import { useVoidStockRecord } from '@/hooks/mutations';
@@ -81,7 +82,7 @@ export function RecordDetail({ recordId }: RecordDetailProps) {
         </Text>
         {staff.data && <Text style={[styles.note, { color: theme.text }]}>{staff.data.name}</Text>}
         <Text style={[styles.note, { color: theme.textSecondary }]}>
-          {new Date(record.timestamp).toLocaleString()}
+          {formatDateTimeSeconds(record.timestamp)}
         </Text>
         {record.note != null && record.note !== '' && (
           <Text style={[styles.note, { color: theme.text }]}>{record.note}</Text>

@@ -4,22 +4,22 @@ import { FlatList, Pressable, StyleSheet, Text, View } from "react-native";
 
 import {
   formatDate,
-  formatTime,
   rangeFor,
   type RangePreset,
 } from "@/components/date-format";
+import { FlowEventRow } from "@/components/flow-event-row";
 import { FlowSummary } from "@/components/flow-summary";
 import { MoneyText } from "@/components/money-text";
 import { BottomTabInset } from "@/constants/theme";
 import { cents } from "@/data/primitives";
-import { splitBundleRetail } from "@/data/split-bundle";
+import { splitBundleRetail, aggregateBundleRetail } from "@/data/split-bundle";
 import { ADMIN_STAFF_ID } from "@/data/staff";
-import type { Direction } from "@/data/stock-record";
 import {
   useDailyFlow,
   useShopAggregate,
   useStaff,
   useStockRecords,
+  useTopups,
 } from "@/hooks/reads";
 import { useTheme } from "@/hooks/use-theme";
 
@@ -53,9 +53,6 @@ import { useTheme } from "@/hooks/use-theme";
  * (`onOpenStaff` / `onOpenRecord`); the route wires the router, so the tab is
  * RNTL-testable.
  */
-const DIRECTION_LABEL: Record<Direction, string> = { in: "入库", out: "出库" };
-
-/** Initial days rendered, and how many more each reveal (onEndReached / footer) adds. */
 const INITIAL_DAYS = 5;
 const DAYS_PER_BATCH = 5;
 
@@ -70,6 +67,8 @@ export interface SummaryTabProps {
   onOpenStaff: (staffId: string) => void;
   /** Record-row tap (inside an expanded staff row) → record detail (#07 route). */
   onOpenRecord?: (recordId: string) => void;
+  /** Top-up row tap → topup detail route. */
+  onOpenTopup?: (topupId: string) => void;
   /** Epoch-ms "now" threaded into `rangeFor` — #01's deterministic-test seam. Defaults to Date.now(). */
   now?: number;
 }
@@ -90,6 +89,7 @@ interface DaySection {
 export function SummaryTab({
   onOpenStaff,
   onOpenRecord,
+  onOpenTopup,
   now = Date.now(),
 }: SummaryTabProps) {
   const theme = useTheme();
@@ -105,6 +105,7 @@ export function SummaryTab({
   const aggregate = useShopAggregate(); // as-of-now, NOT range-scoped
   const flow = useDailyFlow({ date_range: range });
   const records = useStockRecords({ date_range: range }); // drill-down for staff-row expand
+  const topups = useTopups({ date_range: range });
   const staff = useStaff();
   const staffName = useMemo(
     () => new Map((staff.data ?? []).map((s) => [s.id, s.name])),
@@ -161,19 +162,10 @@ export function SummaryTab({
   // 出库单数零售聚合 (US8): each 'out' record in range splits via its OWN frozen
   // unit_price_snapshot (not the current unit price), then Σ bundles / Σ retail.
   // A unit-price change does not re-split history — every record uses its snapshot.
-  const bundleAggregate = useMemo(() => {
-    let bundles = 0;
-    let retail = 0;
-    for (const rw of records.data ?? []) {
-      if (rw.record.direction !== "out") continue;
-      const amount = rw.items.reduce((s, i) => s + i.line_amount, 0);
-      const snapshot = rw.record.unit_price_snapshot ?? 0;
-      const split = splitBundleRetail(amount, snapshot);
-      bundles += split.bundles;
-      retail += split.retail;
-    }
-    return { bundles, retail };
-  }, [records.data]);
+  const bundleAggregate = useMemo(
+    () => aggregateBundleRetail(records.data ?? []),
+    [records.data],
+  );
 
   // Day-batched slice (ADR-0007): each section is a whole day, so slicing at a day
   // boundary can never split a day's separator from its staff rows.
@@ -240,46 +232,74 @@ export function SummaryTab({
                   />
                 </Pressable>
                 {expanded &&
-                  (records.data ?? [])
-                    .filter(
-                      (rw) =>
-                        rw.record.staff_id === sr.staffId &&
-                        formatDate(rw.record.timestamp) === item.dateSlash,
-                    )
-                    .map((rw) => {
-                      const amt = rw.items.reduce(
-                        (s, i) => s + i.line_amount,
-                        0,
-                      );
-                      return (
-                        <Pressable
-                          key={rw.record.id}
-                          testID={`flow-record-${rw.record.id}`}
-                          onPress={() => onOpenRecord?.(rw.record.id)}
-                          style={styles.recordLine}
-                        >
-                          <Text
-                            style={{
-                              color:
-                                rw.record.direction === "in"
-                                  ? theme.success
-                                  : theme.danger,
-                            }}
-                          >
-                            {DIRECTION_LABEL[rw.record.direction]}
-                          </Text>
-                          <Text style={{ color: theme.textSecondary }}>
-                            {formatTime(rw.record.timestamp)}
-                          </Text>
-                          <Text style={[styles.title, { color: theme.text }]}>
-                            {rw.items
-                              .map((i) => `${i.title} ×${i.qty}`)
-                              .join("、")}
-                          </Text>
-                          <MoneyText cents={cents(amt)} />
-                        </Pressable>
-                      );
-                    })}
+                  (() => {
+                    type DrillEvent =
+                      | { kind: "checkout"; id: string; timestamp: number; amount: number; unitPriceSnapshot: number | null | undefined }
+                      | { kind: "topup"; id: string; timestamp: number; amount: number };
+                    const events: DrillEvent[] = [];
+                    for (const rw of records.data ?? []) {
+                      if (
+                        rw.record.staff_id !== sr.staffId ||
+                        formatDate(rw.record.timestamp) !== item.dateSlash
+                      ) {
+                        continue;
+                      }
+                      const amt = rw.items.reduce((s, i) => s + i.line_amount, 0);
+                      events.push({
+                        kind: "checkout",
+                        id: rw.record.id,
+                        timestamp: rw.record.timestamp,
+                        amount: amt,
+                        unitPriceSnapshot: rw.record.unit_price_snapshot,
+                      });
+                    }
+                    for (const t of topups.data ?? []) {
+                      if (
+                        t.staff_id !== sr.staffId ||
+                        formatDate(t.timestamp) !== item.dateSlash
+                      ) {
+                        continue;
+                      }
+                      events.push({
+                        kind: "topup",
+                        id: t.id,
+                        timestamp: t.timestamp,
+                        amount: t.amount,
+                      });
+                    }
+                    events.sort((a, b) => b.timestamp - a.timestamp);
+                    return events.map((e) =>
+                      e.kind === "checkout" ? (
+                        (() => {
+                          const { bundles, retail } = splitBundleRetail(
+                            e.amount,
+                            e.unitPriceSnapshot ?? 0,
+                          );
+                          return (
+                            <FlowEventRow
+                              key={e.id}
+                              testID={`flow-record-${e.id}`}
+                              kind="checkout"
+                              timestamp={e.timestamp}
+                              amountCents={e.amount}
+                              bundles={bundles}
+                              retailCents={retail}
+                              onPress={() => onOpenRecord?.(e.id)}
+                            />
+                          );
+                        })()
+                      ) : (
+                        <FlowEventRow
+                          key={e.id}
+                          testID={`flow-topup-${e.id}`}
+                          kind="topup"
+                          timestamp={e.timestamp}
+                          amountCents={e.amount}
+                          onPress={() => onOpenTopup?.(e.id)}
+                        />
+                      ),
+                    );
+                  })()}
               </View>
             );
           })}
@@ -433,12 +453,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 6,
     gap: 4,
-  },
-  recordLine: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    paddingVertical: 4,
   },
   subRow: {
     flexDirection: "row",

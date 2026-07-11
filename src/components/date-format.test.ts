@@ -1,6 +1,6 @@
 import { describe, expect, it } from "@jest/globals";
 
-import { formatDate, formatDateTime, formatTime, rangeFor } from "@/components/date-format";
+import { formatDate, formatDateTime, formatTime, formatDateTimeSeconds, formatTimeSeconds, rangeFor } from "@/components/date-format";
 
 /**
  * Spec #01 — pure date/time formatting + range helpers. Local calendar day
@@ -19,6 +19,21 @@ describe("formatTime — spec #01", () => {
   it("formats as local HH:mm with zero-padding", () => {
     expect(formatTime(new Date(2026, 5, 9, 9, 5).getTime())).toBe("09:05");
     expect(formatTime(new Date(2026, 5, 9, 14, 30).getTime())).toBe("14:30");
+  });
+});
+
+describe("formatTimeSeconds — flow-event-row spec #01", () => {
+  it("formats as local HH:mm:ss with zero-padding", () => {
+    expect(formatTimeSeconds(new Date(2026, 5, 9, 14, 30, 7).getTime())).toBe("14:30:07");
+    expect(formatTimeSeconds(new Date(2026, 5, 9, 9, 5, 0).getTime())).toBe("09:05:00");
+  });
+});
+
+describe("formatDateTimeSeconds — flow-event-row spec #01", () => {
+  it("formats as local YYYY/MM/DD HH:mm:ss", () => {
+    expect(formatDateTimeSeconds(new Date(2026, 5, 9, 14, 30, 7).getTime())).toBe(
+      "2026/06/09 14:30:07",
+    );
   });
 });
 

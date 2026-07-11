@@ -65,14 +65,17 @@ export class TopupRepository {
     return this.storage.findById<Topup>("topup", topupId);
   }
 
-  /** List top-ups, voided excluded. Optional staff_id filter; newest timestamp first. */
-  async list(opts?: { staff_id?: string }): Promise<Topup[]> {
+  /** List top-ups, voided excluded. Optional staff_id and date_range filters; newest timestamp first. */
+  async list(opts?: {
+    staff_id?: string;
+    date_range?: { from?: number; to?: number };
+  }): Promise<Topup[]> {
     const rows = await this.storage.find<Topup>("topup", {
       orderBy: { field: "timestamp", dir: "desc" },
     });
     return rows
       .filter((t) => t.voided_at == null)
-      .filter((t) => (opts?.staff_id !== undefined ? t.staff_id === opts.staff_id : true));
+      .filter((t) => matchesTopupFilter(t, opts));
   }
 
   /** Void a top-up — sets voided_at; never removes data. Audited atomically. */
@@ -120,4 +123,16 @@ function auditable(topup: Topup): Record<string, unknown> {
     note: topup.note,
     voided_at: topup.voided_at,
   };
+}
+
+function matchesTopupFilter(
+  topup: Topup,
+  filter?: { staff_id?: string; date_range?: { from?: number; to?: number } },
+): boolean {
+  if (!filter) return true;
+  if (filter.staff_id !== undefined && topup.staff_id !== filter.staff_id) return false;
+  const range = filter.date_range;
+  if (range?.from != null && topup.timestamp < range.from) return false;
+  if (range?.to != null && topup.timestamp > range.to) return false;
+  return true;
 }

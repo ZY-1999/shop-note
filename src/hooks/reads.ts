@@ -95,12 +95,27 @@ export function useDailyFlow(filter?: DailyFlowFilter): UseQueryResult<DailyFlow
   });
 }
 
-/** A member's top-up history (voided excluded), optional staff_id filter. */
-export function useTopups(filter?: { staff_id?: string }): UseQueryResult<Topup[]> {
+/** A member's top-up history (voided excluded), optional staff_id / date_range filter. */
+export function useTopups(filter?: {
+  staff_id?: string;
+  date_range?: { from?: number; to?: number };
+}): UseQueryResult<Topup[]> {
   const repos = useRepos();
   return useQuery<Topup[]>({
     queryKey: qk.topups.list(filter),
     queryFn: () => repos.topups.list(filter),
+  });
+}
+
+/**
+ * One top-up by id — the top-up detail view. `getById` returns EVEN voided
+ * top-ups (so the detail stays viewable after a void), so this hook does too.
+ */
+export function useTopupById(topupId: string): UseQueryResult<Topup | null> {
+  const repos = useRepos();
+  return useQuery<Topup | null>({
+    queryKey: qk.topups.byId(topupId),
+    queryFn: () => repos.topups.getById(topupId),
   });
 }
 

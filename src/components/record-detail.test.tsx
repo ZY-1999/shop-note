@@ -5,6 +5,7 @@ import { fireEvent } from "@testing-library/react-native";
 import { View } from "react-native";
 
 import { RecordDetail } from "@/components/record-detail";
+import { formatDateTimeSeconds } from "@/components/date-format";
 import { StaffDetail } from "@/components/staff-detail";
 import { InMemoryAdapter } from "@/data/in-memory";
 import { setupRepos, type Repos } from "@/data/composition";
@@ -119,6 +120,7 @@ describe("RecordDetail — frozen snapshot + header (spec #07 AC2)", () => {
     // header
     expect(view.getByText("入库")).toBeTruthy(); // direction
     expect(view.getByText("单号A1")).toBeTruthy(); // note
+    expect(view.getByText(formatDateTimeSeconds(1_700_000_000_000))).toBeTruthy();
   });
 
   it("keeps the frozen snapshot after the product's price/title later change", async () => {
@@ -261,7 +263,7 @@ describe("RecordDetail — cross-view refresh (spec #07 AC5)", () => {
     // subscriber. (edit shares the identical invalidation keys, so void covers it.)
     const { view } = await renderDetail(
       <View>
-        <StaffDetail staffId={staffId} onOpenRecord={jest.fn()} />
+        <StaffDetail staffId={staffId} onOpenRecord={jest.fn()} onOpenTopup={jest.fn()} />
         <RecordDetail recordId={recordId} />
       </View>,
       { repos },

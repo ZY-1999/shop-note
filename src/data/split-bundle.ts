@@ -22,3 +22,35 @@ export function splitBundleRetail(amountCents: number, unitPriceCents: number): 
   if (unitPriceCents <= 0) return { bundles: 0, retail: amountCents };
   return { bundles: Math.floor(amountCents / unitPriceCents), retail: amountCents % unitPriceCents };
 }
+
+/**
+ * Minimal record-with-items view `aggregateBundleRetail` reads — structural, so a
+ * full `RecordWithItems` satisfies it without a hard domain coupling here.
+ */
+export interface BundleRetailRecord {
+  record: { direction: "in" | "out"; unit_price_snapshot?: number | null };
+  items: ReadonlyArray<{ line_amount: number }>;
+}
+
+/**
+ * Σ bundles / Σ retail over a set of records — each 'out' record split via its
+ * OWN frozen `unit_price_snapshot` (not a shared/current price), 'in' records
+ * contribute nothing. The shared aggregation behind every flow-summary surface:
+ * the 汇总 range header, its per-day and per-member drill-downs, and the
+ * member-detail summary + per-day separators — one source so floor/mod never
+ * drifts between them (same discipline as `splitBundleRetail`).
+ */
+export function aggregateBundleRetail(
+  records: ReadonlyArray<BundleRetailRecord>,
+): BundleRetail {
+  let bundles = 0;
+  let retail = 0;
+  for (const rw of records) {
+    if (rw.record.direction !== "out") continue;
+    const amount = rw.items.reduce((sum, i) => sum + i.line_amount, 0);
+    const split = splitBundleRetail(amount, rw.record.unit_price_snapshot ?? 0);
+    bundles += split.bundles;
+    retail += split.retail;
+  }
+  return { bundles, retail };
+}

@@ -206,16 +206,40 @@ describe("SummaryTab — staff-row expand → records → record detail (spec #0
     // staff row collapsed by default → the record row isn't rendered yet.
     expect(() => view.getByTestId(`flow-record-${rec.record.id}`)).toThrow();
 
-    // expand the staff row → the record row appears with its HH:mm time + items×qty.
+    // expand the staff row → the record row appears with second-precision time.
     await fireEvent.press(view.getByTestId(`staff-row-2026-07-09-${staffId}`));
     await flushPending();
     expect(view.getByTestId(`flow-record-${rec.record.id}`)).toBeTruthy();
-    expect(view.getByText("10:00")).toBeTruthy();
-    expect(view.getByText(/可乐 ×2/)).toBeTruthy();
+    expect(view.getByTestId(`flow-record-${rec.record.id}-time`).props.children).toBe("10:00:00");
+    expect(view.queryByText(/可乐 ×2/)).toBeNull();
 
     // tapping the record row opens record detail.
     await fireEvent.press(view.getByTestId(`flow-record-${rec.record.id}`));
     expect(onOpenRecord).toHaveBeenCalledWith(rec.record.id);
+  });
+
+  it("expanding a staff row lists topup events and opens one on tap", async () => {
+    const { repos, staffId } = await setup();
+    const topup = await repos.topups.create({
+      staff_id: staffId,
+      amount: cents(5000),
+      timestamp: DAY(9, 11, 30),
+    });
+
+    const onOpenTopup = jest.fn();
+    const { view } = await renderTab(
+      <SummaryTab now={NOW} onOpenStaff={jest.fn()} onOpenTopup={onOpenTopup} />,
+      { repos },
+    );
+    await waitForSync(() => view.getByTestId("day-2026/07/09"));
+    await fireEvent.press(view.getByTestId("day-2026/07/09"));
+    await flushPending();
+    await fireEvent.press(view.getByTestId(`staff-row-2026-07-09-${staffId}`));
+    await flushPending();
+
+    expect(view.getByTestId(`flow-topup-${topup.id}`)).toBeTruthy();
+    await fireEvent.press(view.getByTestId(`flow-topup-${topup.id}`));
+    expect(onOpenTopup).toHaveBeenCalledWith(topup.id);
   });
 });
 

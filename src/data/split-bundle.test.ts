@@ -1,5 +1,5 @@
 import { describe, expect, test } from "@jest/globals";
-import { splitBundleRetail } from "@/data/split-bundle";
+import { aggregateBundleRetail, splitBundleRetail } from "@/data/split-bundle";
 
 describe("splitBundleRetail — pure amount→bundles+retail split", () => {
   test("exact multiple → all bundles, zero retail", () => {
@@ -31,5 +31,39 @@ describe("splitBundleRetail — pure amount→bundles+retail split", () => {
   test("rejects non-integer inputs (Cents are integers)", () => {
     expect(() => splitBundleRetail(72.5, 2400)).toThrow(/integer/);
     expect(() => splitBundleRetail(7200, 24.0)).not.toThrow(); // 24.0 is an integer value
+  });
+});
+
+describe("aggregateBundleRetail — Σ bundles/retail over a set of records", () => {
+  /** Minimal record shape the helper reads — structural, so RecordWithItems fits. */
+  const rw = (
+    direction: "in" | "out",
+    unitPrice: number | null,
+    lineAmount: number,
+  ) => ({
+    record: { direction, unit_price_snapshot: unitPrice },
+    items: [{ line_amount: lineAmount }],
+  });
+
+  test("each 'out' record splits via its OWN snapshot, then sums bundles + retail", () => {
+    // out ¥72.00 @ ¥24 → 3 bundles; out ¥70.00 @ ¥24 → 2 bundles + ¥22 retail
+    const rws = [rw("out", 2400, 7200), rw("out", 2400, 7000)];
+    expect(aggregateBundleRetail(rws)).toEqual({ bundles: 5, retail: 2200 });
+  });
+
+  test("'in' records (restock) contribute nothing — bundle/retail is checkout-only", () => {
+    const rws = [rw("in", null, 7200), rw("out", 2400, 7200)];
+    expect(aggregateBundleRetail(rws)).toEqual({ bundles: 3, retail: 0 });
+  });
+
+  test("null snapshot (cold start) → 0 bundles, full amount as retail", () => {
+    expect(aggregateBundleRetail([rw("out", null, 2100)])).toEqual({
+      bundles: 0,
+      retail: 2100,
+    });
+  });
+
+  test("empty set → zero/zero", () => {
+    expect(aggregateBundleRetail([])).toEqual({ bundles: 0, retail: 0 });
   });
 });

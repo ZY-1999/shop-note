@@ -2,12 +2,13 @@ import { Ionicons } from "@expo/vector-icons";
 import { useMemo, useState } from "react";
 import { FlatList, Pressable, StyleSheet, Text, View } from "react-native";
 
-import { formatDate, formatTime } from "@/components/date-format";
+import { formatDate } from "@/components/date-format";
+import { FlowEventRow } from "@/components/flow-event-row";
 import { MemberInfoHeader } from "@/components/member-info-header";
 import { MoneyText } from "@/components/money-text";
 import { cents } from "@/data/primitives";
+import { splitBundleRetail } from "@/data/split-bundle";
 import type { Direction, StockItem } from "@/data/stock-record";
-import { useVoidTopup } from "@/hooks/mutations";
 import { useStockRecords, useTopups } from "@/hooks/reads";
 import { useTheme } from "@/hooks/use-theme";
 import { BottomTabInset } from "@/constants/theme";
@@ -38,6 +39,7 @@ const DAYS_PER_BATCH = 5;
 export interface StaffDetailProps {
   staffId: string;
   onOpenRecord: (recordId: string) => void;
+  onOpenTopup: (topupId: string) => void;
 }
 
 type EventKind = "record" | "topup";
@@ -50,6 +52,7 @@ interface HistoryEvent {
   amount: number; // frozen line_amount (record) or top-up amount, in cents
   direction?: Direction; // record only
   items?: StockItem[]; // record only
+  unitPriceSnapshot?: number | null; // record only — frozen bundle split basis
   note?: string | null; // topup only
 }
 
@@ -61,14 +64,12 @@ interface DaySection {
   events: HistoryEvent[];
 }
 
-export function StaffDetail({ staffId, onOpenRecord }: StaffDetailProps) {
+export function StaffDetail({ staffId, onOpenRecord, onOpenTopup }: StaffDetailProps) {
   const theme = useTheme();
   const records = useStockRecords({ staff_id: staffId });
   const topups = useTopups({ staff_id: staffId });
-  const voidTopup = useVoidTopup();
   const [openDays, setOpenDays] = useState<Set<string>>(new Set());
   const [visibleDays, setVisibleDays] = useState(INITIAL_DAYS);
-  const [voidingTopupId, setVoidingTopupId] = useState<string | null>(null);
 
   // Merge checkouts + top-ups into a day-grouped timeline (newest-first). Pure
   // derived shape — never stored.
@@ -101,6 +102,7 @@ export function StaffDetail({ staffId, onOpenRecord }: StaffDetailProps) {
         amount: amt,
         direction: rw.record.direction,
         items: rw.items,
+        unitPriceSnapshot: rw.record.unit_price_snapshot,
       });
     }
     for (const t of topups.data ?? []) {
@@ -131,10 +133,6 @@ export function StaffDetail({ staffId, onOpenRecord }: StaffDetailProps) {
   const visible = sections.slice(0, visibleDays);
   const recordCount = (records.data ?? []).length + (topups.data ?? []).length;
 
-  const confirmVoid = (topupId: string) => {
-    voidTopup.mutate(topupId, { onSettled: () => setVoidingTopupId(null) });
-  };
-
   const renderDay = ({ item }: { item: DaySection }) => {
     const dayOpen = openDays.has(item.date);
     return (
@@ -160,78 +158,33 @@ export function StaffDetail({ staffId, onOpenRecord }: StaffDetailProps) {
         {dayOpen &&
           item.events.map((e) =>
             e.kind === "record" ? (
-              <Pressable
-                key={e.id}
-                testID={`history-${e.id}`}
-                onPress={() => onOpenRecord(e.id)}
-                style={[styles.subRow, { borderColor: theme.border }]}
-              >
-                <View style={styles.line}>
-                  <Text style={{ marginRight: 8, color: theme.textSecondary }}>
-                    {formatTime(e.timestamp)}
-                  </Text>
-                  <Text
-                    style={{
-                      color:
-                        e.direction === "in" ? theme.success : theme.danger,
-                    }}
-                  >
-                    {e.direction === "in" ? "入库：" : "出库："}
-                  </Text>
-                  <MoneyText cents={cents(e.amount)} />
-                  <Text style={[styles.title, { color: theme.text }]}>
-                    {e.items?.map((i) => `${i.title} ×${i.qty}`).join("、")}
-                  </Text>
-                </View>
-              </Pressable>
+              (() => {
+                const { bundles, retail } = splitBundleRetail(
+                  e.amount,
+                  e.unitPriceSnapshot ?? 0,
+                );
+                return (
+                  <FlowEventRow
+                    key={e.id}
+                    testID={`history-${e.id}`}
+                    kind="checkout"
+                    timestamp={e.timestamp}
+                    amountCents={e.amount}
+                    bundles={bundles}
+                    retailCents={retail}
+                    onPress={() => onOpenRecord(e.id)}
+                  />
+                );
+              })()
             ) : (
-              <View
+              <FlowEventRow
                 key={e.id}
                 testID={`topup-${e.id}`}
-                style={[styles.subRow, { borderColor: theme.border }]}
-              >
-                <View style={styles.line}>
-                  <Text style={{ marginRight: 8, color: theme.textSecondary }}>
-                    {formatTime(e.timestamp)}
-                  </Text>
-                  <Text style={{ color: theme.success }}>充值：</Text>
-                  <MoneyText cents={cents(e.amount)} />
-                </View>
-                <View>
-                  {voidingTopupId === e.id ? (
-                    <>
-                      <Pressable
-                        testID={`topup-confirm-${e.id}`}
-                        onPress={() => confirmVoid(e.id)}
-                        style={[
-                          styles.rowAction,
-                          { borderColor: theme.danger },
-                        ]}
-                      >
-                        <Text style={{ color: theme.danger }}>确认作废</Text>
-                      </Pressable>
-                      <Pressable
-                        testID={`topup-cancel-${e.id}`}
-                        onPress={() => setVoidingTopupId(null)}
-                        style={[
-                          styles.rowAction,
-                          { borderColor: theme.border },
-                        ]}
-                      >
-                        <Text style={{ color: theme.text }}>取消</Text>
-                      </Pressable>
-                    </>
-                  ) : (
-                    <Pressable
-                      testID={`topup-void-${e.id}`}
-                      onPress={() => setVoidingTopupId(e.id)}
-                      style={[styles.rowAction, { borderColor: theme.danger }]}
-                    >
-                      <Text style={{ color: theme.danger }}>作废</Text>
-                    </Pressable>
-                  )}
-                </View>
-              </View>
+                kind="topup"
+                timestamp={e.timestamp}
+                amountCents={e.amount}
+                onPress={() => onOpenTopup(e.id)}
+              />
             ),
           )}
       </View>
@@ -307,27 +260,6 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     gap: 8,
   },
-  subRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    borderWidth: 1,
-    borderRadius: 8,
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    marginLeft: 12,
-    justifyContent: "space-between",
-  },
-  line: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  title: { flex: 1, fontSize: 15 },
   dayDate: { flex: 1, fontSize: 13, fontWeight: "600" },
-  rowAction: {
-    borderWidth: 1,
-    borderRadius: 8,
-    paddingHorizontal: 10,
-  },
   loadMore: { alignItems: "center", paddingVertical: 12 },
 });

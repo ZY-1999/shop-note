@@ -56,3 +56,23 @@ describe("FlowSummary — two-line layout, 补货 absent", () => {
     expect(within(topupRow).queryByText("零售")).toBeNull();
   });
 });
+
+describe("FlowSummary — per-instance testID prefix (multi-instance screens)", () => {
+  it("prefixes the root + every inner testID when `testID` is given, so several FlowSummarys on one screen don't collide", async () => {
+    const { view } = await render(
+      <FlowSummary testID="day-flow-2026-07-09" topup={10000} out={2100} bundles={3} retail={2100} />,
+    );
+
+    // root + inner testIDs all carry the prefix — a second FlowSummary with a
+    // different prefix (e.g. the range header, or another day) won't collide.
+    expect(view.getByTestId("day-flow-2026-07-09")).toBeTruthy();
+    expect(view.getByTestId("day-flow-2026-07-09-topup-total")).toBeTruthy();
+    expect(view.getByTestId("day-flow-2026-07-09-out-total")).toBeTruthy();
+    expect(view.getByTestId("day-flow-2026-07-09-bundle-count")).toBeTruthy();
+    expect(view.getByTestId("day-flow-2026-07-09-retail")).toBeTruthy();
+
+    // the unprefixed defaults are NOT rendered when a prefix is given.
+    expect(view.queryByTestId("flow-summary")).toBeNull();
+    expect(view.queryByTestId("flow-topup-total")).toBeNull();
+  });
+});

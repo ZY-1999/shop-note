@@ -14,6 +14,7 @@ export default function SummaryTabRoute() {
     <SummaryTab
       onOpenStaff={(id) => router.push({ pathname: '/bookkeeping/staff/[id]', params: { id } })}
       onOpenRecord={(recordId) => router.push({ pathname: '/bookkeeping/record/[id]', params: { id: recordId } })}
+      onOpenTopup={(topupId) => router.push({ pathname: '/bookkeeping/topup/[id]', params: { id: topupId } })}
     />
   );
 }

@@ -58,7 +58,7 @@ describe("StaffDetail — 余额 partition + summary (balance-domain)", () => {
     await repos.topups.create({ staff_id: staffId, amount: cents(10000) }); // ¥100
     await repos.stockRecords.create({ staff_id: staffId, direction: "out", items: [{ product_id: productId, qty: 10 }] }); // ¥30
 
-    const { view } = await renderDetail(<StaffDetail staffId={staffId} onOpenRecord={jest.fn()} />, { repos });
+    const { view } = await renderDetail(<StaffDetail staffId={staffId} onOpenRecord={jest.fn()} onOpenTopup={jest.fn()} />, { repos });
     // spec #05: the standalone 余额 card is now MemberInfoHeader's second row —
     // sync on the balance text (the component's MoneyText has no per-staff testID).
     await waitForSync(() => view.getByText("¥70.00")); // 100 − 30, settled via useMemberBalance
@@ -74,31 +74,33 @@ describe("StaffDetail — 余额 partition + summary (balance-domain)", () => {
     await repos.topups.create({ staff_id: staffId, amount: cents(1000) }); // ¥10
     await repos.stockRecords.create({ staff_id: staffId, direction: "out", items: [{ product_id: productId, qty: 10 }] }); // ¥30 → −¥20
 
-    const { view } = await renderDetail(<StaffDetail staffId={staffId} onOpenRecord={jest.fn()} />, { repos });
+    const { view } = await renderDetail(<StaffDetail staffId={staffId} onOpenRecord={jest.fn()} onOpenTopup={jest.fn()} />, { repos });
     await waitForSync(() => view.getByText("欠款 ¥20.00")); // MemberInfoHeader 欠款标 (negative)
   });
 });
 
-describe("StaffDetail — 充值 history + 作废 (balance-domain US11)", () => {
-  it("lists top-ups in the day history and voiding one recovers the balance", async () => {
-    const { repos, staffId, productId } = await seedStaffProduct();
-    await repos.topups.create({ staff_id: staffId, amount: cents(10000), note: "首充", timestamp: new Date(2026, 5, 10, 9, 0).getTime() });
-    await repos.stockRecords.create({ staff_id: staffId, direction: "out", items: [{ product_id: productId, qty: 10 }], timestamp: new Date(2026, 5, 10, 10, 0).getTime() });
+describe("StaffDetail — 充值 history navigates to detail (flow-event-row)", () => {
+  it("topup row calls onOpenTopup when tapped", async () => {
+    const { repos, staffId } = await seedStaffProduct();
+    const topup = await repos.topups.create({
+      staff_id: staffId,
+      amount: cents(10000),
+      note: "首充",
+      timestamp: new Date(2026, 5, 10, 9, 0, 0).getTime(),
+    });
 
-    const { view } = await renderDetail(<StaffDetail staffId={staffId} onOpenRecord={jest.fn()} />, { repos });
+    const onOpenTopup = jest.fn();
+    const { view } = await renderDetail(
+      <StaffDetail staffId={staffId} onOpenRecord={jest.fn()} onOpenTopup={onOpenTopup} />,
+      { repos },
+    );
     await waitForSync(() => view.getByTestId("day-2026/06/10"));
     await fireEvent.press(view.getByTestId("day-2026/06/10"));
     await flushPending();
 
-    // the top-up row carries a 作废 affordance; balance starts at ¥70 (100 − 30).
-    await waitForSync(() => view.getByText("¥70.00")); // MemberInfoHeader 余额
-    const [topup] = await repos.topups.list({ staff_id: staffId });
-    await fireEvent.press(view.getByTestId(`topup-void-${topup.id}`));
-    await fireEvent.press(view.getByTestId(`topup-confirm-${topup.id}`));
-
-    // voiding the ¥100 top-up → balance recomputes to −¥30 (only the out remains).
-    await waitForSync(() => view.getByText("欠款 ¥30.00"));
-    expect((await repos.topups.list({ staff_id: staffId }))).toHaveLength(0); // voided → excluded
+    await fireEvent.press(view.getByTestId(`topup-${topup.id}`));
+    expect(onOpenTopup).toHaveBeenCalledWith(topup.id);
+    expect(view.queryByTestId(`topup-void-${topup.id}`)).toBeNull();
   });
 });
 
@@ -111,7 +113,7 @@ describe("StaffDetail — day section collapsible: default collapsed, tap to tog
       items: [{ product_id: productId, qty: 2 }],
     });
 
-    const { view } = await renderDetail(<StaffDetail staffId={staffId} onOpenRecord={jest.fn()} />, { repos });
+    const { view } = await renderDetail(<StaffDetail staffId={staffId} onOpenRecord={jest.fn()} onOpenTopup={jest.fn()} />, { repos });
     await waitForSync(() => view.getByTestId("day-2026/06/10"));
 
     // collapsed by default → the day's record row isn't rendered yet.
@@ -144,7 +146,7 @@ describe("StaffDetail — history grouped by local day, newest first (spec #04 A
     });
 
     const onOpenRecord = jest.fn();
-    const { view } = await renderDetail(<StaffDetail staffId={staffId} onOpenRecord={onOpenRecord} />, { repos });
+    const { view } = await renderDetail(<StaffDetail staffId={staffId} onOpenRecord={onOpenRecord} onOpenTopup={jest.fn()} />, { repos });
     await waitForSync(() => view.getByTestId("day-2026/06/10"));
 
     // Two per-day separators, newest day (06/10) before older (06/09).
@@ -160,7 +162,7 @@ describe("StaffDetail — history grouped by local day, newest first (spec #04 A
     // the out record row — assert presence (≥1), not uniqueness.
     expect(view.getAllByText("出库").length).toBeGreaterThan(0);
     expect(view.queryByText("出单")).toBeNull();
-    expect(view.getByText("14:30")).toBeTruthy();
+    expect(view.getByTestId(`history-${newer.record.id}-time`).props.children).toBe("14:30:00");
 
     // Tapping a record row opens its detail.
     await fireEvent.press(view.getByTestId(`history-${newer.record.id}`));
@@ -180,7 +182,7 @@ describe("StaffDetail — day-batched rendering (spec #04 AC4, ADR-0007)", () =>
         items: [{ product_id: productId, qty: 1 }],
       });
     }
-    const { view } = await renderDetail(<StaffDetail staffId={staffId} onOpenRecord={jest.fn()} />, { repos });
+    const { view } = await renderDetail(<StaffDetail staffId={staffId} onOpenRecord={jest.fn()} onOpenTopup={jest.fn()} />, { repos });
     await waitForSync(() => view.getByTestId("record-summary"));
 
     // INITIAL_DAYS (5) day separators render first; days 6–7 are held back.
@@ -201,7 +203,7 @@ describe("StaffDetail — member level badge in header (member-rename-level #03)
   it("shows the 金站 badge next to the name for a gold member (read-only)", async () => {
     const repos = setupRepos(new InMemoryAdapter());
     const gold = await repos.staff.create({ name: "金客", phone: "", notes: "", level: "gold" });
-    const { view } = await renderDetail(<StaffDetail staffId={gold.id} onOpenRecord={jest.fn()} />, { repos });
+    const { view } = await renderDetail(<StaffDetail staffId={gold.id} onOpenRecord={jest.fn()} onOpenTopup={jest.fn()} />, { repos });
     await waitForSync(() => view.getByText("金客"));
     expect(view.getByText("金站")).toBeTruthy();
   });

@@ -16,6 +16,7 @@ export default function StaffDetailRoute() {
     <StaffDetail
       staffId={id}
       onOpenRecord={(recordId) => router.push({ pathname: '/bookkeeping/record/[id]', params: { id: recordId } })}
+      onOpenTopup={(topupId) => router.push({ pathname: '/bookkeeping/topup/[id]', params: { id: topupId } })}
     />
   );
 }
