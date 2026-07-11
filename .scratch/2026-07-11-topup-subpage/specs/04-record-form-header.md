@@ -1,7 +1,7 @@
 # 出库表单 header 对齐
 
 Type: spec
-Status: ready-for-agent
+Status: done
 Parent: #01
 Blocked by: #01
 
@@ -38,3 +38,19 @@ RecordForm header 既有「出库 / 入库」方向词 + 单行 staffName 替换
 ## Rework on failure
 
 failure is isolated; redo this spec only（出库表单 header 独立）。
+
+## Evidence — done 2026-07-11
+
+**Shipped (`src/components/record-form.tsx`):**
+- header JSX 从 `DIRECTION_LABEL[direction]` + `staffName` 换成 `<MemberInfoHeader staffId={staffId} />`，与充值表单 / 会员详情 / 记账列表行完全对齐。
+- 移除 `DIRECTION_LABEL` 常量（仅 header 用——submit 按钮颜色直接判 `direction` prop）、`useStaffById` 调用 + `staff` 变量（名 / 等级 / 余额展示全部交 MemberInfoHeader）、`direction` / `staffName` 样式。`header` 样式精简为 `{ paddingVertical: 4 }`。
+- RecordForm 公开 surface 不变（`staffId` / `direction` / `edit?` / `onSaved?`）；表单其余部分（商品搜索 / 明细 / 合计 / 备注 / 时间 / 提交）不动。方向信息仍由 route adapter 既有 `setOptions({ title: recordFormTitle(dir) })` 承担（本 spec 未改 route）。
+
+**Tests (`src/components/record-form.test.tsx`, 24 tests, all green):**
+- **新增** "header renders MemberInfoHeader (spec #04 AC1)"：`member-info-header` testID 在、`入库` / `出库` 方向词不在表单内 ✓（AC1 + AC4）
+- prefill 用例改写：方向 / staffName 断言移除，聚焦"挑商品加行"（AC3）
+- 「renders the out-direction as 出库 (not 出单)」整用例删除（AC2）；其所在 describe 改名「备注 field (spec #03 AC3)」，备注断言保留
+- MemberInfoHeader 按 spec 02 既有范式 mock 为轻量 stub（本套件 15+ 交互测试，mock 掉它的两个 useQuery observer 规避 RNTL 渲染器腐败；组件正确性归 spec #01）
+- 提交 / 校验 / 时间回填 / chip / stepper 等既有行为全绿（AC5 回归）
+
+`npx tsc --noEmit` clean。无 Rework triggered。

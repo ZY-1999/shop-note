@@ -29,6 +29,22 @@ jest.mock("expo-router", () => ({
   router: { back: () => mockBack() },
 }));
 
+// MemberInfoHeader is mocked to a lightweight stub (same rationale as the
+// topup-form suites: its own correctness lives in member-info-header.test.tsx,
+// and keeping its two useQuery observers out of this 15-test interaction suite
+// avoids the RNTL v14 + React 19 + React Query v5 renderer corruption).
+jest.mock("@/components/member-info-header", () => ({
+  MemberInfoHeader: ({ staffId }: { staffId: string }) => {
+    const React = jest.requireActual("react") as typeof import("react");
+    const { View, Text } = jest.requireActual("react-native") as typeof import("react-native");
+    return React.createElement(
+      View,
+      { testID: "member-info-header" },
+      React.createElement(Text, null, `header-stub-${staffId}`),
+    );
+  },
+}));
+
 const mockBackdateMs = new Date("2020-01-01T00:00:00Z").getTime();
 jest.mock("@expo/ui/community/datetime-picker", () => {
   const React = jest.requireActual("react") as typeof import("react");
@@ -156,13 +172,22 @@ async function renderPicked(direction: "out", qty: string) {
   return { ...seeded, view };
 }
 
-describe("RecordForm — prefill + add a line (spec #06 AC1)", () => {
-  it("shows the prefilled staff + direction, and picking a product adds a line", async () => {
+describe("RecordForm — header renders MemberInfoHeader (spec #04 AC1)", () => {
+  it("renders the member-info header, no direction word in the form", async () => {
+    const { repos, staffId } = await seed();
+    const { view } = await renderForm(<RecordForm staffId={staffId} direction="out" />, { repos });
+    expect(view.getByTestId("member-info-header")).toBeTruthy();
+    // spec #04: the 出库/入库 direction word left the form header (it lives in the
+    // Stack nav title now) — assert neither appears inside the form component.
+    expect(view.queryByText("入库")).toBeNull();
+    expect(view.queryByText("出库")).toBeNull();
+  });
+});
+
+describe("RecordForm — pick a product adds a line (spec #06 AC1)", () => {
+  it("picking a product adds a line", async () => {
     const { repos, staffId, productId } = await seed();
     const { view } = await renderForm(<RecordForm staffId={staffId} direction="out" />, { repos });
-
-    expect(view.getByText("出库")).toBeTruthy(); // direction prefilled
-    expect(await waitForSync(() => view.getByText("张三"))).toBeTruthy(); // staff name prefilled
 
     // waitForSync (not findBy) before fireEvent — see renderPicked for why.
     fireEvent.press(await waitForSync(() => view.getByTestId(`pick-${productId}`)));
@@ -352,14 +377,7 @@ describe("RecordForm — chip pick + stepper (spec #03 AC1/AC2)", () => {
   });
 });
 
-describe("RecordForm — 出库 label + 备注 field (spec #03 AC2/AC3)", () => {
-  it("renders the out-direction as 出库 (not 出单)", async () => {
-    const { repos, staffId } = await seed();
-    const { view } = await renderForm(<RecordForm staffId={staffId} direction="out" />, { repos });
-    expect(await waitForSync(() => view.getByText("出库"))).toBeTruthy();
-    expect(view.queryByText("出单")).toBeNull();
-  });
-
+describe("RecordForm — 备注 field (spec #03 AC3)", () => {
   it("renders 备注 as a label:input field", async () => {
     const { repos, staffId } = await seed();
     const { view } = await renderForm(<RecordForm staffId={staffId} direction="out" />, { repos });

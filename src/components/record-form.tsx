@@ -5,10 +5,11 @@ import { useState } from 'react';
 import { Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { MoneyText } from '@/components/money-text';
+import { MemberInfoHeader } from '@/components/member-info-header';
 import { formatDateTime } from '@/components/date-format';
 import { validateRecordForm } from '@/components/record-form-validation';
 import { useCreateStockRecord, useUpdateStockRecord } from '@/hooks/mutations';
-import { useProducts, useStaffById } from '@/hooks/reads';
+import { useProducts } from '@/hooks/reads';
 import { useTheme } from '@/hooks/use-theme';
 import { cents, type Cents } from '@/data/primitives';
 import type { Direction } from '@/data/stock-record';
@@ -70,8 +71,6 @@ export interface RecordFormProps {
   onSaved?: () => void;
 }
 
-const DIRECTION_LABEL: Record<Direction, string> = { in: '入库', out: '出库' };
-
 /** Parsed integer qty (floored; empty/non-numeric → 0) for stepper math. */
 function qtyInt(qty: string): number {
   return Math.floor(Number(qty) || 0);
@@ -85,7 +84,6 @@ function lineAmount(line: PickedLine): number {
 
 export function RecordForm({ staffId, direction, edit, onSaved }: RecordFormProps) {
   const theme = useTheme();
-  const staff = useStaffById(staffId);
   const createRecord = useCreateStockRecord();
   const updateRecord = useUpdateStockRecord();
   const [search, setSearch] = useState('');
@@ -164,10 +162,7 @@ export function RecordForm({ staffId, direction, edit, onSaved }: RecordFormProp
   return (
     <ScrollView style={[styles.container, { backgroundColor: theme.background }]}>
       <View style={styles.header}>
-        <Text style={[styles.direction, { color: direction === 'in' ? theme.success : theme.danger }]}>
-          {DIRECTION_LABEL[direction]}
-        </Text>
-        <Text style={styles.staffName}>{staff.data?.name ?? '加载中'}</Text>
+        <MemberInfoHeader staffId={staffId} />
       </View>
 
       <TextInput
@@ -315,9 +310,7 @@ function QtyStepper({ index, qty, onSetQty }: { index: number; qty: string; onSe
 
 const styles = StyleSheet.create({
   container: { flex: 1, padding: 12, gap: 8 },
-  header: { flexDirection: 'row', alignItems: 'baseline', gap: 12, paddingVertical: 4 },
-  direction: { fontSize: 18, fontWeight: '700' },
-  staffName: { fontSize: 16 },
+  header: { paddingVertical: 4 },
   input: { borderWidth: 1, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10, fontSize: 15 },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
   chip: { borderWidth: 1, borderRadius: 999, paddingHorizontal: 12, paddingVertical: 6 },
