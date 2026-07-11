@@ -1,7 +1,7 @@
 # 记账列表行瘦身 + 充值导航接线
 
 Type: spec
-Status: ready-for-human
+Status: ready-for-agent
 Parent: #01
 Blocked by: #01, #02
 

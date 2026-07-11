@@ -1,7 +1,7 @@
 # 会员信息 header 组件提取
 
 Type: spec
-Status: ready-for-human
+Status: ready-for-agent
 Parent: #01
 Blocked by: None — can start immediately
 

@@ -1,7 +1,7 @@
 # 充值表单组件 + 路由（对称出库子页面）
 
 Type: spec
-Status: ready-for-human
+Status: ready-for-agent
 Parent: #01
 Blocked by: #01
 

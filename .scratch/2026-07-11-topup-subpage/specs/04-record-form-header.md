@@ -1,7 +1,7 @@
 # 出库表单 header 对齐
 
 Type: spec
-Status: ready-for-human
+Status: ready-for-agent
 Parent: #01
 Blocked by: #01
 
