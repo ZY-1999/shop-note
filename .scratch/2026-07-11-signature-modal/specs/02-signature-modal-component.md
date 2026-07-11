@@ -1,7 +1,7 @@
 # SignatureModal 组件：SVG 画布 + 光栅化 + 受控契约
 
 Type: spec
-Status: ready-for-human
+Status: ready-for-agent
 Parent: #01 (01-signature-modal.md)
 Blocked by: #01
 

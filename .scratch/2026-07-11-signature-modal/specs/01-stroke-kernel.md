@@ -1,7 +1,7 @@
 # 笔迹内核：状态机 + SVG path 序列化
 
 Type: spec
-Status: ready-for-human
+Status: ready-for-agent
 Parent: #01 (01-signature-modal.md)
 Blocked by: None — can start immediately
 
