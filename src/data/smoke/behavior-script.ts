@@ -237,4 +237,11 @@ export const behaviorScript: readonly SmokeStep[] = [
     name: "shopAggregate: global stock after restock void (negative = 欠货)",
     run: (repos) => repos.inventory.shopAggregate(),
   },
+  {
+    name: "config: setUnitPrice + getUnitPrice round-trip (global unit price)",
+    run: async (repos) => {
+      await repos.config.setUnitPrice(cents(2400));
+      return repos.config.getUnitPrice();
+    },
+  },
 ];

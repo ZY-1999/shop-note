@@ -209,6 +209,18 @@ export const MIGRATIONS: ReadonlyArray<{
         "VALUES ('-1', '管理员', '', '', 'normal', NULL, 0, 0)",
     ],
   },
+  {
+    version: 4,
+    statements: [
+      // config 表在累积升级的开发 DB 里可能以旧 schema 残留（缺 id 列）。v3 用
+      // CREATE TABLE IF NOT EXISTS 建表，无法纠正已存在的错误 config 表（v3 注释假设
+      // topup/config 是新的、不 DROP）。DROP + 重建强制对齐当前 schema（id/value/updated_at），
+      // 修复 setUnitPrice 的 findById 报 "no such column: id"。config 只存全局单价，
+      // 重建后 cold start=0，丢失可接受。
+      "DROP TABLE IF EXISTS config",
+      createTableSql("config"),
+    ],
+  },
 ];
 
 /**

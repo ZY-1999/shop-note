@@ -61,3 +61,11 @@
 - **适用边界 / 踩坑**：**任何给 5 张既有表（staff/product/stock_record/stock_record_item/audit_log）加列**都适用——这是默认要走的路，不是特例。冻结的是**已发布的历史版本**该表的 `CREATE` 字面量；`COLUMNS`/`SCHEMA` 仍含新列（drift-guard 绑定的是这两者，**不**覆盖 `MIGRATIONS` 字面量，所以冻结合法）。**不要**在已发布迁移里直接留 `createTableSql(table)`——`COLUMNS` 一旦加列它就漂移、会和 `ALTER` 撞列。替代方案（给 `runMigrations` 加列存在性 guard、跑到 `ALTER` 前先 `PRAGMA table_info` 判存）更重、要改 `runMigrations` 签名，未采纳。
 - **验证**：[src/data/expo-sqlite-migration.test.ts](src/data/expo-sqlite-migration.test.ts) 断言 v1 staff 字面量 `!== createTableSql("staff")`、`MIGRATIONS.length === 2`、v2 `ALTER ... DEFAULT 'normal' CHECK(...)` 语句正确；`createTableSql('staff')` 快照含 `level TEXT NOT NULL DEFAULT 'normal' CHECK (level IN ('normal','gold'))`。真实 `ALTER` 执行仅靠**设备 smoke**（ADR-0004，Jest 不覆盖），发布前须手跑：老库升级 existing 行得回填默认值、全新库建表+迁移后列存在。
 - **关联**：ADR-0003（DDL 与 registry 共用单源）、ADR-0004（真实 SQL → device smoke）。CONTEXT.md「会员化改名 + 会员等级」条目亦有概述。
+
+### 新引入表的 CREATE TABLE IF NOT EXISTS 不纠正已存在的错误 schema
+
+- **事实**：v3 清库重建迁移只 `DROP TABLE IF EXISTS` 了 5 张老表（staff/product/stock_record/stock_record_item/audit_log），注释假设 topup/config 是 v3 新增、无需 DROP，随后用 `CREATE TABLE IF NOT EXISTS topup/config` 建表。但 `IF NOT EXISTS` **见到表已存在就跳过整条 CREATE**——若累积升级的开发库里 topup/config 已以**旧 schema** 残留（开发期某版代码留下），旧表原样保留，`COLUMNS`/`SCHEMA` 的新列不会补进去。`runMigrations` 的 `user_version` 门控只看版本号、不校验表结构，漂移要等到运行时才炸（`findById` 报 `no such column`）。
+- **来源**：Bug 诊断 #3（2026-07-11）—— 全局单价保存报 `no such column: id`；生产 config 表是旧 schema（缺 `id` 列），v3 的 IF NOT EXISTS 跳过重建；修复为 v4 迁移显式 `DROP TABLE IF EXISTS config` + `createTableSql("config")` 强制重建。
+- **适用边界 / 踩坑**：**新表（某迁移版本首次引入的表）若在「该版本发布前」曾被以不同结构创建过**（开发期残留、手改 DB、跨分支切换），那个版本的 `CREATE TABLE IF NOT EXISTS` 修不了它——drift-guard 绑定 `COLUMNS`↔`SCHEMA` 列名，**不覆盖磁盘上已存在的旧表**。与「给既有表加列必须冻结历史 CREATE 字面量」对称的另一面：那条防的是全新库 v1 CREATE 已含新列 → 老 ALTER 重复加列；本条防的是旧表残留 → 新 CREATE 被跳过。**任何新表迁移**都适用——若不确定开发库历史，默认 `DROP TABLE IF EXISTS <new> + createTableSql(<new>)`，别只靠 IF NOT EXISTS。
+- **验证**：[src/data/expo-sqlite-migration.test.ts](src/data/expo-sqlite-migration.test.ts) v4 断言 `MIGRATIONS` v4 语句 = `["DROP TABLE IF EXISTS config", createTableSql("config")]`；真实 DROP+CREATE 执行靠设备 smoke（ADR-0004，Jest 不覆盖）。
+- **关联**：ADR-0003（DDL 与 registry 共用单源）、ADR-0008（清库重建迁移）；与「给既有表加列必须冻结历史版本的 CREATE 字面量」互为对称面。

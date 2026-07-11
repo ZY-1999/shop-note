@@ -78,7 +78,7 @@ describe("migration DDL", () => {
   });
 
   test("MIGRATIONS: v1 staff CREATE frozen at pre-level shape; v2 ALTER adds level (DEFAULT+CHECK); idx NON-unique", () => {
-    expect(MIGRATIONS).toHaveLength(3);
+    expect(MIGRATIONS).toHaveLength(4);
 
     const v1 = MIGRATIONS.find((m) => m.version === 1);
     expect(v1).toBeDefined();
@@ -116,7 +116,7 @@ describe("migration DDL", () => {
 
   test("MIGRATIONS v3: clear-db rebuild — DROP 5 existing tables, CREATE all 7, rebuild idx, seed staff '-1'", () => {
     const latest = Math.max(...MIGRATIONS.map((m) => m.version));
-    expect(latest).toBe(3);
+    expect(latest).toBe(4);
     const v3 = MIGRATIONS.find((m) => m.version === 3);
     expect(v3).toBeDefined();
 
@@ -163,6 +163,15 @@ describe("migration DDL", () => {
 
     // Exactly 14 statements — no stray DROPs of new tables, no extra seeds.
     expect(v3!.statements).toHaveLength(14);
+  });
+
+  test("MIGRATIONS v4: DROP + rebuild config (repair pre-v3 config tables missing the id column)", () => {
+    const v4 = MIGRATIONS.find((m) => m.version === 4);
+    expect(v4).toBeDefined();
+    // DROP forces a rebuild even when a pre-v3-shaped config table already exists —
+    // CREATE TABLE IF NOT EXISTS alone (as v3 does) can't repair it. config holds only
+    // the global unit price, so the rebuild is lossless in practice (cold start = 0).
+    expect(v4!.statements).toEqual(["DROP TABLE IF EXISTS config", createTableSql("config")]);
   });
 
   test("runMigrations is still (db) => Promise<void> — v3 added without changing the executor contract", () => {
