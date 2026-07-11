@@ -12,6 +12,7 @@ import { LevelBadge } from "@/components/level-badge";
 import { MoneyText } from "@/components/money-text";
 import { SmokeEntry } from "@/components/smoke-entry";
 import { cents, type Cents } from "@/data/primitives";
+import { BottomTabInset } from "@/constants/theme";
 import {
   ADMIN_STAFF_ID,
   DEFAULT_STAFF_LEVEL,
@@ -894,7 +895,7 @@ const styles = StyleSheet.create({
   fieldLabel: { fontSize: 14, fontWeight: "500" },
 
   label: { fontSize: 13, fontWeight: "500", width: 84 },
-  listContent: { gap: 8 },
+  listContent: { gap: 8, paddingBottom: BottomTabInset },
   input: {
     flex: 1,
     borderWidth: 1,

@@ -5,6 +5,7 @@ import { FlatList, StyleSheet, TextInput, View } from 'react-native';
 import { StaffRow } from '@/components/staff-row';
 import { useStaff } from '@/hooks/reads';
 import { useTheme } from '@/hooks/use-theme';
+import { BottomTabInset } from '@/constants/theme';
 
 /**
  * 记账 tab home — the operator's primary landing. A searchable list of active
@@ -39,6 +40,7 @@ export default function BookkeepingTab() {
       />
       <FlatList
         data={rows}
+        contentContainerStyle={{ paddingBottom: BottomTabInset }}
         keyExtractor={(s) => s.id}
         renderItem={({ item }) => (
           <StaffRow

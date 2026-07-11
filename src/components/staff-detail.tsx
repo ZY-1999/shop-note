@@ -10,6 +10,7 @@ import type { Direction, StockItem } from "@/data/stock-record";
 import { useVoidTopup } from "@/hooks/mutations";
 import { useStockRecords, useTopups } from "@/hooks/reads";
 import { useTheme } from "@/hooks/use-theme";
+import { BottomTabInset } from "@/constants/theme";
 
 /**
  * The member look-back screen (stock-balance-refactor balance-domain).
@@ -287,7 +288,7 @@ export function StaffDetail({ staffId, onOpenRecord }: StaffDetailProps) {
 }
 
 const styles = StyleSheet.create({
-  content: { padding: 12, gap: 8 },
+  content: { padding: 12, gap: 8, paddingBottom: BottomTabInset },
   header: { gap: 8, paddingBottom: 4 },
   nameRow: { flexDirection: "row", alignItems: "center", gap: 8 },
   name: { fontSize: 20, fontWeight: "700", paddingVertical: 4 },

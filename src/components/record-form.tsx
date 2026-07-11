@@ -22,6 +22,7 @@ import type { Direction } from "@/data/stock-record";
 import { useCreateStockRecord, useUpdateStockRecord } from "@/hooks/mutations";
 import { useUnitPrice } from "@/hooks/reads";
 import { useTheme } from "@/hooks/use-theme";
+import { BottomTabInset } from "@/constants/theme";
 import { ItemsSeletor, PickedLine } from "./items-selector";
 
 /** Preloaded line for edit mode — the record's frozen item, carrying its stable id. */
@@ -241,7 +242,7 @@ export function RecordForm({
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, padding: 12, gap: 8 },
+  container: { flex: 1, padding: 12, gap: 8, paddingBottom: BottomTabInset },
   header: { paddingVertical: 4 },
   input: {
     borderWidth: 1,

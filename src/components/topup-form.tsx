@@ -19,6 +19,7 @@ import { MemberInfoHeader } from "@/components/member-info-header";
 import { cents } from "@/data/primitives";
 import { useCreateTopup } from "@/hooks/mutations";
 import { useTheme } from "@/hooks/use-theme";
+import { BottomTabInset } from "@/constants/theme";
 
 /**
  * The top-up form — the UI's only write path into the top-up ledger. Opened from
@@ -185,7 +186,7 @@ export function TopupForm({ staffId }: TopupFormProps) {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, padding: 12, gap: 8 },
+  container: { flex: 1, padding: 12, gap: 8, paddingBottom: BottomTabInset },
   field: {
     flexDirection: "row",
     alignItems: "center",

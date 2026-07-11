@@ -9,6 +9,7 @@ import { useTheme } from '@/hooks/use-theme';
 import { cents } from '@/data/primitives';
 import { splitBundleRetail } from '@/data/split-bundle';
 import type { Direction } from '@/data/stock-record';
+import { BottomTabInset } from '@/constants/theme';
 
 /**
  * The record detail screen (spec #07) — the look-back / correct surface. Shows
@@ -156,7 +157,7 @@ export function RecordDetail({ recordId }: RecordDetailProps) {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, padding: 12, gap: 8 },
+  container: { flex: 1, padding: 12, gap: 8, paddingBottom: BottomTabInset },
   header: { borderWidth: 1, borderRadius: 8, padding: 12, gap: 4 },
   note: { fontSize: 14 },
   line: { borderWidth: 1, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10, gap: 4 },
