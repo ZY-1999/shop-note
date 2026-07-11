@@ -69,3 +69,13 @@
 - **适用边界 / 踩坑**：**新表（某迁移版本首次引入的表）若在「该版本发布前」曾被以不同结构创建过**（开发期残留、手改 DB、跨分支切换），那个版本的 `CREATE TABLE IF NOT EXISTS` 修不了它——drift-guard 绑定 `COLUMNS`↔`SCHEMA` 列名，**不覆盖磁盘上已存在的旧表**。与「给既有表加列必须冻结历史 CREATE 字面量」对称的另一面：那条防的是全新库 v1 CREATE 已含新列 → 老 ALTER 重复加列；本条防的是旧表残留 → 新 CREATE 被跳过。**任何新表迁移**都适用——若不确定开发库历史，默认 `DROP TABLE IF EXISTS <new> + createTableSql(<new>)`，别只靠 IF NOT EXISTS。
 - **验证**：[src/data/expo-sqlite-migration.test.ts](src/data/expo-sqlite-migration.test.ts) v4 断言 `MIGRATIONS` v4 语句 = `["DROP TABLE IF EXISTS config", createTableSql("config")]`；真实 DROP+CREATE 执行靠设备 smoke（ADR-0004，Jest 不覆盖）。
 - **关联**：ADR-0003（DDL 与 registry 共用单源）、ADR-0008（清库重建迁移）；与「给既有表加列必须冻结历史版本的 CREATE 字面量」互为对称面。
+
+## UI / 布局
+
+### 全页滚动底部留白用 `BottomTabInset`（theme.ts），别各页硬编码
+
+- **事实**：底部 tab bar（icon-only，[src/components/app-tabs.tsx](src/components/app-tabs.tsx)）占屏幕底部，滚动页（FlatList/ScrollView）最后一项滑到底易被遮挡/贴边。约定：每个滚动页的内容容器加 `paddingBottom: BottomTabInset`（[src/constants/theme.ts](src/constants/theme.ts)，`Platform.select({ ios: 50, android: 80 })`）。FlatList 加在 `contentContainerStyle`，ScrollView 加在内容 `style`。
+- **来源**：2026-07-11 —— 用户反馈「全部页面滑动底部展示不全」。`BottomTabInset` 此前已定义并在 codemap 登记，但**全仓库零引用**（定义了没接上），是各页缺底部留白的根因；本次接入 7 个滚动页（记账首页/管理/会员详情/记录详情/记录表单/充值表单/汇总）。
+- **适用边界 / 踩坑**：**新增任何滚动页**都应加 `paddingBottom: BottomTabInset`，不要逐页硬编码数字。值偏大/偏小**只改 `BottomTabInset` 一处**（单点旋钮）。默认 expo-router `Tabs` 为 in-flow（内容不延伸到 tab bar 下），该常量值偏保守以确保内容肯定可见；真机若觉留白过大，下调即可。`items-selector`（modal 选择器）、`smoke-entry`（dev 烟雾屏）非「页面」，未接入。
+- **验证**：接入后 `tsc` 通过、12 suites / 120 测试 GREEN（纯样式，无行为断言变更）；真机留白体感靠设备目检。
+- **关联**：[src/constants/theme.ts](src/constants/theme.ts) 的 `BottomTabInset`；codemap [docs/codemap/project.md](docs/codemap/project.md) 已登记该常量为 theme.ts 职责。
