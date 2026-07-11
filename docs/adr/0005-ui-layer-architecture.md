@@ -53,3 +53,15 @@
 - UI PRD: [.scratch/2026-07-09-shop-management-ui/01-shop-management-ui.md](../../.scratch/2026-07-09-shop-management-ui/01-shop-management-ui.md)
 - Code（将落地）: `src/data/composition.ts`, `src/app/providers.tsx`, `src/hooks/*`
 - Related: [ADR-0001](0001-storage-port-shape.md)（storage port）, [ADR-0002](0002-derived-inventory-never-stored.md)（派生不存）, [ADR-0006](0006-ui-component-testing-rntl.md)（UI 测试）
+
+## Amendments
+
+### 2026-07-11 —— QueryClient `refetchOnMount` 由 false 改 true
+
+原 `createQueryClient` 默认 `refetchOnMount: false`（代码注释「refetch on focus and mount both off」），意图是「无远端、无需 mount 重取」。但这对**失效时无组件观察**的查询留了一个 stale 窗口：从记账列表点出库提交时，会员详情未挂载，其 records / topups / balance 查询处于 inactive，失效只刷新 active 查询；重新进入该页面挂载时 `refetchOnMount: false` 阻止重取 → 显示失效前的旧缓存（会员详情记录不是最新）。
+
+改为 `refetchOnMount: true`。配合 `staleTime: Infinity`：**只有被失效过的查询**才在 remount 时重取；未失效的查询仍不重取（不引入多余请求，也不破坏派生读的 no-stale-window）。这与 Consequence「写后自动失效重拉…UI 不需手动 refetch」一致 —— `refetchOnMount: true` 是让它真正成立的前提，而非偏离。
+
+- 代码：[src/providers/providers.tsx](../../src/providers/providers.tsx) `createQueryClient`。
+- 回归测试：`src/providers/providers.test.tsx`（invalidate-while-inactive → remount 必见新数据）。
+- 修复提交：`2ea7fec`。
