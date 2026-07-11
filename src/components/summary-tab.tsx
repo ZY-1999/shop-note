@@ -8,7 +8,9 @@ import {
   rangeFor,
   type RangePreset,
 } from "@/components/date-format";
+import { FlowSummary } from "@/components/flow-summary";
 import { MoneyText } from "@/components/money-text";
+import { BottomTabInset } from "@/constants/theme";
 import { cents } from "@/data/primitives";
 import { splitBundleRetail } from "@/data/split-bundle";
 import { ADMIN_STAFF_ID } from "@/data/staff";
@@ -76,12 +78,10 @@ export interface SummaryTabProps {
 interface DaySection {
   dateDash: string; // 'YYYY-MM-DD' (dailyFlow row.date) — the day key + keyExtractor
   dateSlash: string; // 'YYYY/MM/DD' — display + testID (matches formatDate)
-  dayIn: number; // Σ in_amount across the day (restock under -1) (cents)
-  dayOut: number; // Σ out_amount across the day's staff (cents)
-  dayTopup: number; // Σ topup_amount across the day's staff (cents)
+  dayOut: number; // Σ out_amount across the day's member staff (cents)
+  dayTopup: number; // Σ topup_amount across the day's member staff (cents)
   staffRows: {
     staffId: string;
-    inAmount: number;
     outAmount: number;
     topupAmount: number;
   }[];
@@ -118,34 +118,32 @@ export function SummaryTab({
   );
 
   // Group the (already newest-first) dailyFlow rows by day, folding each row into
-  // the day + section totals. Pure derived shape — never stored.
-  const { sections, totalDays, inTotal, outTotal, topupTotal } = useMemo(() => {
+  // the day + section totals. Pure derived shape — never stored. Restock (`in`
+  // under the admin -1) is excluded — 补货 is an inventory op that surfaces in the
+  // 库存卡, not in this member-flow view; a restock-only day renders no section.
+  const { sections, totalDays, outTotal, topupTotal } = useMemo(() => {
     const byDay = new Map<string, DaySection>();
-    let inT = 0;
     let outT = 0;
     let topupT = 0;
     for (const row of flow.data ?? []) {
+      if (row.staff_id === ADMIN_STAFF_ID) continue; // restock — not member flow
       let day = byDay.get(row.date);
       if (!day) {
         day = {
           dateDash: row.date,
           dateSlash: row.date.replace(/-/g, "/"),
-          dayIn: 0,
           dayOut: 0,
           dayTopup: 0,
           staffRows: [],
         };
         byDay.set(row.date, day);
       }
-      day.dayIn += row.in_amount;
       day.dayOut += row.out_amount;
       day.dayTopup += row.topup_amount;
-      inT += row.in_amount;
       outT += row.out_amount;
       topupT += row.topup_amount;
       day.staffRows.push({
         staffId: row.staff_id,
-        inAmount: row.in_amount,
         outAmount: row.out_amount,
         topupAmount: row.topup_amount,
       });
@@ -155,7 +153,6 @@ export function SummaryTab({
     return {
       sections: all,
       totalDays: all.length,
-      inTotal: inT,
       outTotal: outT,
       topupTotal: topupT,
     };
@@ -194,8 +191,6 @@ export function SummaryTab({
           <Text style={[styles.dayDate, { color: theme.text }]}>
             {item.dateSlash}
           </Text>
-          <Text style={{ color: theme.success }}>补货</Text>
-          <MoneyText cents={cents(item.dayIn)} />
           <Text style={{ color: theme.danger }}>出库</Text>
           <MoneyText cents={cents(item.dayOut)} />
           <Text style={{ color: theme.success }}>充值</Text>
@@ -224,16 +219,10 @@ export function SummaryTab({
                   style={styles.cardHead}
                 >
                   <Text style={[styles.title, { color: theme.text }]}>
-                    {/* '-1' restock surfaces as a 「补货」 event, not a member row (US12). */}
-                    {sr.staffId === ADMIN_STAFF_ID
-                      ? "补货"
-                      : (staffName.get(sr.staffId) ?? sr.staffId)}
+                    {/* Restock (-1) is filtered out of the summary (member-flow only),
+                        so every row here is a member. */}
+                    {staffName.get(sr.staffId) ?? sr.staffId}
                   </Text>
-                  <Text style={{ color: theme.success }}>入</Text>
-                  <MoneyText
-                    testID={`staff-in-${item.dateDash}-${sr.staffId}`}
-                    cents={cents(sr.inAmount)}
-                  />
                   <Text style={{ color: theme.danger }}>出</Text>
                   <MoneyText
                     testID={`staff-out-${item.dateDash}-${sr.staffId}`}
@@ -396,34 +385,19 @@ export function SummaryTab({
             })}
           </View>
 
-          {/* 流水 region header — the range's 补货/出库/充值 totals (frozen amounts, ADR-0002) */}
-          <View
-            testID="flow-summary"
-            style={[styles.summary, { borderColor: theme.border }]}
-          >
-            <Text style={{ color: theme.success }}>补货</Text>
-            <MoneyText testID="flow-in-total" cents={cents(inTotal)} />
-            <Text style={{ color: theme.success }}>充值</Text>
-            <MoneyText testID="flow-topup-total" cents={cents(topupTotal)} />
-          </View>
-
-          {/* 出库单数零售聚合 (US8): Σ bundles / Σ retail across the range's out
-              records, each split via its OWN frozen unit_price_snapshot. */}
-          <View
-            testID="bundle-aggregate"
-            style={[styles.summary, { borderColor: theme.border }]}
-          >
-            <Text>出库</Text>
-            <MoneyText testID="flow-out-total" cents={cents(outTotal)} />
-            <Text testID="bundle-aggregate-count" style={{ color: theme.text }}>
-              计 {bundleAggregate.bundles} 单
-            </Text>
-            <Text>零售</Text>
-            <MoneyText
-              testID="bundle-aggregate-retail"
-              cents={cents(bundleAggregate.retail)}
-            />
-          </View>
+          {/* 流水 region header — the range's member-flow totals in two lines
+              (FlowSummary): line 1 充值 alone; line 2 出库 / 计 N 单 / 零售.
+              补货 (restock) is intentionally absent — it's an inventory op, shown
+              in the 库存卡 + per-day drill-down, not in this member-flow summary.
+              Frozen amounts (ADR-0002); bundle/retail split per out record's OWN
+              unit_price_snapshot (US8). */}
+          <FlowSummary
+            topup={topupTotal}
+            out={outTotal}
+            bundles={bundleAggregate.bundles}
+            retail={bundleAggregate.retail}
+            style={[styles.card, { borderColor: theme.border }]}
+          />
         </View>
       }
     />
@@ -431,7 +405,7 @@ export function SummaryTab({
 }
 
 const styles = StyleSheet.create({
-  content: { padding: 12, gap: 8 },
+  content: { padding: 12, gap: 8, paddingBottom: BottomTabInset },
   header: { gap: 8, paddingBottom: 4 },
   presets: {
     flexDirection: "row",
@@ -445,19 +419,10 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     paddingHorizontal: 12,
     paddingVertical: 10,
-    gap: 8,
+    gap: 4,
   },
   cardHead: { flexDirection: "row", alignItems: "center", gap: 8 },
   cardTitle: { flex: 1, fontSize: 15, fontWeight: "600" },
-  summary: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    borderWidth: 1,
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-  },
   dayDate: { flex: 1, fontSize: 13, fontWeight: "600" },
   // Nested container card (a day card holds staff cards; a staff card holds
   // record lines) — same containment model as `card`/库存卡, just tighter so the
@@ -482,7 +447,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderRadius: 8,
     paddingHorizontal: 16,
-    paddingVertical: 8,
+    paddingVertical: 4,
     marginLeft: 12,
   },
   title: { flex: 1, fontSize: 15 },

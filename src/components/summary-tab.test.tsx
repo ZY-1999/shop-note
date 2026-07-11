@@ -74,14 +74,14 @@ describe("SummaryTab — 时间段 selector + range refilter (spec #05 AC1)", ()
     await waitForSync(() => view.getByTestId("flow-summary"));
 
     // default 本月 → the seeded July records are in range → range totals render.
-    expect(money(view.getByTestId("flow-in-total"))).toMatch(/27\.00/);
+    // (补货 is intentionally absent from the summary header — FlowSummary shows
+    //  only 充值 / 出库 / 计单 / 零售 — so the out total is the flow signal here.)
     expect(money(view.getByTestId("flow-out-total"))).toMatch(/3\.00/);
 
     // switch to 上月 (June 2026) → no records in range → flow totals drop to ¥0.00.
     await fireEvent.press(view.getByTestId("range-lastMonth"));
     await flushPending();
-    await waitForSync(() => expect(money(view.getByTestId("flow-in-total"))).toMatch(/0\.00/));
-    expect(money(view.getByTestId("flow-out-total"))).toMatch(/0\.00/);
+    await waitForSync(() => expect(money(view.getByTestId("flow-out-total"))).toMatch(/0\.00/));
     // no day separators render for an empty range.
     expect(view.queryAllByTestId(/^day-/)).toHaveLength(0);
   });
@@ -255,8 +255,8 @@ function Poster({ productId }: { productId: string }) {
   );
 }
 
-describe("SummaryTab — 综合流水 三类事件 + -1 标补货 + 单数零售聚合 (stock-balance-refactor)", () => {
-  it("shows 补货 / 出库 / 充值 totals; -1 restock labeled 补货, no member name", async () => {
+describe("SummaryTab — 会员流水（出库/充值）+ 单数零售聚合；补货不进汇总 (restock-excluded)", () => {
+  it("summary header shows 出库/充值 only (no 补货); restock (-1) is excluded from the day drill-down", async () => {
     const { repos, staffId, colaId } = await setup();
     const day = DAY(9, 10);
     await repos.config.setUnitPrice(cents(2400)); // ¥24/unit (for the bundle aggregate below)
@@ -268,17 +268,20 @@ describe("SummaryTab — 综合流水 三类事件 + -1 标补货 + 单数零售
     const { view } = await renderTab(<SummaryTab now={NOW} onOpenStaff={jest.fn()} />, { repos });
     await waitForSync(() => view.getByTestId("flow-summary"));
 
-    // range totals: 补货 3000¢ (¥30) / 出库 2100¢ (¥21) / 充值 10000¢ (¥100)
-    expect(money(view.getByTestId("flow-in-total"))).toMatch(/30\.00/);
+    // range totals in the header: 出库 2100¢ (¥21) / 充值 10000¢ (¥100). 补货 is
+    // intentionally absent from the summary — restock is an inventory op that
+    // surfaces in the 库存卡 (as-of-now stock), not in this member-flow view.
     expect(money(view.getByTestId("flow-out-total"))).toMatch(/21\.00/);
     expect(money(view.getByTestId("flow-topup-total"))).toMatch(/100\.00/);
+    expect(view.queryByTestId("flow-in-total")).toBeNull();
+    // no 补货 label anywhere in the summary (neither header nor drill-down).
+    expect(view.queryByText("补货")).toBeNull();
 
-    // expand the day → the -1 row is labeled 补货 (not a member id), the member row by name.
+    // expand the day → only the member row shows; the -1 restock row is excluded.
     await waitForSync(() => view.getByTestId(`day-2026/07/09`));
     await fireEvent.press(view.getByTestId(`day-2026/07/09`));
     await flushPending();
-    // the restock surfaces as its own (-1) row, labeled 补货; the member row keeps the name.
-    expect(view.getByTestId(`staff-row-2026-07-09-${ADMIN_STAFF_ID}`)).toBeTruthy();
+    expect(view.queryByTestId(`staff-row-2026-07-09-${ADMIN_STAFF_ID}`)).toBeNull();
     expect(view.getByText("张三")).toBeTruthy();
   });
 
@@ -289,7 +292,7 @@ describe("SummaryTab — 综合流水 三类事件 + -1 标补货 + 单数零售
     await repos.stockRecords.create({ staff_id: staffId, direction: "out", timestamp: DAY(9, 14), items: [{ product_id: colaId, qty: 7 }] });
 
     const { view } = await renderTab(<SummaryTab now={NOW} onOpenStaff={jest.fn()} />, { repos });
-    await waitForSync(() => view.getByTestId("bundle-aggregate"));
+    await waitForSync(() => view.getByTestId("flow-summary"));
     expect(view.getByTestId("bundle-aggregate-count").props.children).toEqual(expect.arrayContaining([0, " 单"]));
     expect(money(view.getByTestId("bundle-aggregate-retail"))).toMatch(/21\.00/); // 2100¢ retail
   });
