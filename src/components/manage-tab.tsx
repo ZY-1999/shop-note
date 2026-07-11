@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { SmokeEntry } from '@/components/smoke-entry';
@@ -87,8 +87,17 @@ function ConfigManage() {
   const unitPrice = useUnitPrice();
   const updateUnitPrice = useUpdateUnitPrice();
   const current = unitPrice.data ?? 0;
-  const [price, setPrice] = useState((current / 100).toString());
+  const [price, setPrice] = useState('0');
   const [error, setError] = useState<string | null>(null);
+  // The field initializes before the unit-price query resolves, so sync the loaded
+  // value back in — but ONLY until the operator types (dirty); after that the
+  // field is user-owned (a save refetches the same value they just entered).
+  const dirty = useRef(false);
+  useEffect(() => {
+    if (!dirty.current && unitPrice.data != null) {
+      setPrice((unitPrice.data / 100).toString());
+    }
+  }, [unitPrice.data]);
 
   const submit = () => {
     const yuan = parseFloat(price);
@@ -111,7 +120,7 @@ function ConfigManage() {
           testID="config-price-input"
           style={[styles.input, { backgroundColor: theme.inputBg, borderColor: theme.border, color: theme.text }]}
           value={price}
-          onChangeText={setPrice}
+          onChangeText={(v) => { dirty.current = true; setPrice(v); }}
           keyboardType="decimal-pad"
         />
       </View>

@@ -124,6 +124,38 @@ describe("StockRecordRepository — unit_price_snapshot (stock-balance-refactor)
     });
     expect(record.unit_price_snapshot).toBe(cents(0));
   });
+
+  test("editing an 'out' record preserves its snapshot (edit does NOT re-freeze)", async () => {
+    const { products, config, stockRecords } = setup();
+    const p = await products.create({ title: "可乐", purchase_price: cents(300) });
+    await config.setUnitPrice(cents(2400));
+    const { record, items } = await stockRecords.create({
+      staff_id: "s1", direction: "out", items: [{ product_id: p.id, qty: 1 }],
+    });
+    expect(record.unit_price_snapshot).toBe(cents(2400));
+
+    // change the unit price, then edit the record's qty — snapshot must stay 2400
+    await config.setUnitPrice(cents(9900));
+    await stockRecords.update(record.id, {
+      items: [{ id: items[0].id, product_id: p.id, qty: 5 }],
+    });
+    expect((await stockRecords.getById(record.id))!.record.unit_price_snapshot).toBe(cents(2400));
+  });
+
+  test("flipping an 'out' record to 'in' (under admin -1) nulls the snapshot", async () => {
+    const { products, config, stockRecords } = setup();
+    const p = await products.create({ title: "可乐", purchase_price: cents(300) });
+    await config.setUnitPrice(cents(2400));
+    const { record } = await stockRecords.create({
+      staff_id: "s1", direction: "out", items: [{ product_id: p.id, qty: 1 }],
+    });
+    expect(record.unit_price_snapshot).toBe(cents(2400));
+
+    const updated = await stockRecords.update(record.id, {
+      direction: "in", staff_id: ADMIN_STAFF_ID,
+    });
+    expect(updated.record.unit_price_snapshot).toBeNull(); // restock carries no snapshot
+  });
 });
 
 describe("StockRecordRepository — create + snapshot", () => {

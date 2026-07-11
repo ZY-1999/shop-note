@@ -191,6 +191,10 @@ export class StockRecordRepository {
           `direction 'in' (restock) requires the admin staff_id '${ADMIN_STAFF_ID}'`,
         );
       }
+      // snapshot铁律 on edit: an 'out' record KEEPS its frozen unit_price_snapshot
+      // (not re-frozen); flipping to 'in' nulls it (restock carries no snapshot).
+      nextRecord.unit_price_snapshot =
+        nextRecord.direction === "in" ? null : current.unit_price_snapshot;
 
       let nextItems = storedItems;
       if (patch.items) {
@@ -206,6 +210,7 @@ export class StockRecordRepository {
         direction: nextRecord.direction,
         timestamp: nextRecord.timestamp,
         note: nextRecord.note,
+        unit_price_snapshot: nextRecord.unit_price_snapshot,
         updated_at: ts,
       });
 

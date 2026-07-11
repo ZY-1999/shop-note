@@ -374,6 +374,16 @@ describe("ManageTab — config segment (stock-balance-refactor US2)", () => {
     expect(view.getByTestId("config-current").props.children).toContain("0.00");
   });
 
+  it("pre-fills the input with an already-configured unit price once it loads", async () => {
+    const { repos } = await seed();
+    await repos.config.setUnitPrice(cents(2400)); // ¥24.00 already set
+    const { view } = await renderManage(<ManageTab />, { repos });
+    await fireEvent.press(view.getByTestId("seg-config"));
+    await waitForSync(() => view.getByTestId("config-price-input"));
+    // the input reflects the loaded price (not stuck at the pre-load "0")
+    await waitForSync(() => expect(view.getByTestId("config-price-input").props.value).toBe("24"));
+  });
+
   it("entering a unit price + save posts it via useUpdateUnitPrice", async () => {
     const { repos } = await seed();
     const { view } = await renderManage(<ManageTab />, { repos });
@@ -381,12 +391,16 @@ describe("ManageTab — config segment (stock-balance-refactor US2)", () => {
     await waitForSync(() => view.getByTestId("config-price-input"));
 
     await fireEvent.changeText(view.getByTestId("config-price-input"), "24");
+    await flushPending(); // let setPrice commit before submit reads it (stale-closure guard)
     await fireEvent.press(view.getByTestId("config-submit"));
 
     await waitForSync(async () => {
       expect(await repos.config.getUnitPrice()).toBe(cents(2400)); // ¥24.00
     });
-    expect(view.getByTestId("config-current").props.children).toContain("24.00");
+    // the invalidate refetches useUnitPrice → config-current re-renders to 24.00
+    await waitForSync(() =>
+      expect(view.getByTestId("config-current").props.children).toContain("24.00"),
+    );
   });
 
   it("four segments toggle (会员 / 商品 / 补货 / 配置)", async () => {
