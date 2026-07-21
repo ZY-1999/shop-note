@@ -1,5 +1,6 @@
 import { LevelBadge } from "@/components/level-badge";
 import type { StaffLevel } from "@/data/staff";
+import { useTheme } from "@/hooks/use-theme";
 import type { StyleProp } from "react-native";
 import {
   StyleSheet,
@@ -30,12 +31,19 @@ export function MemberName({
   style,
   nameStyle,
 }: MemberNameProps) {
+  const theme = useTheme();
+
   return (
     <View testID="member-name" style={[styles.row, style]}>
       <Text
         numberOfLines={1}
         ellipsizeMode="tail"
-        style={[styles.name, maxWidth != null && { maxWidth }, nameStyle]}
+        style={[
+          styles.name,
+          { color: theme.text },
+          maxWidth != null && { maxWidth },
+          nameStyle,
+        ]}
       >
         {name}
       </Text>
@@ -46,5 +54,5 @@ export function MemberName({
 
 const styles = StyleSheet.create({
   row: { flexDirection: "row", alignItems: "center", gap: 2 },
-  name: { fontSize: 15 },
+  name: { fontSize: 13 },
 });

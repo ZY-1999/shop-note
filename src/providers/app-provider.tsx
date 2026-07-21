@@ -1,9 +1,21 @@
-import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
+import {
+  ActivityIndicator,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
 
-import { AppProviders } from "@/providers/providers";
 import { setupRepos, type Repos } from "@/data/composition";
 import { ExpoSqliteAdapter } from "@/data/expo-sqlite";
+import { AppProviders } from "@/providers/providers";
 
 /**
  * The production composition root (ADR-0005, spec #04). At boot it opens the real
@@ -34,7 +46,11 @@ export interface AppProviderProps {
   onError?: () => void;
 }
 
-export function AppProvider({ children, dbName = "shop_note.db", onError }: AppProviderProps) {
+export function AppProvider({
+  children,
+  dbName = "shop_note.db",
+  onError,
+}: AppProviderProps) {
   const [state, setState] = useState<BootState>({ status: "loading" });
 
   // Ref so callback identity never re-triggers `open` (open depends only on dbName).
@@ -43,7 +59,12 @@ export function AppProvider({ children, dbName = "shop_note.db", onError }: AppP
 
   const open = useCallback(() => {
     setState({ status: "loading" });
-    ExpoSqliteAdapter.open(dbName)
+    Promise.race([
+      ExpoSqliteAdapter.open(dbName),
+      new Promise<ExpoSqliteAdapter>((_, reject) =>
+        setTimeout(() => reject(new Error("DB Open Timeout after 5s")), 5000),
+      ),
+    ])
       .then((adapter) => {
         setState({ status: "ready", repos: setupRepos(adapter) });
       })

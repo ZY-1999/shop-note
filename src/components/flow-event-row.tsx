@@ -58,22 +58,41 @@ export function FlowEventRow(props: FlowEventRowProps) {
       ]}
     >
       <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-        <Text testID={tid("time")} style={{ color: theme.textSecondary }}>
+        <Text
+          testID={tid("time")}
+          style={{ color: theme.textSecondary, fontSize: 12 }}
+        >
           {formatTimeSeconds(timestamp)}
         </Text>
-        <Text style={{ color: isCheckout ? theme.text : theme.success }}>
-          {isCheckout ? "出库" : "充值"}
-        </Text>
-        <MoneyText testID={tid("amount")} cents={cents(amountCents)} />
-        {isCheckout && (
+        {isCheckout ? (
           <>
-            <Text testID={tid("bundles")} style={{ color: theme.text }}>
-              计 {props.bundles} 单
+            <Text
+              testID={tid("bundles")}
+              style={{ color: theme.text, fontSize: 12 }}
+            >
+              出库 {props.bundles} 单
             </Text>
-            <Text style={{ color: theme.text }}>零售</Text>
+            <Text style={{ color: theme.text, fontSize: 12 }}>零售</Text>
             <MoneyText
               testID={tid("retail")}
               cents={cents(props.retailCents)}
+              fontSize={12}
+            />
+          </>
+        ) : (
+          <>
+            <Text
+              style={{
+                color: isCheckout ? theme.text : theme.success,
+                fontSize: 12,
+              }}
+            >
+              {"充值"}
+            </Text>
+            <MoneyText
+              testID={tid("amount")}
+              cents={cents(amountCents)}
+              fontSize={12}
             />
           </>
         )}
@@ -87,12 +106,11 @@ const styles = StyleSheet.create({
   row: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
+    gap: 4,
     borderWidth: 1,
     borderRadius: 8,
-    paddingHorizontal: 8,
-    paddingVertical: 8,
-    marginLeft: 12,
+    paddingHorizontal: 4,
+    paddingVertical: 6,
   },
   chevron: { marginLeft: "auto" },
 });

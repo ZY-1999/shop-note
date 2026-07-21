@@ -1,7 +1,7 @@
-import type { ComponentProps } from 'react';
-import type { Ionicons } from '@expo/vector-icons';
+import type { Ionicons } from "@expo/vector-icons";
+import type { ComponentProps } from "react";
 
-import type { Direction } from '@/data/stock-record';
+import type { Direction } from "@/data/stock-record";
 
 /**
  * Navigation文案与 tab 身份的单一事实来源 (nav-tweak)。
@@ -16,9 +16,9 @@ import type { Direction } from '@/data/stock-record';
  */
 
 /** Ionicons 字形名 —— 类型化使得配置里拼错图标名成为编译错误。 */
-export type IconName = ComponentProps<typeof Ionicons>['name'];
+export type IconName = ComponentProps<typeof Ionicons>["name"];
 
-export type TabName = 'bookkeeping' | 'summary' | 'manage';
+export type TabName = "bookkeeping" | "summary" | "manage";
 
 export interface TabDef {
   /** `src/app/` 下的路由段名 —— 必须与目录名一致（typedRoutes 会校验）。 */
@@ -31,9 +31,9 @@ export interface TabDef {
 
 /** 三个业务 tab（spec #04）：记账（默认）/ 汇总 / 管理。顺序即渲染顺序。 */
 export const TABS: readonly TabDef[] = [
-  { name: 'bookkeeping', title: '记账', icon: 'calculator-outline' },
-  { name: 'summary', title: '汇总', icon: 'stats-chart-outline' },
-  { name: 'manage', title: '管理', icon: 'settings-outline' },
+  { name: "bookkeeping", title: "记账", icon: "calculator-outline" },
+  { name: "summary", title: "汇总", icon: "stats-chart-outline" },
+  { name: "manage", title: "管理", icon: "settings-outline" },
 ];
 
 /** 底部 tab bar 仅显示图标，不显示文字标签（nav-tweak #1）。 */
@@ -45,8 +45,14 @@ export function tabIndexTitle(name: TabName): string {
   if (!tab) throw new Error(`unknown tab: ${name}`);
   return tab.title;
 }
+/** 每个 tab 首屏的中文标题（顶部 Stack 标题）。 */
+export function tab2Title(name: string): string {
+  const tab = TABS.find((t) => t.name === name);
+  if (!tab) return "";
+  return tab.title;
+}
 
 /** 记账 posting 表单的动态标题 —— 入库 / 出库，由 direction 参数决定。 */
 export function recordFormTitle(direction: Direction): string {
-  return direction === 'in' ? '入库' : '出库';
+  return direction === "in" ? "入库" : "出库";
 }

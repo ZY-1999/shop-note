@@ -1,23 +1,31 @@
-import type { ReactElement } from "react";
-import { afterEach, beforeEach, describe, expect, it, jest } from "@jest/globals";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  jest,
+} from "@jest/globals";
 import type { QueryClient } from "@tanstack/react-query";
 import { fireEvent } from "@testing-library/react-native";
+import type { ReactElement } from "react";
 
-import BookkeepingTab from "@/app/bookkeeping/index";
-import { renderWithProviders, type RenderWithProvidersResult } from "@/testing/render";
+import BookkeepingTab from "@/app/(tabs)/bookkeeping/index";
 import { flushPending, waitForSync } from "@/testing/async";
+import {
+  renderWithProviders,
+  type RenderWithProvidersResult,
+} from "@/testing/render";
 
 /**
  * 记账 screen through the real data stack (ADR-0006: InMemoryAdapter, no mocked
  * Repos). Async mechanics (waitForSync / flushPending / QueryClient clear) live
- * in [testing/async.ts](../testing/async.ts). `expo-router` is mocked — the push
- * is a navigation concern.
+ * in [testing/async.ts](../testing/async.ts). `expo-router` is mocked — push
+ * targets are navigation contracts.
  *
- * stock-balance-refactor placeholder skeleton: members no longer hold stock, so
- * the row lost its per-staff 「库存：m件/n种 金额」 line and its 入库 affordance.
- * The 余额 display + 充值 affordance land in spec 03; spec 02 only proves the
- * skeleton — search, the member list (all active members, zero-record included),
- * and the 出库 action that carries the staff id.
+ * Current surface: searchable active-member list (zero-record included);
+ * per-row [充值] → `/topup-form`, [出库] → `/record-form`, row tap → `/staff/[id]`.
+ * No 入库 affordance / per-staff 库存 line (stock-balance-refactor).
  */
 const mockPush = jest.fn<(href: unknown) => void>();
 jest.mock("expo-router", () => ({
@@ -46,7 +54,7 @@ async function renderBook(
   return res;
 }
 
-describe("记账 screen — skeleton (stock-balance-refactor)", () => {
+describe("记账 screen — member list + search", () => {
   it("lists every active member, including zero-record members", async () => {
     const { view } = await renderBook(<BookkeepingTab />, {
       seed: async (repos) => {
@@ -55,7 +63,7 @@ describe("记账 screen — skeleton (stock-balance-refactor)", () => {
       },
     });
     await waitForSync(() => view.getByText("张三"));
-    expect(view.getByText("李四")).toBeTruthy(); // zero-record still shown
+    expect(view.getByText("李四")).toBeTruthy();
   });
 
   it("search narrows active members by name", async () => {
@@ -73,7 +81,7 @@ describe("记账 screen — skeleton (stock-balance-refactor)", () => {
     await waitForSync(() => expect(() => view.getByText("李四")).toThrow());
   });
 
-  it("uses the 会员 search placeholder (员工→会员 display rename)", async () => {
+  it("uses the 会员 search placeholder", async () => {
     const { view } = await renderBook(<BookkeepingTab />, {
       seed: async (repos) => {
         await repos.staff.create({ name: "张三", phone: "138", notes: "" });
@@ -82,25 +90,55 @@ describe("记账 screen — skeleton (stock-balance-refactor)", () => {
     await waitForSync(() => view.getByTestId("staff-search"));
     expect(view.getByPlaceholderText("搜索会员姓名或电话")).toBeTruthy();
   });
+});
 
-  it("出库 carries the staff_id + direction out; no 入库 button or 库存 line", async () => {
+describe("记账 screen — row navigation", () => {
+  async function seedOneMember() {
     let staffId = "";
     const { view } = await renderBook(<BookkeepingTab />, {
       seed: async (repos) => {
-        const s = await repos.staff.create({ name: "张三", phone: "138", notes: "" });
+        const s = await repos.staff.create({
+          name: "张三",
+          phone: "138",
+          notes: "",
+        });
         staffId = s.id;
       },
     });
     await waitForSync(() => view.getByText("张三"));
+    return { view, staffId };
+  }
 
-    // the 入库 affordance + per-staff 库存 line are gone (spec 03 owns 余额).
+  it("出库 carries staff_id + direction out; no 入库 button or 库存 line", async () => {
+    const { view, staffId } = await seedOneMember();
+
     expect(view.queryByTestId(`in-${staffId}`)).toBeNull();
     expect(view.queryByText(/库存：/)).toBeNull();
 
     await fireEvent.press(view.getByTestId(`out-${staffId}`));
     expect(mockPush).toHaveBeenCalledWith({
-      pathname: "/bookkeeping/record-form",
+      pathname: "/record-form",
       params: { staff_id: staffId, direction: "out" },
+    });
+  });
+
+  it("充值 navigates to /topup-form with staff_id", async () => {
+    const { view, staffId } = await seedOneMember();
+
+    await fireEvent.press(view.getByTestId(`topup-${staffId}`));
+    expect(mockPush).toHaveBeenCalledWith({
+      pathname: "/topup-form",
+      params: { staff_id: staffId },
+    });
+  });
+
+  it("row tap opens member detail at /staff/[id]", async () => {
+    const { view, staffId } = await seedOneMember();
+
+    await fireEvent.press(view.getByTestId(`row-${staffId}`));
+    expect(mockPush).toHaveBeenCalledWith({
+      pathname: "/staff/[id]",
+      params: { id: staffId },
     });
   });
 });

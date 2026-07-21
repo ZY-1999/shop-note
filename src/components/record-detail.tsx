@@ -85,7 +85,7 @@ export function RecordDetail({ recordId }: RecordDetailProps) {
       style={[styles.container, { backgroundColor: theme.background }]}
     >
       <View style={[styles.header, { borderColor: theme.border }]}>
-        <Text style={{ fontSize: 18, fontWeight: "700" }}>
+        <Text style={{ fontSize: 18, fontWeight: "700", color: theme.text }}>
           类型：{DIRECTION_LABEL[record.direction]}
         </Text>
         {staff.data && (
@@ -113,10 +113,10 @@ export function RecordDetail({ recordId }: RecordDetailProps) {
             );
             return (
               <View style={styles.row}>
-                <Text>合计</Text>
+                <Text style={{ color: theme.text }}>金额：</Text>
                 <MoneyText cents={cents(total)} />
                 <Text style={{ color: theme.text }}>计 {bundles} 单</Text>
-                <Text>零售</Text>
+                <Text style={{ color: theme.text }}>零售</Text>
                 <MoneyText cents={cents(retail)} />
               </View>
             );

@@ -1,7 +1,7 @@
-import { Text, type TextProps } from 'react-native';
+import { Text, type TextProps } from "react-native";
 
-import { useTheme } from '@/hooks/use-theme';
-import type { Cents } from '@/data/primitives';
+import type { Cents } from "@/data/primitives";
+import { useTheme } from "@/hooks/use-theme";
 
 /**
  * The single money-formatting primitive (spec #05 / ADR-0005). Every later screen
@@ -14,24 +14,29 @@ import type { Cents } from '@/data/primitives';
  * Cents are integer 分; yuan is cents/100 to two decimals. The negative form shows
  * the absolute amount (the debt magnitude) — the danger color + prefix carry the sign.
  */
-export function MoneyText({ cents, negativeLabel = "欠货", ...rest }: { cents: Cents; negativeLabel?: string } & TextProps) {
+export function MoneyText({
+  cents,
+  negativeLabel = "欠货",
+  fontSize,
+  ...rest
+}: { cents: Cents; negativeLabel?: string; fontSize?: number } & TextProps) {
   const theme = useTheme();
   if (cents < 0) {
     return (
-      <Text style={[{ color: theme.danger }]} {...rest}>
+      <Text style={[{ color: theme.danger, fontSize }]} {...rest}>
         {negativeLabel} ¥{(-cents / 100).toFixed(2)}
       </Text>
     );
   }
   if (cents > 0) {
     return (
-      <Text style={[{ color: theme.success }]} {...rest}>
+      <Text style={[{ color: theme.text, fontSize }]} {...rest}>
         ¥{(cents / 100).toFixed(2)}
       </Text>
     );
   }
   return (
-    <Text style={[{ color: theme.textSecondary }]} {...rest}>
+    <Text style={[{ color: theme.textSecondary, fontSize }]} {...rest}>
       ¥0.00
     </Text>
   );

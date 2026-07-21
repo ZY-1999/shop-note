@@ -1,6 +1,6 @@
-import { router } from 'expo-router';
+import { router } from "expo-router";
 
-import { SummaryTab } from '@/components/summary-tab';
+import { SummaryTab } from "@/components/summary-tab";
 
 /**
  * 汇总 tab route (spec #05 rewrite). A thin adapter: renders the router-agnostic
@@ -12,9 +12,15 @@ import { SummaryTab } from '@/components/summary-tab';
 export default function SummaryTabRoute() {
   return (
     <SummaryTab
-      onOpenStaff={(id) => router.push({ pathname: '/bookkeeping/staff/[id]', params: { id } })}
-      onOpenRecord={(recordId) => router.push({ pathname: '/bookkeeping/record/[id]', params: { id: recordId } })}
-      onOpenTopup={(topupId) => router.push({ pathname: '/bookkeeping/topup/[id]', params: { id: topupId } })}
+      onOpenStaff={(id) =>
+        router.push({ pathname: "/staff/[id]", params: { id } })
+      }
+      onOpenRecord={(recordId) =>
+        router.push({ pathname: "/record/[id]", params: { id: recordId } })
+      }
+      onOpenTopup={(topupId) =>
+        router.push({ pathname: "/topup/[id]", params: { id: topupId } })
+      }
     />
   );
 }

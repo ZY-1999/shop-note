@@ -117,10 +117,14 @@ describe("RecordDetail — frozen snapshot + header (spec #07 AC2)", () => {
     expect(money(view.getByTestId(`unit-price-${itemId}`))).toMatch(/3\.00/); // 300¢ unit price
     expect(view.getByText("4件")).toBeTruthy(); // qty
     expect(money(view.getByTestId(`line-amount-${itemId}`))).toMatch(/12\.00/); // 1200¢ line amount
-    // header
-    expect(view.getByText("入库")).toBeTruthy(); // direction
+    // header — prefixed labels (类型/时间). 入库 hangs under admin `-1`;
+    // without an admin seed there is no 会员： line (member name covered on out).
+    expect(view.getByText("类型：入库")).toBeTruthy();
+    expect(view.queryByText(/^会员：/)).toBeNull();
     expect(view.getByText("单号A1")).toBeTruthy(); // note
-    expect(view.getByText(formatDateTimeSeconds(1_700_000_000_000))).toBeTruthy();
+    expect(
+      view.getByText(`时间：${formatDateTimeSeconds(1_700_000_000_000)}`),
+    ).toBeTruthy();
   });
 
   it("keeps the frozen snapshot after the product's price/title later change", async () => {
@@ -172,29 +176,69 @@ describe("RecordDetail — void (spec #07 AC4)", () => {
 });
 
 describe("RecordDetail — 出库 单数/零售 split (stock-balance-refactor US9)", () => {
-  it("an 'out' record shows 快照单价 / 单数 / 零售 derived from its own snapshot", async () => {
+  it("an 'out' record shows 金额 / 计 N 单 / 零售 derived from its own snapshot", async () => {
     const repos = setupRepos(new InMemoryAdapter());
     const staff = await repos.staff.create({ name: "张三", phone: "", notes: "" });
-    const product = await repos.products.create({ title: "可乐", purchase_price: cents(1200), category: "" });
+    const product = await repos.products.create({
+      title: "可乐",
+      purchase_price: cents(1200),
+      category: "",
+    });
     await repos.config.setUnitPrice(cents(2400)); // ¥24.00/unit — frozen on the checkout below
     const { record } = await repos.stockRecords.create({
-      staff_id: staff.id, direction: "out", timestamp: 1_700_000_000_000,
+      staff_id: staff.id,
+      direction: "out",
+      timestamp: 1_700_000_000_000,
       items: [{ product_id: product.id, qty: 6 }], // line_amount 1200 × 6 = 7200¢ = ¥72.00
     });
 
-    const { view } = await renderDetail(<RecordDetail recordId={record.id} />, { repos });
-    await waitForSync(() => view.getByTestId("bundle-split"));
-    expect(view.getByTestId("snapshot-unit-price")).toBeTruthy();
-    // 7200¢ ÷ 2400¢ = 3 单, 0 零售
-    expect(view.getByTestId("bundle-count").props.children).toContain(3);
-    expect(view.getByTestId("bundle-retail")).toBeTruthy();
+    const { view } = await renderDetail(<RecordDetail recordId={record.id} />, {
+      repos,
+    });
+    await waitForSync(() => view.getByText("类型：出库"));
+    expect(view.getByText("会员：张三")).toBeTruthy();
+    // 7200¢ ÷ 2400¢ = 3 单, 0 零售 — header split has no dedicated testIDs.
+    // ¥72.00 also appears on the line 小计; assert presence, not uniqueness.
+    expect(view.getByText("金额：")).toBeTruthy();
+    expect(view.getAllByText("¥72.00").length).toBeGreaterThanOrEqual(1);
+    expect(view.getByText("计 3 单")).toBeTruthy();
+    expect(view.getByText("零售")).toBeTruthy();
+    expect(view.getByText("¥0.00")).toBeTruthy();
+  });
+
+  it("an 'out' record with remainder shows non-zero 零售", async () => {
+    const repos = setupRepos(new InMemoryAdapter());
+    const staff = await repos.staff.create({ name: "张三", phone: "", notes: "" });
+    const product = await repos.products.create({
+      title: "可乐",
+      purchase_price: cents(1000),
+      category: "",
+    });
+    await repos.config.setUnitPrice(cents(2400)); // ¥24.00/unit
+    const { record } = await repos.stockRecords.create({
+      staff_id: staff.id,
+      direction: "out",
+      timestamp: 1_700_000_000_000,
+      items: [{ product_id: product.id, qty: 5 }], // 5000¢ → 2 单 + ¥2.00 零售
+    });
+
+    const { view } = await renderDetail(<RecordDetail recordId={record.id} />, {
+      repos,
+    });
+    await waitForSync(() => view.getByText("计 2 单"));
+    expect(view.getAllByText("¥50.00").length).toBeGreaterThanOrEqual(1);
+    expect(view.getByText("¥2.00")).toBeTruthy();
   });
 
   it("a restock 'in' record does NOT show the 单数/零售 region", async () => {
     const { repos, recordId } = await seedRecord({ direction: "in" }); // restock under admin -1
-    const { view } = await renderDetail(<RecordDetail recordId={recordId} />, { repos });
-    await waitForSync(() => view.getByText("入库"));
-    expect(view.queryByTestId("bundle-split")).toBeNull();
+    const { view } = await renderDetail(<RecordDetail recordId={recordId} />, {
+      repos,
+    });
+    await waitForSync(() => view.getByText("类型：入库"));
+    expect(view.queryByText(/计 \d+ 单/)).toBeNull();
+    expect(view.queryByText("零售")).toBeNull();
+    expect(view.queryByText("金额：")).toBeNull();
   });
 });
 

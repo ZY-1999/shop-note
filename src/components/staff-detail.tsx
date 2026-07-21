@@ -177,6 +177,7 @@ export function StaffDetail({
               out={item.dayOut}
               bundles={item.dayBundles}
               retail={item.dayRetail}
+              fontSize={12}
             />
             <Ionicons
               name={dayOpen ? "chevron-up" : "chevron-down"}

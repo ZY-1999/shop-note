@@ -41,7 +41,7 @@ function QtyStepper({
           atMin && { opacity: 0.4 },
         ]}
       >
-        <Text style={styles.stepBtnText}>−</Text>
+        <Text style={[styles.stepBtnText, { color: theme.text }]}>−</Text>
       </Pressable>
       <TextInput
         testID={`qty-${index}`}
@@ -62,7 +62,7 @@ function QtyStepper({
         onPress={() => onSetQty(index, String(qtyInt(qty) + 1))}
         style={[styles.stepBtn, { borderColor: theme.border }]}
       >
-        <Text style={styles.stepBtnText}>+</Text>
+        <Text style={[styles.stepBtnText, { color: theme.text }]}>+</Text>
       </Pressable>
     </View>
   );
@@ -252,11 +252,9 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
   },
   lineLeft: {
-    flex: 1,
     flexDirection: "column",
   },
   lineRight: {
-    flex: 1,
     flexDirection: "row",
     gap: 8,
     alignItems: "center",

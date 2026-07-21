@@ -225,6 +225,7 @@ export function SummaryTab({
               out={item.dayOut}
               bundles={dayBr.bundles}
               retail={dayBr.retail}
+              fontSize={12}
             />
             <Ionicons
               name={dayOpen ? "chevron-up" : "chevron-down"}
@@ -264,7 +265,7 @@ export function SummaryTab({
                       name={s?.name ?? sr.staffId}
                       level={s?.level ?? DEFAULT_STAFF_LEVEL}
                       nameStyle={{ color: theme.text }}
-                      maxWidth={52}
+                      maxWidth={42}
                     />
                     <FlowSummary
                       testID={`flow-staff-${item.dateDash}-${sr.staffId}`}
@@ -272,6 +273,7 @@ export function SummaryTab({
                       out={sr.outAmount}
                       bundles={srBr.bundles}
                       retail={srBr.retail}
+                      fontSize={12}
                     />
                     <Ionicons
                       name={expanded ? "chevron-up" : "chevron-down"}

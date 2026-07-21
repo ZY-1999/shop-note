@@ -1,15 +1,23 @@
-import type { ReactElement } from "react";
-import { afterEach, beforeEach, describe, expect, it } from "@jest/globals";
+import { afterEach, describe, expect, it } from "@jest/globals";
 import type { QueryClient } from "@tanstack/react-query";
 import { fireEvent } from "@testing-library/react-native";
+import type { ReactElement } from "react";
 
 import { formatDateTimeSeconds } from "@/components/date-format";
 import { TopupDetail } from "@/components/topup-detail";
-import { InMemoryAdapter } from "@/data/in-memory";
 import { setupRepos, type Repos } from "@/data/composition";
+import { InMemoryAdapter } from "@/data/in-memory";
 import { cents } from "@/data/primitives";
-import { renderWithProviders, type RenderWithProvidersResult } from "@/testing/render";
 import { flushPending, waitForSync } from "@/testing/async";
+import {
+  renderWithProviders,
+  type RenderWithProvidersResult,
+} from "@/testing/render";
+
+/**
+ * TopupDetail — look-back / void surface. Header uses prefixed labels
+ * (类型：充值 / 会员：… / 时间：… / 金额：). No edit — void and re-enter.
+ */
 
 let activeQueryClient: QueryClient | null = null;
 
@@ -35,8 +43,18 @@ function money(el: { props: { children?: unknown } }): string {
 
 async function seedTopup(opts?: { note?: string | null; amount?: number }) {
   const repos = setupRepos(new InMemoryAdapter());
-  const staff = await repos.staff.create({ name: "张三", phone: "138", notes: "" });
-  const note = opts && "note" in opts ? (opts.note ?? null) : "首充";
+  const staff = await repos.staff.create({
+    name: "张三",
+    phone: "138",
+    notes: "",
+  });
+  // create() takes `string | undefined`; null/empty both render as "—" in the detail.
+  const note =
+    opts && "note" in opts
+      ? opts.note == null || opts.note === ""
+        ? undefined
+        : opts.note
+      : "首充";
   const topup = await repos.topups.create({
     staff_id: staff.id,
     amount: cents(opts?.amount ?? 10000),
@@ -47,20 +65,29 @@ async function seedTopup(opts?: { note?: string | null; amount?: number }) {
 }
 
 describe("TopupDetail — display", () => {
-  it("shows member name, amount, second-precision time, and note", async () => {
+  it("shows prefixed type/member/time, amount, and note", async () => {
     const { repos, topupId } = await seedTopup();
-    const { view } = await renderDetail(<TopupDetail topupId={topupId} />, { repos });
+    const { view } = await renderDetail(<TopupDetail topupId={topupId} />, {
+      repos,
+    });
 
-    await waitForSync(() => view.getByText("张三"));
-    expect(view.getByText("充值")).toBeTruthy();
-    expect(view.getByText(formatDateTimeSeconds(new Date(2026, 5, 10, 9, 15, 30).getTime()))).toBeTruthy();
+    await waitForSync(() => view.getByText("会员：张三"));
+    expect(view.getByText("类型：充值")).toBeTruthy();
+    expect(
+      view.getByText(
+        `时间：${formatDateTimeSeconds(new Date(2026, 5, 10, 9, 15, 30).getTime())}`,
+      ),
+    ).toBeTruthy();
+    expect(view.getByText("金额：")).toBeTruthy();
     expect(money(view.getByTestId("topup-detail-amount"))).toBe("¥100.00");
     expect(view.getByText("首充")).toBeTruthy();
   });
 
   it("shows — when note is empty", async () => {
     const { repos, topupId } = await seedTopup({ note: null });
-    const { view } = await renderDetail(<TopupDetail topupId={topupId} />, { repos });
+    const { view } = await renderDetail(<TopupDetail topupId={topupId} />, {
+      repos,
+    });
     await waitForSync(() => view.getByTestId("topup-detail-note"));
     expect(view.getByTestId("topup-detail-note").props.children).toBe("—");
   });
@@ -69,7 +96,11 @@ describe("TopupDetail — display", () => {
 describe("TopupDetail — void", () => {
   it("voiding recovers member balance and shows 已作废", async () => {
     const { repos, staffId, topupId } = await seedTopup({ amount: 10000 });
-    const product = await repos.products.create({ title: "可乐", purchase_price: cents(300), category: "饮料" });
+    const product = await repos.products.create({
+      title: "可乐",
+      purchase_price: cents(300),
+      category: "饮料",
+    });
     await repos.stockRecords.create({
       staff_id: staffId,
       direction: "out",
@@ -79,8 +110,10 @@ describe("TopupDetail — void", () => {
     const before = await repos.memberBalance.balance(staffId);
     expect(before.amount).toBe(7000);
 
-    const { view } = await renderDetail(<TopupDetail topupId={topupId} />, { repos });
-    await waitForSync(() => view.getByText("张三"));
+    const { view } = await renderDetail(<TopupDetail topupId={topupId} />, {
+      repos,
+    });
+    await waitForSync(() => view.getByText("会员：张三"));
 
     await fireEvent.press(view.getByTestId("void"));
     await fireEvent.press(view.getByTestId("void-confirm"));
@@ -91,11 +124,29 @@ describe("TopupDetail — void", () => {
     expect(after.amount).toBe(-3000);
   });
 
+  it("cancel at the confirm step does not void", async () => {
+    const { repos, topupId } = await seedTopup();
+    const { view } = await renderDetail(<TopupDetail topupId={topupId} />, {
+      repos,
+    });
+    await waitForSync(() => view.getByText("会员：张三"));
+
+    await fireEvent.press(view.getByTestId("void"));
+    await fireEvent.press(view.getByTestId("void-cancel"));
+
+    expect(view.getByTestId("void")).toBeTruthy();
+    expect(view.queryByText("已作废")).toBeNull();
+    const detail = await repos.topups.getById(topupId);
+    expect(detail?.voided_at).toBeNull();
+  });
+
   it("opens a voided topup as read-only with 已作废", async () => {
     const { repos, topupId } = await seedTopup();
     await repos.topups.void(topupId);
 
-    const { view } = await renderDetail(<TopupDetail topupId={topupId} />, { repos });
+    const { view } = await renderDetail(<TopupDetail topupId={topupId} />, {
+      repos,
+    });
     await waitForSync(() => view.getByText("已作废"));
     expect(() => view.getByTestId("void")).toThrow();
   });

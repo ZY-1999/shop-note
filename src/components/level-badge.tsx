@@ -1,7 +1,11 @@
-import { StyleSheet, Text } from 'react-native';
+import { StyleSheet, Text } from "react-native";
 
-import { useTheme } from '@/hooks/use-theme';
-import { DEFAULT_STAFF_LEVEL, labelForLevel, type StaffLevel } from '@/data/staff';
+import {
+  DEFAULT_STAFF_LEVEL,
+  labelForLevel,
+  type StaffLevel,
+} from "@/data/staff";
+import { useTheme } from "@/hooks/use-theme";
 
 /**
  * Member-level badge — the read-only tier marker shown next to a member's name
@@ -17,12 +21,22 @@ export function LevelBadge({ level }: { level: StaffLevel }) {
   const theme = useTheme();
   if (level === DEFAULT_STAFF_LEVEL) return null;
   return (
-    <Text testID="level-badge" style={[styles.badge, { color: theme.accent, borderColor: theme.accent }]}>
+    <Text
+      testID="level-badge"
+      style={[styles.badge, { color: theme.accent, borderColor: theme.accent }]}
+    >
       {labelForLevel(level)}
     </Text>
   );
 }
 
 const styles = StyleSheet.create({
-  badge: { fontSize: 12, fontWeight: '600', borderWidth: 1, paddingHorizontal: 6, paddingVertical: 1, borderRadius: 4 },
+  badge: {
+    fontSize: 10,
+    fontWeight: "600",
+    borderWidth: 1,
+    paddingHorizontal: 2,
+    paddingVertical: 1,
+    borderRadius: 4,
+  },
 });

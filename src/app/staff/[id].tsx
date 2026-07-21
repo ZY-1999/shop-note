@@ -1,6 +1,6 @@
-import { router, useLocalSearchParams } from 'expo-router';
+import { router, useLocalSearchParams } from "expo-router";
 
-import { StaffDetail } from '@/components/staff-detail';
+import { StaffDetail } from "@/components/staff-detail";
 
 /**
  * The staff detail route (spec #07). A thin adapter: it reads the `id` param
@@ -15,8 +15,12 @@ export default function StaffDetailRoute() {
   return (
     <StaffDetail
       staffId={id}
-      onOpenRecord={(recordId) => router.push({ pathname: '/bookkeeping/record/[id]', params: { id: recordId } })}
-      onOpenTopup={(topupId) => router.push({ pathname: '/bookkeeping/topup/[id]', params: { id: topupId } })}
+      onOpenRecord={(recordId) =>
+        router.push({ pathname: "/record/[id]", params: { id: recordId } })
+      }
+      onOpenTopup={(topupId) =>
+        router.push({ pathname: "/topup/[id]", params: { id: topupId } })
+      }
     />
   );
 }

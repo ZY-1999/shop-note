@@ -1,11 +1,11 @@
-import { router } from 'expo-router';
-import { useState } from 'react';
-import { FlatList, StyleSheet, TextInput, View } from 'react-native';
+import { router } from "expo-router";
+import { useState } from "react";
+import { FlatList, StyleSheet, TextInput, View } from "react-native";
 
-import { StaffRow } from '@/components/staff-row';
-import { useStaff } from '@/hooks/reads';
-import { useTheme } from '@/hooks/use-theme';
-import { BottomTabInset } from '@/constants/theme';
+import { StaffRow } from "@/components/staff-row";
+import { BottomTabInset } from "@/constants/theme";
+import { useStaff } from "@/hooks/reads";
+import { useTheme } from "@/hooks/use-theme";
 
 /**
  * 记账 tab home — the operator's primary landing. A searchable list of active
@@ -23,7 +23,7 @@ import { BottomTabInset } from '@/constants/theme';
  */
 export default function BookkeepingTab() {
   const theme = useTheme();
-  const [search, setSearch] = useState('');
+  const [search, setSearch] = useState("");
   const staff = useStaff(search ? { search } : undefined);
 
   const rows = staff.data ?? [];
@@ -32,7 +32,14 @@ export default function BookkeepingTab() {
     <View style={[styles.container, { backgroundColor: theme.background }]}>
       <TextInput
         testID="staff-search"
-        style={[styles.search, { backgroundColor: theme.inputBg, borderColor: theme.border, color: theme.text }]}
+        style={[
+          styles.search,
+          {
+            backgroundColor: theme.inputBg,
+            borderColor: theme.border,
+            color: theme.text,
+          },
+        ]}
         placeholder="搜索会员姓名或电话"
         placeholderTextColor={theme.textSecondary}
         value={search}
@@ -46,12 +53,17 @@ export default function BookkeepingTab() {
           <StaffRow
             staff={item}
             onTopup={(id) =>
-              router.push({ pathname: '/bookkeeping/topup-form', params: { staff_id: id } })
+              router.push({ pathname: "/topup-form", params: { staff_id: id } })
             }
             onOut={(id) =>
-              router.push({ pathname: '/bookkeeping/record-form', params: { staff_id: id, direction: 'out' } })
+              router.push({
+                pathname: "/record-form",
+                params: { staff_id: id, direction: "out" },
+              })
             }
-            onOpen={(id) => router.push({ pathname: '/bookkeeping/staff/[id]', params: { id } })}
+            onOpen={(id) =>
+              router.push({ pathname: "/staff/[id]", params: { id } })
+            }
           />
         )}
       />
@@ -61,5 +73,11 @@ export default function BookkeepingTab() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, padding: 12, gap: 8 },
-  search: { borderWidth: 1, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10, fontSize: 15 },
+  search: {
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 15,
+  },
 });

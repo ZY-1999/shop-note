@@ -7,8 +7,8 @@ import { useTheme } from "@/hooks/use-theme";
 /**
  * The 汇总 header's flow summary — the range's member-facing totals in two lines:
  *
- *   line 1: 充值 ￥xx                              (member top-ups, alone)
- *   line 2: 出库 ￥xx 计 N 单 零售 ￥xx            (member checkouts: amount / count / retail)
+ *   line 1: 充值 ￥xx  出库 ￥xx                   (amounts)
+ *   line 2: 出库计 N 单  零售 ￥xx                 (checkout count / retail)
  *
  * 补货 (restock) is intentionally absent — restock is an inventory op, not member
  * flow; its value surfaces in the 库存卡 (as-of-now stock) and the per-day
@@ -18,7 +18,7 @@ import { useTheme } from "@/hooks/use-theme";
 export interface FlowSummaryProps {
   /** Σ topup_amount across the range (cents). Line 1. */
   topup: number;
-  /** Σ out_amount across the range (cents). Line 2. */
+  /** Σ out_amount across the range (cents). Line 1. */
   out: number;
   /** Σ out-record bundle count across the range. Line 2. */
   bundles: number;
@@ -34,6 +34,8 @@ export interface FlowSummaryProps {
    * defaults (`flow-summary` / `flow-topup-total` / …) are used.
    */
   testID?: string;
+
+  fontSize?: number;
 }
 
 /**
@@ -57,6 +59,7 @@ export function FlowSummary({
   retail,
   style,
   testID,
+  fontSize,
 }: FlowSummaryProps) {
   const theme = useTheme();
   const tid = (k: keyof typeof TEST_IDS) =>
@@ -64,17 +67,25 @@ export function FlowSummary({
   return (
     <View testID={testID ?? TEST_IDS.root.def} style={style}>
       <View testID={tid("lineTopup")} style={styles.row}>
-        <Text style={{ color: theme.success }}>充值</Text>
-        <MoneyText testID={tid("topup")} cents={cents(topup)} />
+        <Text style={{ color: theme.success, fontSize }}>充值</Text>
+        <MoneyText
+          testID={tid("topup")}
+          cents={cents(topup)}
+          fontSize={fontSize}
+        />
+        <Text style={{ fontSize, color: theme.text }}>出库</Text>
+        <MoneyText testID={tid("out")} cents={cents(out)} fontSize={fontSize} />
       </View>
       <View style={styles.row}>
-        <Text>出库</Text>
-        <MoneyText testID={tid("out")} cents={cents(out)} />
-        <Text testID={tid("bundles")} style={{ color: theme.text }}>
-          计 {bundles} 单
+        <Text testID={tid("bundles")} style={{ color: theme.text, fontSize }}>
+          出库计 {bundles} 单
         </Text>
-        <Text>零售</Text>
-        <MoneyText testID={tid("retail")} cents={cents(retail)} />
+        <Text style={{ fontSize, color: theme.text }}>零售</Text>
+        <MoneyText
+          testID={tid("retail")}
+          cents={cents(retail)}
+          fontSize={fontSize}
+        />
       </View>
     </View>
   );

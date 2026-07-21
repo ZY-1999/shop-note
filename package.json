@@ -7,6 +7,7 @@
     "@expo/vector-icons": "^15.0.2",
     "@tanstack/react-query": "^5.101.2",
     "expo": "~57.0.4",
+    "expo-build-properties": "~57.0.3",
     "expo-constants": "~57.0.3",
     "expo-device": "~57.0.0",
     "expo-font": "~57.0.0",
@@ -42,8 +43,9 @@
   "scripts": {
     "start": "expo start",
     "reset-project": "node ./scripts/reset-project.js",
-    "android": "expo start --android",
-    "ios": "expo start --ios",
+    "android": "expo run:android",
+    "build:android": "expo prebuild --platform android",
+    "ios": "expo run:ios",
     "lint": "expo lint",
     "test": "jest",
     "typecheck": "tsc --noEmit"
