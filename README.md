@@ -1,56 +1,88 @@
-# Welcome to your Expo app 👋
+# shop-note
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+本地优先、单操作员、离线可用的店铺记账应用（Expo SDK 57 / React Native）。无后端、无同步；数据落在设备本地 SQLite。
 
-## Get started
+面向日常门店场景：给会员**充值**、从**全局库存**出库记账，并在汇总页查看库存与流水。
 
-1. Install dependencies
+## 功能概览
 
-   ```bash
-   npm install
-   ```
+三个主 Tab：
 
-2. Start the app
+| Tab | 做什么 |
+| --- | --- |
+| **记账** | 搜索会员 → 充值 / 出库；点进会员看余额与历史 |
+| **汇总** | 库存卡 + 时间段内综合流水（充值 / 出库）与单数·零售聚合 |
+| **管理** | 会员 · 商品 · 补货 · 配置（全局单价等） |
 
-   ```bash
-   npx expo start
-   ```
+核心业务语义：
 
-In the output, you'll find options to open the app in a
+- **全局库存**：管理员补货入库，会员只出库；库存与余额均为派生值，从不落库。
+- **会员余额**：Σ 充值 − Σ 出库金额；允许负余额（欠款）。
+- **作废**：软删除（`voided_at`），不做物理删除；历史可回看。
 
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
+更完整的领域词表与不变量见 [CONTEXT.md](CONTEXT.md)。
 
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
+## 技术栈
 
-## Get a fresh project
+- Expo SDK 57、React Native、Expo Router（`(tabs)` + 根 Stack）
+- `expo-sqlite` + 自有仓储层（`src/data/`）
+- TanStack Query（读模型 / 写后失效）
+- Jest + React Native Testing Library
 
-When you're ready, run:
+> **仅 iOS / Android**。不支持 Web（见 [PROJECT_KNOWLEDGE.md](PROJECT_KNOWLEDGE.md)）。
+
+## 环境要求
+
+- Node（建议见 [.nvmrc](.nvmrc)）
+- [pnpm](https://pnpm.io)（仓库含 `pnpm-lock.yaml`；`.npmrc` 使用 `node-linker=hoisted`）
+- Android Studio / Xcode（真机或模拟器开发构建）
+
+## 快速开始
 
 ```bash
-npm run reset-project
+pnpm install
+pnpm start          # Expo 开发服务
 ```
 
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
+原生运行（需本机已配置 Android / iOS 工具链）：
 
-### Other setup steps
+```bash
+pnpm android        # expo run:android
+pnpm ios            # expo run:ios
+pnpm build:android  # expo prebuild --platform android
+```
 
-- To set up ESLint for linting, run `npx expo lint`, or follow our guide on ["Using ESLint and Prettier"](https://docs.expo.dev/guides/using-eslint/)
-- If you'd like to set up unit testing, follow our guide on ["Unit Testing with Jest"](https://docs.expo.dev/develop/unit-testing/)
-- Learn more about the TypeScript setup in this template in our guide on ["Using TypeScript"](https://docs.expo.dev/guides/typescript/)
+改动依赖或 Metro 配置后，建议清缓存启动：`npx expo start --clear`。
 
-## Learn more
+## 常用脚本
 
-To learn more about developing your project with Expo, look at the following resources:
+| 命令 | 说明 |
+| --- | --- |
+| `pnpm start` | 启动 Expo |
+| `pnpm test` | Jest（UI 用例建议加 `--forceExit`，见 PROJECT_KNOWLEDGE） |
+| `pnpm typecheck` | `tsc --noEmit` |
+| `pnpm lint` | `expo lint` |
 
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
+## 目录导读
 
-## Join the community
+```
+src/app/           # Expo Router：Tabs + 表单 / 详情 Stack
+src/components/    # UI 组件
+src/data/          # 仓储、派生读模型、迁移
+src/hooks/         # React Query 读写 hooks
+docs/adr/          # 架构决策
+docs/codemap/      # 代码地形图（给 agent / 新人导航）
+.scratch/          # 本地 issue / PRD / spec 追踪
+```
 
-Join our community of developers creating universal apps.
+深入阅读：
 
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+- [CONTEXT.md](CONTEXT.md) — 领域语言与不变量
+- [docs/adr/](docs/adr/) — ADR（含 UI 架构、测试策略、迁移策略）
+- [docs/codemap/project.md](docs/codemap/project.md) — 项目级 CodeMap
+- [AGENTS.md](AGENTS.md) — Agent / 开发约定入口
+- [PROJECT_KNOWLEDGE.md](PROJECT_KNOWLEDGE.md) — 长期踩坑与约定
+
+## License
+
+见 [LICENSE](LICENSE)。
