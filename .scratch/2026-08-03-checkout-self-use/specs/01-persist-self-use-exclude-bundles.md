@@ -77,4 +77,4 @@ Blocked by: None — 可立即开始
   - [x] void 回滚 — `stock-record.test.ts::voiding a self_use out rolls back…`
   - [ ] **[手动/发布门]** 真实 SQLite v5 ALTER 设备 smoke — 未由 /tdd 跑（ADR-0004）
   - Test run: `npx jest src/data/stock-record.test.ts src/data/split-bundle.test.ts src/data/expo-sqlite-migration.test.ts src/data/sql-logic.test.ts src/components/staff-detail.test.tsx --forceExit` → 78 passed, 0 failed
-  - Commit: `aac3bb8`
+  - Commit: `0dbada1`

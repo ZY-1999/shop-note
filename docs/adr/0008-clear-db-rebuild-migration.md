@@ -33,7 +33,7 @@ v3 迁移改用 **DROP + 重建**（清库重来），一次性收敛：
 - **+ 两路径收敛，简单。** 全新库与老库都跑同一组 DROP+CREATE+seed，无需为「老库保数据 vs 全新库建表」分叉处理；`createTableSql` 单源直接复用，无冻结字面量的额外维护面。
 - **+ drift-guard 不破。** `COLUMNS`↔`SCHEMA` 对 7 表全部一致；新表/新列的 DDL 由 `createTableSql` 单源产出。
 - **− 数据丢失（一次性，已确认）。** 老库升级即清空——这是本决策的核心代价，已与用户确认可接受（试用阶段、语义变更、无干净映射）。
-- **− 偏离增量铁律，须此 ADR 留痕。** 本 ADR 即此留痕；后续迁移**回归增量式**（保数据 + 冻结字面量），勿把清库重建当通用模式。
+- **− 后续若再给 v3 重建过的表加列，须回冻 v3 CREATE。** v3 当时用 `createTableSql` 写入「当时完整 schema」合法；之后增量加列（如 v5 `stock_record.self_use`）会把 `COLUMNS` 推新，若不把 v3（及更早仍含动态 CREATE 的版本）冻成加列前字面量，全新库会在后续 `ALTER` 撞 `duplicate column`。见 `PROJECT_KNOWLEDGE` 加列铁律；checkout-self-use（2026-08）即双冻 v1+v3。
 - **− 真实 SQL 仅设备 smoke 覆盖。** v3 的真实 DROP/CREATE/INSERT 执行不在 Jest（[ADR-0004](0004-adapter-verification-device-smoke.md)），发布前须手跑：老库升级（数据清空 + 结构收敛 + `-1` 种子落位）+ 全新库建表（v1→v2→v3 全跑 + 结构等价）。
 
 ## Alternatives considered
