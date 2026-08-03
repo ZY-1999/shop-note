@@ -41,7 +41,18 @@ export const SCHEMA: Record<TableName, TableSchema> = {
     jsonColumns: [],
   },
   stock_record: {
-    columns: ["id", "staff_id", "direction", "timestamp", "note", "unit_price_snapshot", "voided_at", "created_at", "updated_at"],
+    columns: [
+      "id",
+      "staff_id",
+      "direction",
+      "timestamp",
+      "note",
+      "unit_price_snapshot",
+      "self_use",
+      "voided_at",
+      "created_at",
+      "updated_at",
+    ],
     jsonColumns: [],
   },
   stock_record_item: {

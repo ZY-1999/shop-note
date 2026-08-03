@@ -28,17 +28,24 @@ export function splitBundleRetail(amountCents: number, unitPriceCents: number): 
  * full `RecordWithItems` satisfies it without a hard domain coupling here.
  */
 export interface BundleRetailRecord {
-  record: { direction: "in" | "out"; unit_price_snapshot?: number | null };
+  record: {
+    direction: "in" | "out";
+    unit_price_snapshot?: number | null;
+    /** 缺省视作非自用，兼容既有调用方。 */
+    self_use?: boolean;
+  };
   items: ReadonlyArray<{ line_amount: number }>;
 }
 
 /**
  * Σ bundles / Σ retail over a set of records — each 'out' record split via its
  * OWN frozen `unit_price_snapshot` (not a shared/current price), 'in' records
- * contribute nothing. The shared aggregation behind every flow-summary surface:
- * the 汇总 range header, its per-day and per-member drill-downs, and the
- * member-detail summary + per-day separators — one source so floor/mod never
- * drifts between them (same discipline as `splitBundleRetail`).
+ * contribute nothing. Self-use checkouts (`out && self_use`) are skipped for
+ * bundles/retail only (amounts still flow through inventory/balance/dailyFlow).
+ * The shared aggregation behind every flow-summary surface: the 汇总 range
+ * header, its per-day and per-member drill-downs, and the member-detail summary
+ * + per-day separators — one source so floor/mod never drifts between them
+ * (same discipline as `splitBundleRetail`).
  */
 export function aggregateBundleRetail(
   records: ReadonlyArray<BundleRetailRecord>,
@@ -47,6 +54,7 @@ export function aggregateBundleRetail(
   let retail = 0;
   for (const rw of records) {
     if (rw.record.direction !== "out") continue;
+    if (rw.record.self_use === true) continue;
     const amount = rw.items.reduce((sum, i) => sum + i.line_amount, 0);
     const split = splitBundleRetail(amount, rw.record.unit_price_snapshot ?? 0);
     bundles += split.bundles;

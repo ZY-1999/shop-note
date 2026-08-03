@@ -21,6 +21,11 @@ export interface StockRecord extends HasId {
    * only new checkouts, so each record stays self-consistent.
    */
   unit_price_snapshot: Cents | null;
+  /**
+   * 自用出库标记。仅对 `direction: 'out'` 有意义；入库恒为 false。
+   * 域层为 boolean；SQLite 存 INTEGER 0|1，仓储边界规范化往返。
+   */
+  self_use: boolean;
   voided_at: number | null;
   created_at: number;
   updated_at: number;
@@ -47,6 +52,8 @@ export interface StockRecordCreateInput {
   direction: Direction;
   timestamp?: number;
   note?: string;
+  /** 仅出库有效；入库忽略，恒写 false。缺省 = false。 */
+  self_use?: boolean;
   items: Array<{ product_id: string; qty: number }>;
 }
 
@@ -55,6 +62,8 @@ export interface StockRecordUpdatePatch {
   direction?: Direction;
   timestamp?: number;
   note?: string | null;
+  /** 有效方向为 out 时可改；有效方向为 in 时强制 false。 */
+  self_use?: boolean;
   /** When provided, the full intended item list (upsert semantics — see update). */
   items?: Array<{ id?: string; product_id: string; qty: number }>;
 }
@@ -99,6 +108,8 @@ export class StockRecordRepository {
     // restock carries null (the 单数/零售 split only applies to 'out').
     const unitPriceSnapshot: Cents | null =
       input.direction === "out" ? await this.config.getUnitPrice() : null;
+    // 出库：self_use = input ?? false；入库：忽略入参，恒 false。
+    const selfUse = input.direction === "out" ? (input.self_use ?? false) : false;
     const record: StockRecord = {
       id: id(),
       staff_id: input.staff_id,
@@ -106,6 +117,7 @@ export class StockRecordRepository {
       timestamp: input.timestamp ?? ts,
       note: input.note ?? null,
       unit_price_snapshot: unitPriceSnapshot,
+      self_use: selfUse,
       voided_at: null,
       created_at: ts,
       updated_at: ts,
@@ -128,15 +140,16 @@ export class StockRecordRepository {
       });
     }
     await this.storage.withTransaction(async () => {
-      await this.storage.insert("stock_record", record);
+      await this.storage.insert("stock_record", toStoredRecord(record));
       for (const item of items) await this.storage.insert("stock_record_item", item);
     });
     return { record, items };
   }
 
   async getById(recordId: string): Promise<RecordWithItems | null> {
-    const record = await this.storage.findById<StockRecord>("stock_record", recordId);
-    if (!record) return null;
+    const raw = await this.storage.findById<StoredStockRecord>("stock_record", recordId);
+    if (!raw) return null;
+    const record = fromStoredRecord(raw);
     const items = await this.storage.find<StockItem>("stock_record_item", {
       where: { record_id: recordId },
     });
@@ -144,13 +157,13 @@ export class StockRecordRepository {
   }
 
   async list(filter?: RecordFilter): Promise<RecordWithItems[]> {
-    const records = await this.storage.find<StockRecord>("stock_record", {
+    const records = (await this.storage.find<StoredStockRecord>("stock_record", {
       orderBy: { field: "timestamp", dir: "asc" },
-    });
-    const matched = records
+    }))
+      .map(fromStoredRecord)
       .filter((r) => r.voided_at == null) // voided excluded by default
       .filter((r) => matchesFilter(r, filter));
-    return this.loadItemsFor(matched);
+    return this.loadItemsFor(records);
   }
 
   async staffHistory(staffId: string): Promise<RecordWithItems[]> {
@@ -175,12 +188,21 @@ export class StockRecordRepository {
       const { record: current, items: storedItems } = existing;
 
       const ts = now();
+      const provisionalDirection = patch.direction ?? current.direction;
+      // 有效方向为 out 时可改 self_use；有效方向为 in 时强制 false。
+      const nextSelfUse =
+        provisionalDirection === "in"
+          ? false
+          : patch.self_use !== undefined
+            ? patch.self_use
+            : current.self_use;
       const nextRecord: StockRecord = {
         ...current,
         staff_id: patch.staff_id ?? current.staff_id,
-        direction: patch.direction ?? current.direction,
+        direction: provisionalDirection,
         timestamp: patch.timestamp ?? current.timestamp,
         note: patch.note !== undefined ? patch.note : current.note,
+        self_use: nextSelfUse,
         updated_at: ts,
       };
       // Same invariant as create: an effective direction 'in' must be owned by '-1'.
@@ -193,6 +215,7 @@ export class StockRecordRepository {
       }
       // snapshot铁律 on edit: an 'out' record KEEPS its frozen unit_price_snapshot
       // (not re-frozen); flipping to 'in' nulls it (restock carries no snapshot).
+      // 仅改 self_use 也不重冻。
       nextRecord.unit_price_snapshot =
         nextRecord.direction === "in" ? null : current.unit_price_snapshot;
 
@@ -205,12 +228,13 @@ export class StockRecordRepository {
         }
       }
 
-      await this.storage.update<StockRecord>("stock_record", recordId, {
+      await this.storage.update<StoredStockRecord>("stock_record", recordId, {
         staff_id: nextRecord.staff_id,
         direction: nextRecord.direction,
         timestamp: nextRecord.timestamp,
         note: nextRecord.note,
         unit_price_snapshot: nextRecord.unit_price_snapshot,
+        self_use: nextRecord.self_use ? 1 : 0,
         updated_at: ts,
       });
 
@@ -313,6 +337,20 @@ function matchesFilter(record: StockRecord, filter?: RecordFilter): boolean {
 }
 
 /**
+ * Persistence row shape: `self_use` as INTEGER 0|1 (SQLite) or boolean
+ * (InMemory before normalize). Domain always sees boolean.
+ */
+type StoredStockRecord = Omit<StockRecord, "self_use"> & { self_use: boolean | 0 | 1 };
+
+function toStoredRecord(record: StockRecord): StoredStockRecord {
+  return { ...record, self_use: record.self_use ? 1 : 0 };
+}
+
+function fromStoredRecord(row: StoredStockRecord): StockRecord {
+  return { ...row, self_use: row.self_use === true || row.self_use === 1 };
+}
+
+/**
  * Project a record + its items into a plain object whose field-equality diff
  * (computed by the audit provider) captures what an operator changed. Header
  * fields compared by value; `items` is a sorted signature so the diff reflects
@@ -325,6 +363,7 @@ function auditableRecord(record: StockRecord, items: StockItem[]): Record<string
     direction: record.direction,
     timestamp: record.timestamp,
     note: record.note,
+    self_use: record.self_use,
     voided_at: record.voided_at,
     items: items
       .map((i) => `${i.product_id}:${i.qty}:${i.unit_price}`)

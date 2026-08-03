@@ -1,10 +1,12 @@
 import { describe, expect, jest, test } from "@jest/globals";
 import { InMemoryAdapter } from "@/data/in-memory";
 import { AuditProvider } from "@/data/audit";
+import { setupRepos } from "@/data/composition";
 import { ProductRepository } from "@/data/product";
 import { ADMIN_STAFF_ID } from "@/data/staff";
 import { ConfigRepository } from "@/data/config";
 import { StockRecordRepository } from "@/data/stock-record";
+import { aggregateBundleRetail } from "@/data/split-bundle";
 import { cents } from "@/data/primitives";
 
 function setup() {
@@ -567,5 +569,158 @@ describe("StockRecordRepository — FK validation", () => {
     const untouched = await stockRecords.getById(record.id);
     expect(untouched!.items[0].product_id).toBe(productA.id);
     expect(untouched!.items[0].qty).toBe(1);
+  });
+});
+
+describe("StockRecordRepository — self_use (checkout-self-use)", () => {
+  test("create out defaults self_use to false; explicit true persists; in ignores input and stores false", async () => {
+    const { products, stockRecords } = setup();
+    const p = await products.create({ title: "可乐", purchase_price: cents(300) });
+
+    const { record: omitted } = await stockRecords.create({
+      staff_id: "s1",
+      direction: "out",
+      items: [{ product_id: p.id, qty: 1 }],
+    });
+    expect(omitted.self_use).toBe(false);
+    expect((await stockRecords.getById(omitted.id))!.record.self_use).toBe(false);
+
+    const { record: marked } = await stockRecords.create({
+      staff_id: "s1",
+      direction: "out",
+      self_use: true,
+      items: [{ product_id: p.id, qty: 1 }],
+    });
+    expect(marked.self_use).toBe(true);
+    expect((await stockRecords.getById(marked.id))!.record.self_use).toBe(true);
+
+    const { record: restock } = await stockRecords.create({
+      staff_id: ADMIN_STAFF_ID,
+      direction: "in",
+      self_use: true,
+      items: [{ product_id: p.id, qty: 1 }],
+    });
+    expect(restock.self_use).toBe(false);
+    expect((await stockRecords.getById(restock.id))!.record.self_use).toBe(false);
+  });
+
+  test("update out can flip self_use without re-freezing unit_price_snapshot; audit diff includes self_use; in forces false", async () => {
+    const { products, config, stockRecords, storage } = setup();
+    const p = await products.create({ title: "可乐", purchase_price: cents(300) });
+    await config.setUnitPrice(cents(2400));
+    const { record } = await stockRecords.create({
+      staff_id: "s1",
+      direction: "out",
+      items: [{ product_id: p.id, qty: 1 }],
+    });
+    expect(record.self_use).toBe(false);
+    expect(record.unit_price_snapshot).toBe(cents(2400));
+
+    await config.setUnitPrice(cents(3000)); // would re-freeze if update wrongly re-snapshotted
+    const flipped = await stockRecords.update(record.id, { self_use: true });
+    expect(flipped.record.self_use).toBe(true);
+    expect(flipped.record.unit_price_snapshot).toBe(cents(2400)); // snapshot铁律
+    expect((await stockRecords.getById(record.id))!.record.self_use).toBe(true);
+
+    const timeline = await new AuditProvider(storage).queryTimeline({
+      entity_type: "stock_record",
+      action: "update",
+    });
+    expect(timeline).toHaveLength(1);
+    expect(timeline[0].diff).toContainEqual({ field: "self_use", old: false, new: true });
+
+    // flip to in under admin → self_use forced false even if patch says true
+    const asIn = await stockRecords.update(record.id, {
+      direction: "in",
+      staff_id: ADMIN_STAFF_ID,
+      self_use: true,
+    });
+    expect(asIn.record.self_use).toBe(false);
+  });
+
+  test("self_use out still counts toward inventory, member balance, and dailyFlow out_amount", async () => {
+    // AC5 — 金额不过滤：自用出库与普通出库同计入余额/库存/出库¥（零改公式）。
+    const repos = setupRepos(new InMemoryAdapter());
+    const product = await repos.products.create({ title: "可乐", purchase_price: cents(300) });
+    const member = await repos.staff.create({ name: "张三", phone: "", notes: "" });
+    await repos.stockRecords.create({
+      staff_id: ADMIN_STAFF_ID,
+      direction: "in",
+      items: [{ product_id: product.id, qty: 10 }],
+    });
+    await repos.topups.create({ staff_id: member.id, amount: cents(10000) });
+    const dayTs = new Date(2026, 5, 10, 12, 0).getTime();
+    await repos.stockRecords.create({
+      staff_id: member.id,
+      direction: "out",
+      self_use: true,
+      timestamp: dayTs,
+      items: [{ product_id: product.id, qty: 4 }], // 1200¢
+    });
+
+    expect(
+      (await repos.inventory.shopAggregate()).find((a) => a.product.id === product.id)!.total_qty,
+    ).toBe(6); // 10 − 4
+    expect((await repos.memberBalance.balance(member.id)).amount).toBe(cents(8800)); // 10000 − 1200
+    const flow = await repos.dailyFlow.flow({ staff_id: member.id });
+    const outRow = flow.find((r) => r.out_amount > 0)!;
+    expect(outRow.out_amount).toBe(cents(1200));
+  });
+
+  test("voiding a self_use out rolls back balance/inventory/out¥ like a normal out; bundles/retail exclude it", async () => {
+    // AC8 / US14 — 作废自用出库与普通出库同路径回滚；单数·零售本就不含它。
+    const repos = setupRepos(new InMemoryAdapter());
+    await repos.config.setUnitPrice(cents(2400));
+    const product = await repos.products.create({ title: "可乐", purchase_price: cents(300) });
+    const member = await repos.staff.create({ name: "张三", phone: "", notes: "" });
+    await repos.stockRecords.create({
+      staff_id: ADMIN_STAFF_ID,
+      direction: "in",
+      items: [{ product_id: product.id, qty: 10 }],
+    });
+    await repos.topups.create({ staff_id: member.id, amount: cents(10000) });
+    const { record: normal } = await repos.stockRecords.create({
+      staff_id: member.id,
+      direction: "out",
+      items: [{ product_id: product.id, qty: 8 }], // 2400¢ → 1 bundle
+    });
+    const { record: selfUse } = await repos.stockRecords.create({
+      staff_id: member.id,
+      direction: "out",
+      self_use: true,
+      items: [{ product_id: product.id, qty: 4 }], // 1200¢
+    });
+
+    // before void: stock 10−8−4=−2; balance 10000−2400−1200=6400; bundles only from normal
+    expect(
+      (await repos.inventory.shopAggregate()).find((a) => a.product.id === product.id)!.total_qty,
+    ).toBe(-2);
+    expect((await repos.memberBalance.balance(member.id)).amount).toBe(cents(6400));
+    expect(aggregateBundleRetail(await repos.stockRecords.list({ staff_id: member.id }))).toEqual({
+      bundles: 1,
+      retail: 0,
+    });
+
+    await repos.stockRecords.void(selfUse.id);
+
+    expect(
+      (await repos.inventory.shopAggregate()).find((a) => a.product.id === product.id)!.total_qty,
+    ).toBe(2); // 10 − 8
+    expect((await repos.memberBalance.balance(member.id)).amount).toBe(cents(7600)); // 10000 − 2400
+    expect(aggregateBundleRetail(await repos.stockRecords.list({ staff_id: member.id }))).toEqual({
+      bundles: 1,
+      retail: 0,
+    });
+
+    // void the normal out too — full rollback
+    await repos.stockRecords.void(normal.id);
+    expect(
+      (await repos.inventory.shopAggregate()).find((a) => a.product.id === product.id)!.total_qty,
+    ).toBe(10);
+    expect((await repos.memberBalance.balance(member.id)).amount).toBe(cents(10000));
+    expect(aggregateBundleRetail(await repos.stockRecords.list({ staff_id: member.id }))).toEqual({
+      bundles: 0,
+      retail: 0,
+    });
   });
 });

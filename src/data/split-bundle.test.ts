@@ -40,8 +40,9 @@ describe("aggregateBundleRetail — Σ bundles/retail over a set of records", ()
     direction: "in" | "out",
     unitPrice: number | null,
     lineAmount: number,
+    selfUse?: boolean,
   ) => ({
-    record: { direction, unit_price_snapshot: unitPrice },
+    record: { direction, unit_price_snapshot: unitPrice, ...(selfUse != null ? { self_use: selfUse } : {}) },
     items: [{ line_amount: lineAmount }],
   });
 
@@ -65,5 +66,16 @@ describe("aggregateBundleRetail — Σ bundles/retail over a set of records", ()
 
   test("empty set → zero/zero", () => {
     expect(aggregateBundleRetail([])).toEqual({ bundles: 0, retail: 0 });
+  });
+
+  test("mixed ledger: skips out&&self_use for bundles/retail; non-self-use still splits; in still ignored", () => {
+    // AC6 — 自用出库不进单数·零售；非自用不变；in 仍忽略。
+    const rws = [
+      rw("out", 2400, 7200), // 3 bundles
+      rw("out", 2400, 7200, true), // self-use → skip
+      rw("in", null, 7200), // restock → ignore
+      rw("out", 2400, 7000), // 2 bundles + 2200 retail
+    ];
+    expect(aggregateBundleRetail(rws)).toEqual({ bundles: 5, retail: 2200 });
   });
 });

@@ -66,6 +66,7 @@ export const COLUMNS: Record<TableName, readonly ColDef[]> = {
     { name: "timestamp", type: "INTEGER" },
     { name: "note", type: "TEXT", nullable: true },
     { name: "unit_price_snapshot", type: "INTEGER", nullable: true },
+    { name: "self_use", type: "INTEGER", default: "0" },
     { name: "voided_at", type: "INTEGER", nullable: true },
     { name: "created_at", type: "INTEGER" },
     { name: "updated_at", type: "INTEGER" },
@@ -143,6 +144,26 @@ const V1_STAFF_DDL =
   "notes TEXT NOT NULL, voided_at INTEGER, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)";
 
 /**
+ * `stock_record` CREATE frozen at its pre-`self_use` shape.
+ *
+ * Same iron rule as {@link V1_STAFF_DDL}: once `COLUMNS` gains `self_use`,
+ * `createTableSql("stock_record")` cannot appear in any published migration
+ * that a fresh DB still executes before the ALTER that adds the column.
+ * `self_use` lands via v5 ALTER — and v3 DROPs+re-CREATEs `stock_record`, so
+ * BOTH v1 and v3 must pin this literal (freezing only v1 leaves a fresh DB's
+ * v3 CREATE already carrying `self_use`, then v5 ALTER → duplicate column).
+ */
+const V1_STOCK_RECORD_DDL =
+  "CREATE TABLE IF NOT EXISTS stock_record " +
+  "(id TEXT PRIMARY KEY NOT NULL, staff_id TEXT NOT NULL, " +
+  "direction TEXT NOT NULL CHECK (direction IN ('in', 'out')), " +
+  "timestamp INTEGER NOT NULL, note TEXT, unit_price_snapshot INTEGER, " +
+  "voided_at INTEGER, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)";
+
+/** Same pre-`self_use` shape as {@link V1_STOCK_RECORD_DDL}; used by v3 rebuild. */
+const V3_STOCK_RECORD_DDL = V1_STOCK_RECORD_DDL;
+
+/**
  * Versioned migrations, applied in order. v1 is the initial schema for the 5
  * domain tables plus the `record_id` lookup index (`idx_item_record_id` is
  * NON-unique: a stock record has many items; the PRD's "唯一索引" = sole index,
@@ -151,13 +172,15 @@ const V1_STAFF_DDL =
  *
  * v3 (stock-balance-refactor) is a **clear-db rebuild** — data is discarded, so
  * it DROPs the 5 pre-existing tables and re-CREATEs all 7 (5 old + `topup` +
- * `config`) from the current `COLUMNS`, rebuilds `idx_item_record_id` (DROP
- * TABLE wiped it), and seeds the protected `-1` admin row. This is a deliberate
- * one-off departure from the incremental `ALTER ADD COLUMN` + frozen-CREATE
- * regimen (see ADR-0008); the slate being cleared, `createTableSql("staff")` is
- * safe here — the v1-staff-freeze is moot post-DROP. Both a fresh DB
- * (`user_version=0`, runs v1→v2→v3) and an old DB (`user_version=2`, runs v3)
- * execute the DROP+rebuild and converge on the same 7-table schema.
+ * `config`), rebuilds `idx_item_record_id` (DROP TABLE wiped it), and seeds the
+ * protected `-1` admin row. This is a deliberate one-off departure from the
+ * incremental `ALTER ADD COLUMN` + frozen-CREATE regimen (see ADR-0008). Staff
+ * re-CREATE uses full `createTableSql("staff")` (level already present via v2
+ * path; slate cleared). `stock_record` is frozen at pre-`self_use` (see
+ * {@link V3_STOCK_RECORD_DDL}) because v5 still ALTERs that column on.
+ *
+ * v5 adds `stock_record.self_use` (自用出库标记) with DEFAULT 0 so historical
+ * rows backfill as non-self-use.
  */
 export const MIGRATIONS: ReadonlyArray<{
   readonly version: number;
@@ -168,7 +191,7 @@ export const MIGRATIONS: ReadonlyArray<{
     statements: [
       V1_STAFF_DDL,
       createTableSql("product"),
-      createTableSql("stock_record"),
+      V1_STOCK_RECORD_DDL,
       createTableSql("stock_record_item"),
       createTableSql("audit_log"),
       "CREATE INDEX IF NOT EXISTS idx_item_record_id ON stock_record_item(record_id)",
@@ -190,12 +213,11 @@ export const MIGRATIONS: ReadonlyArray<{
       "DROP TABLE IF EXISTS stock_record",
       "DROP TABLE IF EXISTS stock_record_item",
       "DROP TABLE IF EXISTS audit_log",
-      // Re-CREATE all 7 tables from the current COLUMNS. The slate is cleared, so
-      // createTableSql("staff") (full schema, incl level) applies cleanly — the v1
-      // freeze only matters for the incremental ALTER path, not here.
+      // Re-CREATE: staff uses full createTableSql (level already in COLUMNS; slate
+      // cleared). stock_record stays frozen pre-self_use — v5 ALTER still runs.
       createTableSql("staff"),
       createTableSql("product"),
-      createTableSql("stock_record"),
+      V3_STOCK_RECORD_DDL,
       createTableSql("stock_record_item"),
       createTableSql("audit_log"),
       createTableSql("topup"),
@@ -219,6 +241,14 @@ export const MIGRATIONS: ReadonlyArray<{
       // 重建后 cold start=0，丢失可接受。
       "DROP TABLE IF EXISTS config",
       createTableSql("config"),
+    ],
+  },
+  {
+    version: 5,
+    statements: [
+      // 自用出库标记：历史行 DEFAULT 0 = 非自用。v1+v3 stock_record CREATE 已冻结
+      // 为加列前字面量，全新库与老库都靠本 ALTER 收敛，无 duplicate column。
+      "ALTER TABLE stock_record ADD COLUMN self_use INTEGER NOT NULL DEFAULT 0",
     ],
   },
 ];

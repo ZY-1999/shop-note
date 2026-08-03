@@ -1,7 +1,7 @@
 # 持久化 `self_use` 并从单数·零售排除
 
 Type: spec
-Status: ready-for-agent
+Status: ready-for-human
 Parent: #01 (01-checkout-self-use.md)
 Blocked by: None — 可立即开始
 
@@ -11,14 +11,14 @@ Blocked by: None — 可立即开始
 
 ## Acceptance criteria
 
-- [ ] 迁移 v5 增加 `self_use INTEGER NOT NULL DEFAULT 0`；历史行读为非自用；v1 与 v3 的 `stock_record` CREATE 字面量冻结为加列前版本（全新库跑到 v5 ALTER 不会 `duplicate column`）。— schema / PROJECT_KNOWLEDGE 加列铁律
-- [ ] `COLUMNS.stock_record` / `SCHEMA.stock_record` 均含 `self_use`；drift-guard 保持绿；`createTableSql('stock_record')` 发出 `self_use … DEFAULT 0`，与 ALTER 对称。— 双源 + ColDef.default
-- [ ] `create` 出库未传标记 → `self_use === false`；显式 `true` 可落库；`create` / `update` 且 `direction: 'in'` 时恒写 `false`（忽略入参）。— 默认值 + 入库守卫
-- [ ] `update` 出库可改 `self_use`；仅改标记时 **不** 重冻 `unit_price_snapshot`；update 审计字段 diff 含 `self_use`。— 编辑 + 审计 + 快照铁律
-- [ ] 自用出库仍计入库存（`shopAggregate`）、会员余额、出库金额 / dailyFlow；非自用出库行为不变。— 金额不过滤
-- [ ] 混合账本：`aggregateBundleRetail` 对 `out && self_use` 跳过单数/零售；非自用仍拆分；`in` 仍忽略。— 聚合缝
-- [ ] 会员详情按天路径（`dayBundles` / `dayRetail` 手工 `splitBundleRetail` 累加）与 `aggregateBundleRetail` 同一口径跳过自用（相对总览无漂移）。— 双路径对齐（PRD）
-- [ ] 作废一笔自用出库后，余额 / 库存 / 出库金额回滚与普通出库一致，且从派生单数·零售中排除（与任意作废相同）。— US14
+- [x] 迁移 v5 增加 `self_use INTEGER NOT NULL DEFAULT 0`；历史行读为非自用；v1 与 v3 的 `stock_record` CREATE 字面量冻结为加列前版本（全新库跑到 v5 ALTER 不会 `duplicate column`）。— schema / PROJECT_KNOWLEDGE 加列铁律
+- [x] `COLUMNS.stock_record` / `SCHEMA.stock_record` 均含 `self_use`；drift-guard 保持绿；`createTableSql('stock_record')` 发出 `self_use … DEFAULT 0`，与 ALTER 对称。— 双源 + ColDef.default
+- [x] `create` 出库未传标记 → `self_use === false`；显式 `true` 可落库；`create` / `update` 且 `direction: 'in'` 时恒写 `false`（忽略入参）。— 默认值 + 入库守卫
+- [x] `update` 出库可改 `self_use`；仅改标记时 **不** 重冻 `unit_price_snapshot`；update 审计字段 diff 含 `self_use`。— 编辑 + 审计 + 快照铁律
+- [x] 自用出库仍计入库存（`shopAggregate`）、会员余额、出库金额 / dailyFlow；非自用出库行为不变。— 金额不过滤
+- [x] 混合账本：`aggregateBundleRetail` 对 `out && self_use` 跳过单数/零售；非自用仍拆分；`in` 仍忽略。— 聚合缝
+- [x] 会员详情按天路径（`dayBundles` / `dayRetail` 手工 `splitBundleRetail` 累加）与 `aggregateBundleRetail` 同一口径跳过自用（相对总览无漂移）。— 双路径对齐（PRD）
+- [x] 作废一笔自用出库后，余额 / 库存 / 出库金额回滚与普通出库一致，且从派生单数·零售中排除（与任意作废相同）。— US14
 - [ ] **[手动 / 发布门]** 真实 SQLite 下 v5 ALTER（老库升级 + 全新库路径）设备 smoke 通过 — ADR-0004；非 Jest。
 
 ## Scope
@@ -66,3 +66,15 @@ Blocked by: None — 可立即开始
 - 2026-08-03 — 覆盖（A）+ 可行性（B）PASS；Status → `ready-for-human`（Gate A）。
 - 2026-08-04 — 全文改为中文（标识符 / 类型名 / 路径保留英文）。
 - 2026-08-04 — Gate A 通过；Status → `ready-for-agent`。
+- 2026-08-04 — implemented via `/tdd`；Status → `ready-for-human`
+  - [x] v5 ALTER + 双冻 v1/v3 — `expo-sqlite-migration.test.ts::MIGRATIONS v5: ALTER adds self_use; v1+v3 stock_record CREATE frozen…`
+  - [x] COLUMNS/SCHEMA + createTableSql DEFAULT 0 — 同上 + `::COLUMNS names match SCHEMA…` + `sql-logic.test.ts` SCHEMA.stock_record columns
+  - [x] create 默认/显式/in 守卫 — `stock-record.test.ts::create out defaults self_use to false; explicit true persists; in ignores…`
+  - [x] update + 快照铁律 + 审计 — `::update out can flip self_use without re-freezing…`
+  - [x] 金额不过滤 — `::self_use out still counts toward inventory, member balance, and dailyFlow…`
+  - [x] aggregateBundleRetail 跳过 — `split-bundle.test.ts::mixed ledger: skips out&&self_use…`
+  - [x] 按天双路径对齐 — `staff-detail.test.tsx::day header skips self_use out for bundles/retail…`
+  - [x] void 回滚 — `stock-record.test.ts::voiding a self_use out rolls back…`
+  - [ ] **[手动/发布门]** 真实 SQLite v5 ALTER 设备 smoke — 未由 /tdd 跑（ADR-0004）
+  - Test run: `npx jest src/data/stock-record.test.ts src/data/split-bundle.test.ts src/data/expo-sqlite-migration.test.ts src/data/sql-logic.test.ts src/components/staff-detail.test.tsx --forceExit` → 78 passed, 0 failed
+  - Commit: `aac3bb8`

@@ -126,6 +126,46 @@ describe("StaffDetail — day header uses FlowSummary (per-day bundles/retail)",
     );
     expect(moneyText(view.getByTestId("member-day-flow-2026/06/10-retail"))).toBe("¥4.00");
   });
+
+  it("day header skips self_use out for bundles/retail (same predicate as aggregateBundleRetail); out¥ still counts", async () => {
+    // AC7 — 按天手工 split 与 aggregateBundleRetail 同口径跳过自用。
+    const { repos, staffId, productId } = await seedStaffProduct();
+    await repos.config.setUnitPrice(cents(500));
+    // non-self-use: cola×7 = 2100¢ → 4 bundles + 100 retail
+    await repos.stockRecords.create({
+      staff_id: staffId,
+      direction: "out",
+      timestamp: new Date(2026, 5, 10, 10, 0).getTime(),
+      items: [{ product_id: productId, qty: 7 }],
+    });
+    // self-use: cola×7 = 2100¢ → must NOT add bundles/retail, but out¥ includes it
+    await repos.stockRecords.create({
+      staff_id: staffId,
+      direction: "out",
+      self_use: true,
+      timestamp: new Date(2026, 5, 10, 14, 0).getTime(),
+      items: [{ product_id: productId, qty: 7 }],
+    });
+
+    const { view } = await renderDetail(
+      <StaffDetail staffId={staffId} onOpenRecord={jest.fn()} onOpenTopup={jest.fn()} />,
+      { repos },
+    );
+    await waitForSync(() => view.getByTestId("member-day-flow-2026/06/10"));
+
+    // day out = 2100+2100 = ¥42; bundles/retail only from non-self-use
+    expect(moneyText(view.getByTestId("member-day-flow-2026/06/10-out-total"))).toBe("¥42.00");
+    expect(view.getByTestId("member-day-flow-2026/06/10-bundle-count").props.children).toEqual(
+      expect.arrayContaining([4, " 单"]),
+    );
+    expect(moneyText(view.getByTestId("member-day-flow-2026/06/10-retail"))).toBe("¥1.00");
+    // overview (aggregateBundleRetail) matches day path — no drift
+    expect(view.getByTestId("member-flow-bundle-count").props.children).toEqual(
+      expect.arrayContaining([4, " 单"]),
+    );
+    expect(moneyText(view.getByTestId("member-flow-retail"))).toBe("¥1.00");
+    expect(moneyText(view.getByTestId("member-flow-out-total"))).toBe("¥42.00");
+  });
 });
 
 describe("StaffDetail — 充值 history navigates to detail (flow-event-row)", () => {

@@ -106,13 +106,15 @@ export function StaffDetail({
       if (rw.record.direction === "out") {
         day.dayOut += amt;
         outT += amt;
-        // bundle/retail split per out record's OWN frozen snapshot (US8).
-        const split = splitBundleRetail(
-          amt,
-          rw.record.unit_price_snapshot ?? 0,
-        );
-        day.dayBundles += split.bundles;
-        day.dayRetail += split.retail;
+        // 与 aggregateBundleRetail 同口径：自用出库不进单数·零售（金额仍计入）。
+        if (rw.record.self_use !== true) {
+          const split = splitBundleRetail(
+            amt,
+            rw.record.unit_price_snapshot ?? 0,
+          );
+          day.dayBundles += split.bundles;
+          day.dayRetail += split.retail;
+        }
       }
       day.events.push({
         id: rw.record.id,

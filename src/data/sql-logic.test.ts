@@ -20,7 +20,7 @@ describe("SCHEMA registry", () => {
       "id", "title", "purchase_price", "code", "category", "voided_at", "created_at", "updated_at",
     ]);
     expect(SCHEMA.stock_record.columns).toEqual([
-      "id", "staff_id", "direction", "timestamp", "note", "unit_price_snapshot", "voided_at", "created_at", "updated_at",
+      "id", "staff_id", "direction", "timestamp", "note", "unit_price_snapshot", "self_use", "voided_at", "created_at", "updated_at",
     ]);
     expect(SCHEMA.stock_record_item.columns).toEqual([
       "id", "record_id", "product_id", "title", "unit_price", "qty", "line_amount",
