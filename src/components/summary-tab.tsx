@@ -291,6 +291,7 @@ export function SummaryTab({
                           timestamp: number;
                           amount: number;
                           unitPriceSnapshot: number | null | undefined;
+                          selfUse: boolean;
                         }
                       | {
                           kind: "topup";
@@ -316,6 +317,7 @@ export function SummaryTab({
                         timestamp: rw.record.timestamp,
                         amount: amt,
                         unitPriceSnapshot: rw.record.unit_price_snapshot,
+                        selfUse: rw.record.self_use === true,
                       });
                     }
                     for (const t of topups.data ?? []) {
@@ -336,10 +338,13 @@ export function SummaryTab({
                     return events.map((e) =>
                       e.kind === "checkout" ? (
                         (() => {
-                          const { bundles, retail } = splitBundleRetail(
-                            e.amount,
-                            e.unitPriceSnapshot ?? 0,
-                          );
+                          const selfUse = e.selfUse === true;
+                          const { bundles, retail } = selfUse
+                            ? { bundles: 0, retail: 0 }
+                            : splitBundleRetail(
+                                e.amount,
+                                e.unitPriceSnapshot ?? 0,
+                              );
                           return (
                             <FlowEventRow
                               key={e.id}
@@ -349,6 +354,7 @@ export function SummaryTab({
                               amountCents={e.amount}
                               bundles={bundles}
                               retailCents={retail}
+                              selfUse={selfUse}
                               onPress={() => onOpenRecord?.(e.id)}
                             />
                           );

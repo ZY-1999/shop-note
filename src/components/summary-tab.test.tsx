@@ -249,6 +249,37 @@ describe("SummaryTab — day section collapsible: default collapsed, tap to togg
   });
 });
 
+describe("SummaryTab — 自用 checkout row (checkout-self-use)", () => {
+  it("self_use out row shows 自用 with 0 bundles/retail; no amount on row", async () => {
+    const { repos, staffId, colaId } = await setup();
+    await repos.config.setUnitPrice(cents(500));
+    const { record } = await repos.stockRecords.create({
+      staff_id: staffId,
+      direction: "out",
+      self_use: true,
+      timestamp: DAY(9, 10),
+      items: [{ product_id: colaId, qty: 7 }],
+    });
+
+    const { view } = await renderTab(
+      <SummaryTab now={NOW} onOpenStaff={jest.fn()} onOpenRecord={jest.fn()} />,
+      { repos },
+    );
+    await waitForSync(() => view.getByTestId("day-2026/07/09"));
+    await fireEvent.press(view.getByTestId("day-2026/07/09"));
+    await flushPending();
+    await fireEvent.press(view.getByTestId(`staff-row-2026-07-09-${staffId}`));
+    await flushPending();
+
+    expect(view.getByTestId(`flow-record-${record.id}-self-use`).props.children).toBe("自用");
+    expect(view.getByTestId(`flow-record-${record.id}-bundle-count`).props.children).toEqual(
+      expect.arrayContaining(["出库 ", 0, " 单"]),
+    );
+    expect(money(view.getByTestId(`flow-record-${record.id}-retail`))).toBe("¥0.00");
+    expect(view.queryByTestId(`flow-record-${record.id}-amount`)).toBeNull();
+  });
+});
+
 describe("SummaryTab — staff-row expand → records → record detail (spec #05 AC5)", () => {
   it("expanding a staff row lists that day's records and opens one on tap", async () => {
     const { repos, staffId, colaId } = await setup();

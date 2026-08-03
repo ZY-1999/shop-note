@@ -168,6 +168,47 @@ describe("StaffDetail — day header uses FlowSummary (per-day bundles/retail)",
   });
 });
 
+describe("StaffDetail — 自用 checkout row (checkout-self-use)", () => {
+  it("self_use out row shows 自用 with 0 bundles/retail; out¥ still in day/summary; no amount on row", async () => {
+    const { repos, staffId, productId } = await seedStaffProduct();
+    await repos.config.setUnitPrice(cents(500));
+    const { record } = await repos.stockRecords.create({
+      staff_id: staffId,
+      direction: "out",
+      self_use: true,
+      timestamp: new Date(2026, 5, 10, 14, 0).getTime(),
+      items: [{ product_id: productId, qty: 7 }], // 2100¢ — would be 4 单 + 100 if not self_use
+    });
+
+    const { view } = await renderDetail(
+      <StaffDetail staffId={staffId} onOpenRecord={jest.fn()} onOpenTopup={jest.fn()} />,
+      { repos },
+    );
+    await waitForSync(() => view.getByTestId("day-2026/06/10"));
+    await fireEvent.press(view.getByTestId("day-2026/06/10"));
+    await flushPending();
+
+    const row = view.getByTestId(`history-${record.id}`);
+    expect(row).toBeTruthy();
+    expect(view.getByTestId(`history-${record.id}-self-use`).props.children).toBe("自用");
+    expect(view.getByTestId(`history-${record.id}-bundle-count`).props.children).toEqual(
+      expect.arrayContaining(["出库 ", 0, " 单"]),
+    );
+    expect(moneyText(view.getByTestId(`history-${record.id}-retail`))).toBe("¥0.00");
+    // convention: checkout row never shows amount
+    expect(view.queryByTestId(`history-${record.id}-amount`)).toBeNull();
+    // day/overview out¥ still counts; bundles/retail exclude
+    expect(moneyText(view.getByTestId("member-day-flow-2026/06/10-out-total"))).toBe("¥21.00");
+    expect(view.getByTestId("member-day-flow-2026/06/10-bundle-count").props.children).toEqual(
+      expect.arrayContaining([0, " 单"]),
+    );
+    expect(moneyText(view.getByTestId("member-flow-out-total"))).toBe("¥21.00");
+    expect(view.getByTestId("member-flow-bundle-count").props.children).toEqual(
+      expect.arrayContaining([0, " 单"]),
+    );
+  });
+});
+
 describe("StaffDetail — 充值 history navigates to detail (flow-event-row)", () => {
   it("topup row calls onOpenTopup when tapped", async () => {
     const { repos, staffId } = await seedStaffProduct();

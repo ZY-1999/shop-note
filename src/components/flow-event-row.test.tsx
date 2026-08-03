@@ -61,6 +61,43 @@ describe("FlowEventRow — checkout", () => {
   });
 });
 
+describe("FlowEventRow — checkout selfUse (checkout-self-use)", () => {
+  it("shows 自用 when selfUse is true; still no checkout amount", async () => {
+    const { view } = await render(
+      <FlowEventRow
+        kind="checkout"
+        timestamp={ts}
+        amountCents={2100}
+        bundles={0}
+        retailCents={0}
+        selfUse
+        onPress={jest.fn()}
+      />,
+    );
+
+    expect(view.getByText("自用")).toBeTruthy();
+    expect(view.getByTestId("flow-event-bundle-count").props.children).toEqual(
+      expect.arrayContaining(["出库 ", 0, " 单"]),
+    );
+    expect(money(view.getByTestId("flow-event-retail"))).toMatch(/0\.00/);
+    expect(view.queryByTestId("flow-event-amount")).toBeNull();
+  });
+
+  it("does not show 自用 when selfUse is omitted/false", async () => {
+    const { view } = await render(
+      <FlowEventRow
+        kind="checkout"
+        timestamp={ts}
+        amountCents={100}
+        bundles={1}
+        retailCents={0}
+        onPress={jest.fn()}
+      />,
+    );
+    expect(view.queryByText("自用")).toBeNull();
+  });
+});
+
 describe("FlowEventRow — topup", () => {
   it("shows time, 充值, and amount — no bundle/retail", async () => {
     const { view } = await render(

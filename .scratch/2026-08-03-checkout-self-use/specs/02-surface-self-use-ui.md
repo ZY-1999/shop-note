@@ -1,7 +1,7 @@
 # 出库表单 / 详情 / 流水行露出「自用」
 
 Type: spec
-Status: ready-for-agent
+Status: ready-for-human
 Parent: #01 (01-checkout-self-use.md)
 Blocked by: #01
 
@@ -11,12 +11,12 @@ Blocked by: #01
 
 ## Acceptance criteria
 
-- [ ] 新建出库表单：「自用」开关默认关；旁注固定文案「不计单数与零售」可见；补货（`in`）表单永不出现该控件。— US1–3、US13
-- [ ] 打开开关提交后落库 `self_use`；该笔仍计入出库 ¥；单数·零售聚合不含该笔。— US6–8
-- [ ] 自用出库详情显示「自用」，且 **不** 渲染「计 N 单 / 零售」；非自用详情不变（快照适用时仍展示拆分）。— US9、US12
-- [ ] 会员详情与汇总的出库 `FlowEventRow` 在标记为自用时显示「自用」；自用行由父组件传入 bundles/retail = 0；**不**改变「今日出库流水行不展示出库金额」约定。— US10
-- [ ] 编辑可翻转开关；保存后详情 / 流水 / 汇总的单数·零售按新标记反映。— US11
-- [ ] 非自用出库 UI 路径行为与今天一致（回归）。— US12
+- [x] 新建出库表单：「自用」开关默认关；旁注固定文案「不计单数与零售」可见；补货（`in`）表单永不出现该控件。— US1–3、US13
+- [x] 打开开关提交后落库 `self_use`；该笔仍计入出库 ¥；单数·零售聚合不含该笔。— US6–8
+- [x] 自用出库详情显示「自用」，且 **不** 渲染「计 N 单 / 零售」；非自用详情不变（快照适用时仍展示拆分）。— US9、US12
+- [x] 会员详情与汇总的出库 `FlowEventRow` 在标记为自用时显示「自用」；自用行由父组件传入 bundles/retail = 0；**不**改变「今日出库流水行不展示出库金额」约定。— US10
+- [x] 编辑可翻转开关；保存后详情 / 流水 / 汇总的单数·零售按新标记反映。— US11
+- [x] 非自用出库 UI 路径行为与今天一致（回归）。— US12
 
 ## Scope
 
@@ -54,3 +54,13 @@ Blocked by: #01
 - 2026-08-03 — 覆盖（A）+ 可行性（B）PASS；Status → `ready-for-human`（Gate A）。
 - 2026-08-04 — 全文改为中文（标识符 / 类型名 / 路径保留英文）。
 - 2026-08-04 — Gate A 通过；Status → `ready-for-agent`。
+- 2026-08-04 — `/tdd` 完成。Status → `ready-for-human`。
+  - AC→test：
+    1. 出库开关默认关 +「不计单数与零售」；入库无控件 → `record-form.test.tsx`「out form shows 自用 switch…」
+    2. 开关提交落库；出库¥计、单数·零售排除 → `record-form.test.tsx`「toggling 自用 on and submitting…」
+    3. 自用详情徽标 + 无拆分；非自用仍有拆分 → `record-detail.test.tsx`「self_use out shows…」「non-self_use out still shows…」
+    4. FlowEventRow「自用」+ 无金额；父传 0 拆分 → `flow-event-row.test.tsx`「shows 自用 when selfUse…」；`staff-detail.test.tsx` / `summary-tab.test.tsx`「self_use out row shows…」
+    5. 编辑翻转 → `record-detail.test.tsx`「edit can turn 自用 on…」
+    6. 非自用回归 → 同上 non-self_use + 既有 split / FlowEventRow suites
+  - 命令：`npx jest "record-form.test|record-detail.test|flow-event-row.test|staff-detail.test|summary-tab.test" --colors=false --forceExit` → 5 suites / 61 passed
+  - commit：本关闭提交（`feat(checkout-self-use): 出库 UI 露出自用标记`）

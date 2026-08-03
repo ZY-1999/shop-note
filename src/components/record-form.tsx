@@ -9,6 +9,7 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
+  Switch,
   Text,
   TextInput,
   View,
@@ -39,6 +40,8 @@ export interface RecordFormEdit {
   timestamp: number;
   note: string | null;
   lines: EditLine[];
+  /** Edit preload for 自用 — only meaningful for out. */
+  selfUse: boolean;
 }
 
 export interface RecordFormProps {
@@ -72,6 +75,7 @@ export function RecordForm({
   );
   const [note, setNote] = useState(edit?.note ?? "");
   const [timestamp, setTimestamp] = useState(edit?.timestamp ?? Date.now());
+  const [selfUse, setSelfUse] = useState(edit?.selfUse ?? false);
   // Android renders the picker as a Material dialog (@expo/ui default
   // presentation='dialog'): mount opens it, and the caller must unmount on
   // confirm (onValueChange) or cancel (onDismiss) — leaving it mounted leaves
@@ -101,6 +105,7 @@ export function RecordForm({
           patch: {
             timestamp,
             note: note.trim() || null,
+            ...(direction === "out" ? { self_use: selfUse } : {}),
             items: selectedItems.map((l) => ({
               id: l.id,
               product_id: l.productId,
@@ -117,6 +122,7 @@ export function RecordForm({
           direction,
           timestamp,
           note: note.trim() || undefined,
+          ...(direction === "out" ? { self_use: selfUse } : {}),
           items: selectedItems.map((l) => ({
             product_id: l.productId,
             qty: Number(l.qty),
@@ -215,6 +221,22 @@ export function RecordForm({
           onChangeText={setNote}
         />
       </View>
+
+      {direction === "out" && (
+        <View style={styles.field}>
+          <Text style={[styles.fieldLabel, { color: theme.textSecondary }]}>
+            自用
+          </Text>
+          <Switch
+            testID="self-use-switch"
+            value={selfUse}
+            onValueChange={setSelfUse}
+          />
+          <Text style={{ color: theme.textSecondary, fontSize: 13, flex: 1 }}>
+            不计单数与零售
+          </Text>
+        </View>
+      )}
 
       {error && (
         <Text testID="form-error" style={{ color: theme.danger }}>

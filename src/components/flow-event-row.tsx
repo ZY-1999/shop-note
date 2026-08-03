@@ -22,6 +22,8 @@ export type FlowEventRowProps =
       amountCents: number;
       bundles: number;
       retailCents: number;
+      /** When true, show 「自用」 mark. Parent passes 0 bundles/retail for self-use. */
+      selfUse?: boolean;
       onPress: () => void;
       testID?: string;
     }
@@ -66,6 +68,14 @@ export function FlowEventRow(props: FlowEventRowProps) {
         </Text>
         {isCheckout ? (
           <>
+            {props.selfUse === true && (
+              <Text
+                testID={testID ? `${testID}-self-use` : "flow-event-self-use"}
+                style={{ color: theme.textSecondary, fontSize: 12 }}
+              >
+                自用
+              </Text>
+            )}
             <Text
               testID={tid("bundles")}
               style={{ color: theme.text, fontSize: 12 }}

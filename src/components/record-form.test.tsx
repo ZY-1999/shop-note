@@ -9,6 +9,7 @@ import { formatDateTime } from "@/components/date-format";
 import { InMemoryAdapter } from "@/data/in-memory";
 import { setupRepos, type Repos } from "@/data/composition";
 import { cents } from "@/data/primitives";
+import { aggregateBundleRetail } from "@/data/split-bundle";
 import { renderWithProviders, type RenderWithProvidersResult } from "@/testing/render";
 
 /**
@@ -383,6 +384,44 @@ describe("RecordForm — 备注 field (spec #03 AC3)", () => {
     const { view } = await renderForm(<RecordForm staffId={staffId} direction="out" />, { repos });
     expect(await waitForSync(() => view.getByText("备注"))).toBeTruthy();
     expect(view.getByTestId("note")).toBeTruthy();
+  });
+});
+
+describe("RecordForm — 自用 switch (checkout-self-use)", () => {
+  it("out form shows 自用 switch default off and 不计单数与零售旁注; in form never shows them", async () => {
+    const { repos, staffId } = await seed();
+    const out = await renderForm(<RecordForm staffId={staffId} direction="out" />, { repos });
+    expect(await waitForSync(() => out.view.getByText("自用"))).toBeTruthy();
+    expect(out.view.getByText("不计单数与零售")).toBeTruthy();
+    const sw = out.view.getByTestId("self-use-switch");
+    expect(sw.props.value).toBe(false);
+
+    activeQueryClient?.clear();
+    activeQueryClient = null;
+    const inForm = await renderForm(<RecordForm staffId={staffId} direction="in" />, { repos });
+    expect(inForm.view.queryByText("自用")).toBeNull();
+    expect(inForm.view.queryByText("不计单数与零售")).toBeNull();
+    expect(inForm.view.queryByTestId("self-use-switch")).toBeNull();
+  });
+
+  it("toggling 自用 on and submitting persists self_use; out¥ counts, bundles/retail exclude", async () => {
+    const { repos, staffId, productId, view } = await renderPicked("out", "4");
+    await repos.config.setUnitPrice(cents(300)); // freeze basis for aggregation check
+    fireEvent(view.getByTestId("self-use-switch"), "valueChange", true);
+    await flushPending();
+    fireEvent.press(view.getByTestId("submit"));
+
+    await waitForSync(() => expect(mockBack).toHaveBeenCalled());
+    const [posted] = await repos.stockRecords.list();
+    expect(posted.record.self_use).toBe(true);
+    expect(posted.record.direction).toBe("out");
+    expect(posted.items[0].line_amount).toBe(cents(1200)); // still a real out amount
+
+    const br = aggregateBundleRetail([posted]);
+    expect(br.bundles).toBe(0);
+    expect(br.retail).toBe(0);
+    void staffId;
+    void productId;
   });
 });
 

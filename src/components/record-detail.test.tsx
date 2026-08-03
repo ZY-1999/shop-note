@@ -242,6 +242,111 @@ describe("RecordDetail — 出库 单数/零售 split (stock-balance-refactor US
   });
 });
 
+describe("RecordDetail — 自用 badge + hide split (checkout-self-use)", () => {
+  it("self_use out shows 自用 and amount, but not 计 N 单 / 零售", async () => {
+    const repos = setupRepos(new InMemoryAdapter());
+    const staff = await repos.staff.create({ name: "张三", phone: "", notes: "" });
+    const product = await repos.products.create({
+      title: "可乐",
+      purchase_price: cents(1200),
+      category: "",
+    });
+    await repos.config.setUnitPrice(cents(2400));
+    const { record } = await repos.stockRecords.create({
+      staff_id: staff.id,
+      direction: "out",
+      self_use: true,
+      timestamp: 1_700_000_000_000,
+      items: [{ product_id: product.id, qty: 6 }], // 7200¢ — would be 3 单 if not self_use
+    });
+
+    const { view } = await renderDetail(<RecordDetail recordId={record.id} />, { repos });
+    await waitForSync(() => view.getByText("类型：出库"));
+    expect(view.getByText("自用")).toBeTruthy();
+    expect(view.getByText("金额：")).toBeTruthy();
+    expect(view.getAllByText("¥72.00").length).toBeGreaterThanOrEqual(1);
+    expect(view.queryByText(/计 \d+ 单/)).toBeNull();
+    expect(view.queryByText("零售")).toBeNull();
+  });
+
+  it("non-self_use out still shows 计 N 单 / 零售 (regression)", async () => {
+    const repos = setupRepos(new InMemoryAdapter());
+    const staff = await repos.staff.create({ name: "张三", phone: "", notes: "" });
+    const product = await repos.products.create({
+      title: "可乐",
+      purchase_price: cents(1200),
+      category: "",
+    });
+    await repos.config.setUnitPrice(cents(2400));
+    const { record } = await repos.stockRecords.create({
+      staff_id: staff.id,
+      direction: "out",
+      timestamp: 1_700_000_000_000,
+      items: [{ product_id: product.id, qty: 6 }],
+    });
+
+    const { view } = await renderDetail(<RecordDetail recordId={record.id} />, { repos });
+    await waitForSync(() => view.getByText("计 3 单"));
+    expect(view.queryByText("自用")).toBeNull();
+    expect(view.getByText("零售")).toBeTruthy();
+  });
+});
+
+describe("RecordDetail — edit flips 自用 (checkout-self-use)", () => {
+  it("edit can turn 自用 on; detail hides split and staff summary drops bundles/retail", async () => {
+    const repos = setupRepos(new InMemoryAdapter());
+    const staff = await repos.staff.create({ name: "张三", phone: "", notes: "" });
+    const product = await repos.products.create({
+      title: "可乐",
+      purchase_price: cents(300),
+      category: "",
+    });
+    await repos.config.setUnitPrice(cents(500));
+    // 2100¢ → 4 单 + 100 retail when not self_use
+    const { record } = await repos.stockRecords.create({
+      staff_id: staff.id,
+      direction: "out",
+      timestamp: 1_700_000_000_000,
+      items: [{ product_id: product.id, qty: 7 }],
+    });
+
+    const { view } = await renderDetail(
+      <View>
+        <StaffDetail staffId={staff.id} onOpenRecord={jest.fn()} onOpenTopup={jest.fn()} />
+        <RecordDetail recordId={record.id} />
+      </View>,
+      { repos },
+    );
+
+    await waitForSync(() => view.getByText("计 4 单"));
+    expect(view.getByTestId("member-flow-bundle-count").props.children).toEqual(
+      expect.arrayContaining([4, " 单"]),
+    );
+
+    fireEvent.press(await waitForSync(() => view.getByTestId("edit")));
+    const sw = await waitForSync(() => view.getByTestId("self-use-switch"));
+    expect(sw.props.value).toBe(false);
+    fireEvent(sw, "valueChange", true);
+    await flushPending();
+    fireEvent.press(view.getByTestId("submit"));
+
+    await waitForSync(() => view.getByTestId("self-use-badge"));
+    expect(view.queryByText("计 4 单")).toBeNull();
+    expect(view.getByText("金额：")).toBeTruthy();
+
+    const updated = await repos.stockRecords.getById(record.id);
+    expect(updated!.record.self_use).toBe(true);
+
+    await waitForSync(() =>
+      expect(view.getByTestId("member-flow-bundle-count").props.children).toEqual(
+        expect.arrayContaining([0, " 单"]),
+      ),
+    );
+    expect(money(view.getByTestId("member-flow-out-total"))).toMatch(/21\.00/);
+    expect(money(view.getByTestId("member-flow-retail"))).toMatch(/0\.00/);
+  });
+});
+
 describe("RecordDetail — edit resnapshot-merge (spec #07 AC3)", () => {
   it("resnapshots touched lines at the current price; untouched lines keep their frozen snapshot", async () => {
     const repos = setupRepos(new InMemoryAdapter());

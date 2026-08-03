@@ -52,6 +52,7 @@ interface HistoryEvent {
   direction?: Direction; // record only
   items?: StockItem[]; // record only
   unitPriceSnapshot?: number | null; // record only — frozen bundle split basis
+  selfUse?: boolean; // record only — 自用出库
   note?: string | null; // topup only
 }
 
@@ -124,6 +125,7 @@ export function StaffDetail({
         direction: rw.record.direction,
         items: rw.items,
         unitPriceSnapshot: rw.record.unit_price_snapshot,
+        selfUse: rw.record.self_use === true,
       });
     }
     for (const t of topups.data ?? []) {
@@ -192,10 +194,10 @@ export function StaffDetail({
           item.events.map((e) =>
             e.kind === "record" ? (
               (() => {
-                const { bundles, retail } = splitBundleRetail(
-                  e.amount,
-                  e.unitPriceSnapshot ?? 0,
-                );
+                const selfUse = e.selfUse === true;
+                const { bundles, retail } = selfUse
+                  ? { bundles: 0, retail: 0 }
+                  : splitBundleRetail(e.amount, e.unitPriceSnapshot ?? 0);
                 return (
                   <FlowEventRow
                     key={e.id}
@@ -205,6 +207,7 @@ export function StaffDetail({
                     amountCents={e.amount}
                     bundles={bundles}
                     retailCents={retail}
+                    selfUse={selfUse}
                     onPress={() => onOpenRecord(e.id)}
                   />
                 );

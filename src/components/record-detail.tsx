@@ -67,6 +67,7 @@ export function RecordDetail({ recordId }: RecordDetailProps) {
           recordId,
           timestamp: record.timestamp,
           note: record.note,
+          selfUse: record.self_use,
           lines: items.map((i) => ({
             id: i.id,
             productId: i.product_id,
@@ -85,9 +86,16 @@ export function RecordDetail({ recordId }: RecordDetailProps) {
       style={[styles.container, { backgroundColor: theme.background }]}
     >
       <View style={[styles.header, { borderColor: theme.border }]}>
-        <Text style={{ fontSize: 18, fontWeight: "700", color: theme.text }}>
-          类型：{DIRECTION_LABEL[record.direction]}
-        </Text>
+        <View style={styles.row}>
+          <Text style={{ fontSize: 18, fontWeight: "700", color: theme.text }}>
+            类型：{DIRECTION_LABEL[record.direction]}
+          </Text>
+          {record.self_use && (
+            <Text testID="self-use-badge" style={{ color: theme.textSecondary, fontSize: 14 }}>
+              自用
+            </Text>
+          )}
+        </View>
         {staff.data && (
           <Text style={[styles.note, { color: theme.text }]}>
             会员：{staff.data.name}
@@ -107,6 +115,14 @@ export function RecordDetail({ recordId }: RecordDetailProps) {
           record.unit_price_snapshot > 0 &&
           (() => {
             const total = items.reduce((s, i) => s + i.line_amount, 0);
+            if (record.self_use) {
+              return (
+                <View style={styles.row}>
+                  <Text style={{ color: theme.text }}>金额：</Text>
+                  <MoneyText cents={cents(total)} />
+                </View>
+              );
+            }
             const { bundles, retail } = splitBundleRetail(
               total,
               record.unit_price_snapshot,
