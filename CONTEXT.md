@@ -68,6 +68,7 @@ UI testing ([ADR-0006](docs/adr/0006-ui-component-testing-rntl.md)): derived pur
 - **UI PRD**: [.scratch/2026-07-09-shop-management-ui/01-shop-management-ui.md](.scratch/2026-07-09-shop-management-ui/01-shop-management-ui.md)
 - **页面重构 PRD**: [.scratch/2026-07-10-page-refactor/01-page-refactor.md](.scratch/2026-07-10-page-refactor/01-page-refactor.md)
 - **库存/余额重构 PRD**: [.scratch/2026-07-10-stock-balance-refactor/01-stock-balance-refactor.md](.scratch/2026-07-10-stock-balance-refactor/01-stock-balance-refactor.md)（specs 01–05）
+- **自用出库 PRD**: [.scratch/2026-08-03-checkout-self-use/01-checkout-self-use.md](.scratch/2026-08-03-checkout-self-use/01-checkout-self-use.md)（specs 01–02）
 - **Specs**: [.scratch/2026-07-08-shop-management-system/specs/](.scratch/2026-07-08-shop-management-system/specs/)
 - **ADRs**: [docs/adr/](docs/adr/) (incl. [ADR-0005 UI 层架构](docs/adr/0005-ui-layer-architecture.md), [ADR-0006 UI 组件测试](docs/adr/0006-ui-component-testing-rntl.md), [ADR-0007 列表分批渲染](docs/adr/0007-list-batched-rendering.md), [ADR-0008 清库重建迁移](docs/adr/0008-clear-db-rebuild-migration.md))
 - **CodeMap**: [docs/codemap/project.md](docs/codemap/project.md)
