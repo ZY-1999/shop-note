@@ -27,8 +27,8 @@ import {
 import {
   buildStaffWorkbook,
   staffExportFilename,
-  STAFF_XLSX_MIME,
 } from "@/export/build-staff-workbook";
+import { XLSX_MIME } from "@/export/types";
 import {
   useCreateProduct,
   useCreateStaff,
@@ -388,7 +388,7 @@ function StaffManage() {
     exportMutation.mutate(
       {
         filename: staffExportFilename(),
-        mimeType: STAFF_XLSX_MIME,
+        mimeType: XLSX_MIME,
         encoding: "base64",
         dialogTitle: "导出会员",
         build: () => buildStaffWorkbook(rows, { includeVoided }),
@@ -722,7 +722,7 @@ function ProductManage() {
     exportMutation.mutate(
       {
         filename: productExportFilename(),
-        mimeType: STAFF_XLSX_MIME,
+        mimeType: XLSX_MIME,
         encoding: "base64",
         dialogTitle: "导出商品",
         build: () => buildProductWorkbook(rows, { includeVoided }),

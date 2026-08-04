@@ -39,6 +39,13 @@
 - **适用边界**：项目里需要矢量图标（Ionicons / FontAwesome 等）时直接 `import`，不必再装；新增图标库走 `npx expo install <pkg>` 让 Expo 选 SDK 兼容版（勿裸 `pnpm add`，以免版本与 SDK 错配）。装完按上文规则 `expo start --clear`。
 - **验证**：`expo install @expo/vector-icons` 后 `require.resolve` 成功；`tab-config.ts` 的 `Ionicons` 类型解析与运行时 import 均正常。
 
+### SDK 57 写盘须走 `expo-file-system/legacy`
+
+- **事实**：默认入口 `expo-file-system` 上旧 API（`writeAsStringAsync` / `cacheDirectory` / `EncodingType`）文档标 Deprecated，且 **runtime throw**；须 `import … from 'expo-file-system/legacy'`，或改用新 `File`/`Paths` API。本仓库导出管道钉死 legacy。
+- **来源**：manage-export spec #02 可行性评审（2026-08-04）对照 [SDK 57 FileSystem docs](https://docs.expo.dev/versions/v57.0.0/sdk/filesystem/)。
+- **适用边界**：任何写 cache / 读本地文件的新代码；Jest mock 路径须与 import 一致（`jest.mock('expo-file-system/legacy')`）。
+- **验证**：`src/export/run-export.ts` + `run-export.test.ts`；装依赖后 `expo start --clear`。
+
 ## 资源 / 图标
 
 ### 应用图标：Z logo + 关键约束

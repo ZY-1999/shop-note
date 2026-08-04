@@ -2,10 +2,6 @@ import * as XLSX from "xlsx";
 
 import { ADMIN_STAFF_ID, labelForLevel, type Staff } from "@/data/staff";
 
-/** Spreadsheet MIME for staff (and later product) xlsx exports. */
-export const STAFF_XLSX_MIME =
-  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
-
 /**
  * Build a staff membership workbook as base64 xlsx.
  * Rows are whatever the caller already filtered (current list); this only
