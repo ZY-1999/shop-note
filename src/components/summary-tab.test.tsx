@@ -652,7 +652,7 @@ describe("SummaryTab — export config + inventory sheet (summary-range-export #
     }
   });
 
-  it("persists sheet toggles immediately; disables export when none selected", async () => {
+  it("persists non-final changes, rejects closing the final sheet, and keeps export enabled", async () => {
     const { repos } = await setup();
     const { view } = await renderTab(
       <SummaryTab now={NOW} onOpenStaff={jest.fn()} />,
@@ -685,30 +685,32 @@ describe("SummaryTab — export config + inventory sheet (summary-range-export #
       false,
     );
     await flushPending();
-    await waitForSync(() =>
-      expect(
-        view.getByTestId("summary-export").props.accessibilityState?.disabled,
-      ).toBe(true),
-    );
 
     expect(await repos.config.getSummaryExportSheets()).toEqual({
       inventory: false,
       inbound: false,
       topupCheckout: false,
-      topupCheckoutDetail: false,
+      topupCheckoutDetail: true,
     });
 
     await fireEvent(
-      view.getByTestId("export-sheet-inventory"),
+      view.getByTestId("export-sheet-topupCheckoutDetail"),
       "valueChange",
-      true,
+      false,
     );
     await flushPending();
-    await waitForSync(() =>
-      expect(
-        view.getByTestId("summary-export").props.accessibilityState?.disabled,
-      ).toBe(false),
-    );
+    expect(
+      view.getByTestId("export-sheet-topupCheckoutDetail").props.value,
+    ).toBe(true);
+    expect(await repos.config.getSummaryExportSheets()).toEqual({
+      inventory: false,
+      inbound: false,
+      topupCheckout: false,
+      topupCheckoutDetail: true,
+    });
+    expect(
+      view.getByTestId("summary-export").props.accessibilityState?.disabled,
+    ).toBe(false);
   });
 
   it("disables 导出 while pending; toast.error on failure; cancel does not toast", async () => {

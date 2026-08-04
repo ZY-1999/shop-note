@@ -155,6 +155,9 @@ export function SummaryTab({
 
   const toggleSheet = (key: keyof SummaryExportSheets, value: boolean) => {
     const next = { ...sheets, [key]: value };
+    if (value === false && Object.values(next).every((selected) => !selected)) {
+      return;
+    }
     setLocalSheets(next);
     updateSheets.mutate(next);
   };

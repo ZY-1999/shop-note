@@ -1,7 +1,7 @@
 # 导出配置：至少保留一项
 
 Type: spec
-Status: ready-for-agent
+Status: ready-for-human
 Parent: #01 (01-summary-export-polish.md)
 Blocked by: None — can start immediately
 
