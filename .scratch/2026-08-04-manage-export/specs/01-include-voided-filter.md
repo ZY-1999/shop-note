@@ -54,4 +54,4 @@ Blocked by: None — 可立即开始
   - [x] 补货/配置无开关 — `manage-tab.test.tsx::restock / config segments have no include-voided switch`
   - [x] void/restore 不回归 — `manage-tab.test.tsx::voids a staff then restores them…` + `::voids a product then restores it…`（关→消失；开→已删除+恢复）
   - Test run: `npx jest src/data/staff.test.ts src/data/product.test.ts src/components/manage-tab.test.tsx --forceExit` → 56 passed, 0 failed
-  - Commit: _(本提交)_
+  - Commit: `526c472`
