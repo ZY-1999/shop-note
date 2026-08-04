@@ -1,5 +1,10 @@
 import * as DocumentPicker from "expo-document-picker";
-import { EncodingType, readAsStringAsync } from "expo-file-system/legacy";
+import {
+  cacheDirectory,
+  copyAsync,
+  EncodingType,
+  readAsStringAsync,
+} from "expo-file-system/legacy";
 import { router } from "expo-router";
 import { useState, type ReactNode } from "react";
 import {
@@ -159,32 +164,46 @@ export function ImportForm({ kind, confirmExtra }: ImportFormProps) {
   };
 
   const onPickFile = async () => {
-    const result = await DocumentPicker.getDocumentAsync({
-      type: [
-        XLSX_MIME,
-        "application/vnd.ms-excel",
-        "application/octet-stream",
-      ],
-      copyToCacheDirectory: true,
-      multiple: false,
-    });
-    if (result.canceled) return;
-
-    const asset = result.assets[0];
-    if (!asset) return;
-    const name = (asset.name ?? "").toLowerCase();
-    const mime = asset.mimeType ?? "";
-    const isXlsx =
-      name.endsWith(".xlsx") ||
-      mime === XLSX_MIME ||
-      mime.includes("spreadsheetml");
-    if (!isXlsx) {
-      // 非 xlsx：不改库、不报错
-      return;
-    }
-
     try {
-      const base64 = await readAsStringAsync(asset.uri, {
+      // Android Expo Go: DocumentPicker's own cache copy lands outside the
+      // experience-scoped sandbox that legacy readAsStringAsync may read.
+      // Keep content:// (or any URI outside cacheDirectory), copy into
+      // scoped cache, then read.
+      const result = await DocumentPicker.getDocumentAsync({
+        type: [
+          XLSX_MIME,
+          "application/vnd.ms-excel",
+          "application/octet-stream",
+        ],
+        copyToCacheDirectory: false,
+        multiple: false,
+      });
+      if (result.canceled) return;
+
+      const asset = result.assets[0];
+      if (!asset) return;
+      const name = (asset.name ?? "").toLowerCase();
+      const mime = asset.mimeType ?? "";
+      const isXlsx =
+        name.endsWith(".xlsx") ||
+        mime === XLSX_MIME ||
+        mime.includes("spreadsheetml");
+      if (!isXlsx) {
+        // 非 xlsx：不改库、不报错
+        return;
+      }
+
+      const scopedCache = cacheDirectory ?? "";
+      let readUri = asset.uri;
+      if (
+        asset.uri.startsWith("content://") ||
+        !asset.uri.startsWith(scopedCache)
+      ) {
+        const dest = `${scopedCache}import-${Date.now()}.xlsx`;
+        await copyAsync({ from: asset.uri, to: dest });
+        readUri = dest;
+      }
+      const base64 = await readAsStringAsync(readUri, {
         encoding: EncodingType.Base64,
       });
       if (kind === "staff") {

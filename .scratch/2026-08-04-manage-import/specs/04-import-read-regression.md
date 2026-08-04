@@ -1,7 +1,7 @@
 # Android 导入读文件沙箱回归
 
 Type: spec
-Status: ready-for-agent
+Status: ready-for-human
 Parent: #02
 Blocked by: None — can start immediately
 
@@ -11,10 +11,10 @@ Blocked by: None — can start immediately
 
 ## Acceptance criteria
 
-- [ ] DocumentPicker 返回 `content://`（或不在体验 `cacheDirectory` 前缀下的 uri）时，先 `copyAsync` 到作用域 cache，再对该目标 `readAsStringAsync`，预览出现且无 `isn't readable` toast — 锁住沙箱修法
-- [ ] uri 已在体验 `cacheDirectory` 下时不调用 `copyAsync`（短路），预览仍正常 — 避免多余拷贝
-- [ ] `expo-file-system/legacy` 测试 mock 提供 `copyAsync`；上述两路径有自动化测且通过 — 回归可机跑
-- [ ] 无残留 `[DEBUG-…]` 诊断日志 — 诊断收尾
+- [x] DocumentPicker 返回 `content://`（或不在体验 `cacheDirectory` 前缀下的 uri）时，先 `copyAsync` 到作用域 cache，再对该目标 `readAsStringAsync`，预览出现且无 `isn't readable` toast — 锁住沙箱修法
+- [x] uri 已在体验 `cacheDirectory` 下时不调用 `copyAsync`（短路），预览仍正常 — 避免多余拷贝
+- [x] `expo-file-system/legacy` 测试 mock 提供 `copyAsync`；上述两路径有自动化测且通过 — 回归可机跑
+- [x] 无残留 `[DEBUG-…]` 诊断日志 — 诊断收尾
 - [ ] **待真机**：Android Expo Go 管理→导入子页选合法 xlsx 可进入预览 — 关闭本 spec 前手验
 
 ## Scope
@@ -47,3 +47,15 @@ Blocked by: None — can start immediately
 ## Rework on failure
 
 failure is isolated; redo this spec only（回退读路径改动与相关测）。
+
+## Comments
+
+- 2026-08-04 — implemented via `/tdd`；Status → `ready-for-human`
+  - [x] content:// → copyAsync → read dest — `import-form.test.tsx::copies content:// into scoped cache before read; preview shows without isn't readable toast`（亦断言 `copyToCacheDirectory: false`）
+  - [x] 作用域外 file uri → copy — `import-form.test.tsx::copies out-of-scope file uri into scoped cache before read`
+  - [x] 已在 cacheDirectory 下短路 — `import-form.test.tsx::skips copyAsync when uri is already under experience cacheDirectory`
+  - [x] legacy mock 含 `copyAsync` — 同上 suite 的 `expo-file-system/legacy` mock
+  - [x] 无 `[DEBUG-…]` — `src/components/import-form.tsx` grep 无命中
+  - [ ] **待真机**：Android Expo Go 管理→导入子页选合法 xlsx 可进入预览（自动化锁住修法；手验未做）
+  - Test run: `npx jest src/components/import-form.test.tsx --colors=false --forceExit` → 11 passed, 0 failed
+  - Commit: 本条关闭提交

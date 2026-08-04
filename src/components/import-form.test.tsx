@@ -41,18 +41,35 @@ jest.mock("expo-sharing", () => ({
   shareAsync: async () => undefined,
 }));
 
-const mockGetDocumentAsync = jest.fn<() => Promise<{
-  canceled: boolean;
-  assets?: { uri: string; name: string; mimeType?: string }[] | null;
-}>>();
+const mockGetDocumentAsync = jest.fn<
+  (opts?: {
+    type?: string | string[];
+    copyToCacheDirectory?: boolean;
+    multiple?: boolean;
+  }) => Promise<{
+    canceled: boolean;
+    assets?: { uri: string; name: string; mimeType?: string }[] | null;
+  }>
+>();
 jest.mock("expo-document-picker", () => ({
-  getDocumentAsync: () => mockGetDocumentAsync(),
+  getDocumentAsync: (opts: unknown) =>
+    mockGetDocumentAsync(
+      opts as {
+        type?: string | string[];
+        copyToCacheDirectory?: boolean;
+        multiple?: boolean;
+      },
+    ),
 }));
 
+const mockCopyAsync = jest.fn<(opts: { from: string; to: string }) => Promise<void>>(
+  async () => undefined,
+);
 const mockReadAsStringAsync = jest.fn<(uri: string, opts?: unknown) => Promise<string>>();
 jest.mock("expo-file-system/legacy", () => ({
   EncodingType: { Base64: "base64", UTF8: "utf8" },
   cacheDirectory: "file:///cache/",
+  copyAsync: (opts: { from: string; to: string }) => mockCopyAsync(opts),
   readAsStringAsync: (uri: string, opts?: unknown) =>
     mockReadAsStringAsync(uri, opts),
   writeAsStringAsync: async () => undefined,
@@ -66,6 +83,7 @@ afterEach(() => {
   mockBack.mockReset();
   mockRunExport.mockReset().mockResolvedValue("file:///cache/template.xlsx");
   mockGetDocumentAsync.mockReset();
+  mockCopyAsync.mockReset().mockResolvedValue(undefined);
   mockReadAsStringAsync.mockReset();
   jest.restoreAllMocks();
 });
@@ -489,5 +507,104 @@ describe("ImportForm — restock happy path (manage-import #03 tracer)", () => {
       .sort((a, b) => a - b);
     expect(qtys).toEqual([2, 10]);
     expect(view.queryAllByText("记录已保存")).toHaveLength(0);
+  });
+});
+
+describe("ImportForm — Android sandbox read path (manage-import #04)", () => {
+  it("copies content:// into scoped cache before read; preview shows without isn't readable toast", async () => {
+    const { repos } = await seed();
+    const { view } = await renderImport(<ImportForm kind="staff" />, { repos });
+
+    const base64 = workbookBase64([
+      ["姓名", "电话", "备注", "等级"],
+      ["沙箱员", "139", "", "普站"],
+    ]);
+    const contentUri = "content://com.android.providers.media.documents/document/123.xlsx";
+    mockGetDocumentAsync.mockResolvedValueOnce({
+      canceled: false,
+      assets: [
+        {
+          uri: contentUri,
+          name: "in.xlsx",
+          mimeType:
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        },
+      ],
+    });
+    mockReadAsStringAsync.mockImplementation(async (uri) => {
+      if (uri.startsWith("content://")) {
+        throw new Error(`Location '${uri}' isn't readable`);
+      }
+      return base64;
+    });
+
+    await fireEvent.press(view.getByTestId("import-pick-file"));
+    await waitForSync(() => view.getByTestId("import-preview"));
+
+    expect(mockGetDocumentAsync).toHaveBeenCalledWith(
+      expect.objectContaining({ copyToCacheDirectory: false }),
+    );
+    expect(mockCopyAsync).toHaveBeenCalledTimes(1);
+    const copyArg = mockCopyAsync.mock.calls[0]![0]!;
+    expect(copyArg.from).toBe(contentUri);
+    expect(copyArg.to).toMatch(/^file:\/\/\/cache\/import-\d+\.xlsx$/);
+    expect(mockReadAsStringAsync).toHaveBeenCalledWith(copyArg.to, {
+      encoding: "base64",
+    });
+    expect(textOf(view.getByTestId("import-ok-count"))).toContain("1");
+    expect(view.queryByText(/isn't readable/)).toBeNull();
+  });
+
+  it("copies out-of-scope file uri into scoped cache before read", async () => {
+    const { repos } = await seed();
+    const { view } = await renderImport(<ImportForm kind="staff" />, { repos });
+
+    const base64 = workbookBase64([
+      ["姓名", "电话", "备注", "等级"],
+      ["外域员", "", "", ""],
+    ]);
+    const hostUri =
+      "file:///data/user/0/host.exp.exponent/cache/DocumentPicker/host.xlsx";
+    mockGetDocumentAsync.mockResolvedValueOnce({
+      canceled: false,
+      assets: [{ uri: hostUri, name: "host.xlsx" }],
+    });
+    mockReadAsStringAsync.mockResolvedValueOnce(base64);
+
+    await fireEvent.press(view.getByTestId("import-pick-file"));
+    await waitForSync(() => view.getByTestId("import-preview"));
+
+    expect(mockCopyAsync).toHaveBeenCalledTimes(1);
+    const copyArg = mockCopyAsync.mock.calls[0]![0]!;
+    expect(copyArg.from).toBe(hostUri);
+    expect(copyArg.to).toMatch(/^file:\/\/\/cache\/import-\d+\.xlsx$/);
+    expect(mockReadAsStringAsync).toHaveBeenCalledWith(copyArg.to, {
+      encoding: "base64",
+    });
+  });
+
+  it("skips copyAsync when uri is already under experience cacheDirectory", async () => {
+    const { repos } = await seed();
+    const { view } = await renderImport(<ImportForm kind="staff" />, { repos });
+
+    const base64 = workbookBase64([
+      ["姓名", "电话", "备注", "等级"],
+      ["短路员", "", "", ""],
+    ]);
+    const scopedUri = "file:///cache/already-scoped.xlsx";
+    mockGetDocumentAsync.mockResolvedValueOnce({
+      canceled: false,
+      assets: [{ uri: scopedUri, name: "already-scoped.xlsx" }],
+    });
+    mockReadAsStringAsync.mockResolvedValueOnce(base64);
+
+    await fireEvent.press(view.getByTestId("import-pick-file"));
+    await waitForSync(() => view.getByTestId("import-preview"));
+
+    expect(mockCopyAsync).not.toHaveBeenCalled();
+    expect(mockReadAsStringAsync).toHaveBeenCalledWith(scopedUri, {
+      encoding: "base64",
+    });
+    expect(textOf(view.getByTestId("import-ok-count"))).toContain("1");
   });
 });
