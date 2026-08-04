@@ -69,4 +69,4 @@ Blocked by: None — 可与 #01 并行
   - [x] `formatCentsAsYuan` — `format-cents-as-yuan.test.ts::formats integer 分 as 元…` (+ signed)
   - [x] `MoneyText` 改调纯函数 — `money-text.test.tsx`（既有 3 条仍 GREEN）+ `money-text.tsx` import
   - Test run: `npx jest src/export/run-export.test.ts src/lib/format-cents-as-yuan.test.ts src/components/money-text.test.tsx --forceExit` → 11 passed, 0 failed
-  - Commit: `c8241a1`
+  - Commit: `1d73371`
