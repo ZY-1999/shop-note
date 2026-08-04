@@ -54,5 +54,5 @@ Blocked by: #01（导入壳含确认区扩展点 + bulk/toast 约定；不 Block
   - [x] 写入 — `useImportRestocks`（同家族 invalidate）；单次 toast「已导入 n 笔补货」+ back；无 n 次「记录已保存」
   - [x] fixture — restock RNTL seed 自备 `products.create`（不依赖 #02）
   - Test run: `npx jest src/import/preview-restock-import.test.ts src/import/build-restock-import-template.test.ts src/import/parse-restock-import-workbook.test.ts src/components/import-form.test.tsx src/components/manage-tab.test.tsx --forceExit` → 46 passed, 0 failed
-  - Commit: *(filled on close)*
+  - Commit: `ed03d51`
   - **待真机**：DocumentPicker 选补货表 + 模板分享手验
