@@ -1,8 +1,8 @@
 import type { ReactElement } from "react";
 import { afterEach, describe, expect, it, jest } from "@jest/globals";
 import type { QueryClient } from "@tanstack/react-query";
-import { fireEvent } from "@testing-library/react-native";
-import { Text } from "react-native";
+import { fireEvent, within } from "@testing-library/react-native";
+import { Text, StyleSheet } from "react-native";
 import * as XLSX from "xlsx";
 
 import { ImportForm } from "@/components/import-form";
@@ -135,6 +135,9 @@ describe("ImportForm — staff happy path (manage-import #01 tracer)", () => {
 
     expect(view.getByTestId("import-form-staff")).toBeTruthy();
     expect(view.queryByTestId("import-confirm-extra")).toBeNull();
+    expect(textOf(view.getByTestId("import-format-hint"))).toContain(
+      "仅支持模板文件内容格式导入",
+    );
 
     await fireEvent.press(view.getByTestId("import-download-template"));
     await waitForSync(() => expect(mockRunExport).toHaveBeenCalled());
@@ -174,6 +177,17 @@ describe("ImportForm — staff happy path (manage-import #01 tracer)", () => {
     expect(view.getByText("确认导入 2 个会员")).toBeTruthy();
     expect(view.getByTestId("import-ok-row-2")).toBeTruthy();
     expect(view.getByTestId("import-ok-row-3")).toBeTruthy();
+
+    // 预览：单行省略（不换行）；等级为末列（姓名/电话/备注/等级）
+    const row2 = within(view.getByTestId("import-ok-row-2"));
+    const nameCell = row2.getByText("张三");
+    expect(nameCell.props.numberOfLines).toBe(1);
+    expect(nameCell.props.ellipsizeMode).toBe("tail");
+    expect(row2.getByText("星站").props.numberOfLines).toBe(1);
+    expect(row2.getByText("星站").props.ellipsizeMode).toBe("tail");
+    const levelStyle = StyleSheet.flatten(row2.getByText("星站").props.style);
+    expect(levelStyle.flex).toBe(0);
+    expect(view.getByText("等级")).toBeTruthy();
 
     await fireEvent.press(view.getByTestId("import-confirm"));
     await waitForSync(() => expect(mockBack).toHaveBeenCalled());

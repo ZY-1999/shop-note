@@ -299,6 +299,12 @@ export function ImportForm({ kind, confirmExtra }: ImportFormProps) {
       style={[styles.container, { backgroundColor: theme.background }]}
       contentContainerStyle={styles.content}
     >
+      <Text
+        testID="import-format-hint"
+        style={[styles.formatHint, { color: theme.textSecondary }]}
+      >
+        仅支持模板文件内容格式导入，如有需要可下载模板
+      </Text>
       <View style={styles.actions}>
         <Pressable
           testID="import-download-template"
@@ -344,16 +350,25 @@ export function ImportForm({ kind, confirmExtra }: ImportFormProps) {
             {kind === "staff" ? (
               <>
                 <View style={[styles.tableRow, styles.tableHead]}>
-                  {["姓名", "电话", "备注", "等级"].map((h) => (
+                  {(
+                    [
+                      { key: "姓名", style: styles.cell },
+                      { key: "电话", style: styles.cell },
+                      { key: "备注", style: styles.cell },
+                      { key: "等级", style: styles.cellLevel },
+                    ] as const
+                  ).map((h) => (
                     <Text
-                      key={h}
+                      key={h.key}
+                      numberOfLines={1}
+                      ellipsizeMode="tail"
                       style={[
-                        styles.cell,
+                        h.style,
                         styles.headCell,
                         { color: theme.textSecondary },
                       ]}
                     >
-                      {h}
+                      {h.key}
                     </Text>
                   ))}
                 </View>
@@ -363,16 +378,32 @@ export function ImportForm({ kind, confirmExtra }: ImportFormProps) {
                     testID={`import-ok-row-${row.row}`}
                     style={styles.tableRow}
                   >
-                    <Text style={[styles.cell, { color: theme.text }]}>
+                    <Text
+                      numberOfLines={1}
+                      ellipsizeMode="tail"
+                      style={[styles.cell, { color: theme.text }]}
+                    >
                       {row.name}
                     </Text>
-                    <Text style={[styles.cell, { color: theme.text }]}>
+                    <Text
+                      numberOfLines={1}
+                      ellipsizeMode="tail"
+                      style={[styles.cell, { color: theme.text }]}
+                    >
                       {row.phone}
                     </Text>
-                    <Text style={[styles.cell, { color: theme.text }]}>
+                    <Text
+                      numberOfLines={1}
+                      ellipsizeMode="tail"
+                      style={[styles.cell, { color: theme.text }]}
+                    >
                       {row.notes}
                     </Text>
-                    <Text style={[styles.cell, { color: theme.text }]}>
+                    <Text
+                      numberOfLines={1}
+                      ellipsizeMode="tail"
+                      style={[styles.cellLevel, { color: theme.text }]}
+                    >
                       {row.level === "gold" ? "星站" : "普站"}
                     </Text>
                   </View>
@@ -384,6 +415,8 @@ export function ImportForm({ kind, confirmExtra }: ImportFormProps) {
                   {["名称", "单价"].map((h) => (
                     <Text
                       key={h}
+                      numberOfLines={1}
+                      ellipsizeMode="tail"
                       style={[
                         styles.cell,
                         styles.headCell,
@@ -400,10 +433,18 @@ export function ImportForm({ kind, confirmExtra }: ImportFormProps) {
                     testID={`import-ok-row-${row.row}`}
                     style={styles.tableRow}
                   >
-                    <Text style={[styles.cell, { color: theme.text }]}>
+                    <Text
+                      numberOfLines={1}
+                      ellipsizeMode="tail"
+                      style={[styles.cell, { color: theme.text }]}
+                    >
                       {row.title}
                     </Text>
-                    <Text style={[styles.cell, { color: theme.text }]}>
+                    <Text
+                      numberOfLines={1}
+                      ellipsizeMode="tail"
+                      style={[styles.cell, { color: theme.text }]}
+                    >
                       {formatCentsAsYuan(row.purchase_price)}
                     </Text>
                   </View>
@@ -415,6 +456,8 @@ export function ImportForm({ kind, confirmExtra }: ImportFormProps) {
                   {["商品名称", "数量"].map((h) => (
                     <Text
                       key={h}
+                      numberOfLines={1}
+                      ellipsizeMode="tail"
                       style={[
                         styles.cell,
                         styles.headCell,
@@ -431,10 +474,18 @@ export function ImportForm({ kind, confirmExtra }: ImportFormProps) {
                     testID={`import-ok-row-${row.row}`}
                     style={styles.tableRow}
                   >
-                    <Text style={[styles.cell, { color: theme.text }]}>
+                    <Text
+                      numberOfLines={1}
+                      ellipsizeMode="tail"
+                      style={[styles.cell, { color: theme.text }]}
+                    >
                       {row.title}
                     </Text>
-                    <Text style={[styles.cell, { color: theme.text }]}>
+                    <Text
+                      numberOfLines={1}
+                      ellipsizeMode="tail"
+                      style={[styles.cell, { color: theme.text }]}
+                    >
                       {row.qty}
                     </Text>
                   </View>
@@ -496,6 +547,7 @@ export function ImportForm({ kind, confirmExtra }: ImportFormProps) {
 const styles = StyleSheet.create({
   container: { flex: 1 },
   content: { padding: 12, gap: 12, paddingBottom: BottomTabInset },
+  formatHint: { fontSize: 13, lineHeight: 18 },
   actions: { flexDirection: "row", gap: 8 },
   btn: {
     borderWidth: 1,
@@ -506,8 +558,15 @@ const styles = StyleSheet.create({
   sectionTitle: { fontSize: 15, fontWeight: "600", marginBottom: 8 },
   table: { borderWidth: 1, borderRadius: 8, overflow: "hidden" },
   tableHead: { backgroundColor: "transparent" },
-  tableRow: { flexDirection: "row", paddingVertical: 6, paddingHorizontal: 8 },
-  cell: { flex: 1, fontSize: 13 },
+  tableRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 6,
+    paddingHorizontal: 8,
+  },
+  cell: { flex: 1, minWidth: 0, fontSize: 13 },
+  /** 等级仅两字：不占 1/4 均分宽，按内容收在末列 */
+  cellLevel: { flex: 0, marginLeft: 8, fontSize: 13 },
   headCell: { fontWeight: "600" },
   failSection: { marginTop: 12 },
   failToggle: { paddingVertical: 4 },
