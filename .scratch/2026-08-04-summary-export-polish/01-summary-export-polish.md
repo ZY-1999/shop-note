@@ -72,3 +72,4 @@ Status: ready-for-agent
 - 2026-08-04 — Gate 0 补充：补货页商品选择多行 gap 适当缩小（共享 ItemsSelector 行间距）。
 - 2026-08-04 — Gate 0 人工确认；Status → ready-for-agent；进入 /sdd-flow。
 - 2026-08-04 — /to-spec：4 specs 落地（候选 2 胜出；覆盖+可行性评审 PASS）；待 Gate A。
+- 2026-08-04 — Gate A 确认；四 spec 已实现；双轴 review PASS（Standards 无硬违规 / Spec satisfied）。
