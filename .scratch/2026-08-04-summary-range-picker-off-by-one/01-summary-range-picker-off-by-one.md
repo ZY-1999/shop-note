@@ -74,3 +74,4 @@ Done checklist：
 
 - 2026-08-04 — diagnose PASS → to-prd；Gate 0 待确认。
 - 2026-08-04 — Gate 0 确认；Status → ready-for-agent；进入 /sdd-flow。
+- 2026-08-04 — /to-spec：单 spec（日历日稳定 picker value）；待 Gate A。
