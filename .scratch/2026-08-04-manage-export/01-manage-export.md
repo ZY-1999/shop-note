@@ -116,3 +116,4 @@ ExportJob {
 - 2026-08-04 — grill 完成。
 - 2026-08-04 — 对抗评审：修正「Alert」→ toast；承接 iOS xlsx UTI 核对项。PASS 后 Status `ready-for-human`，待 Gate 0。
 - 2026-08-04 — Gate 0 通过；`/sdd-flow` 入口翻为 `ready-for-agent`。
+- 2026-08-04 — 四条 spec 落地 + Stage 4；真机 smoke（分享 + 打开 xlsx）用户确认 PASS。

@@ -15,7 +15,7 @@ Blocked by: #01, #02
 - [x] 导出行集与当前开关+搜索一致
 - [x] 点导出触发 `useExport`；`isPending` 时按钮禁用；失败 `toast.error`；取消分享不 toast 错误
 - [x] 文件名 `会员-YYYYMMDD.xlsx`（设备本地日）
-- [ ] **[手动]** 真机：分享面板 + 打开 xlsx 可读；若需 iOS UTI/`infoPlist` 已按 SDK 57 配置 —— 待真机
+- [x] **[手动]** 真机：分享面板 + 打开 xlsx 可读；若需 iOS UTI/`infoPlist` 已按 SDK 57 配置 —— 2026-08-04 用户确认 PASS（与 #04 合并 smoke；未改 `app.json`）
 
 ## Scope
 
@@ -53,7 +53,8 @@ xlsx 库或 UTI 选型失败只重做本 spec；#04 等本 spec 锁定后再开�
   - [x] 行集与开关+搜索一致 — `manage-tab.test.tsx::export job filename is 会员-YYYYMMDD.xlsx; build rows match current list (switch+search)`
   - [x] useExport / pending / toast.error / 取消不 toast — `manage-tab.test.tsx::disables 导出 while pending; toast.error on failure; cancel-style success does not toast`
   - [x] 文件名 — `build-staff-workbook.test.ts::names the file 会员-YYYYMMDD.xlsx…` + 上条 manage-tab（`staffExportFilename()`）
-  - [ ] 手动真机 — 待真机（UTI 决策见上；无需本次 `infoPlist`）
+  - [x] 手动真机 — 2026-08-04 用户确认：分享面板 + 打开 xlsx 可读 PASS（与 #04 合并；出站靠扩展名+MIME，未改 `infoPlist`）
   - Test run: `npx jest src/export/build-staff-workbook.test.ts src/export/run-export.test.ts src/components/manage-tab.test.tsx --forceExit` → 39 passed, 0 failed
   - Commit: `1ace2b0`
   - Lib: `xlsx@0.18.5`
+- 2026-08-04 — 真机 smoke 发布门关闭：分享 + xlsx 可读 PASS。

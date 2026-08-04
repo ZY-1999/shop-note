@@ -16,7 +16,7 @@ Blocked by: #01, #02, #03
 - [x] 点导出走 `useExport`；pending 禁用；失败 toast.error；取消分享非错误
 - [x] 文件名 `商品-YYYYMMDD.xlsx`
 - [x] 补货 / 配置段无导出控件
-- [ ] **[手动]** 真机分享 + 打开 xlsx（可与 #03 合并一次 smoke）
+- [x] **[手动]** 真机分享 + 打开 xlsx（可与 #03 合并一次 smoke）— 2026-08-04 用户确认 PASS
 
 ## Scope
 
@@ -51,7 +51,8 @@ Blocked by: #01, #02, #03
   - [x] useExport / pending / toast.error / 取消不 toast — `manage-tab.test.tsx::disables 导出 while pending…`（product export describe）
   - [x] 文件名 — `build-product-workbook.test.ts::names the file 商品-YYYYMMDD.xlsx…` + 上条 manage-tab（`productExportFilename()`）
   - [x] 补货/配置无导出 — `manage-tab.test.tsx::shows 导出 on product; restock/config have none`（+ staff describe 同断言）
-  - [ ] 手动真机 — 待真机（可与 #03 合并 smoke；UTI 决策同 #03）
+  - [x] 手动真机 — 2026-08-04 用户确认：与 #03 合并 smoke，分享 + xlsx 可读 PASS
   - Test run: `npx jest src/export/build-product-workbook.test.ts src/export/build-staff-workbook.test.ts src/export/run-export.test.ts src/lib/format-cents-as-yuan.test.ts src/components/manage-tab.test.tsx --forceExit` → 48 passed, 0 failed
   - Lib: `xlsx@0.18.5`（reused from #03）
   - Commit: `b491362`
+- 2026-08-04 — 真机 smoke 发布门关闭：与 #03 合并 PASS。
