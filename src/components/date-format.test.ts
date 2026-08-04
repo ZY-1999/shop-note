@@ -135,3 +135,20 @@ describe("normalizeDayRange — summary-range-export #01", () => {
     expect(r.to).toBe(new Date(2026, 7, 5, 23, 59, 59, 999).getTime());
   });
 });
+
+/**
+ * Feedback loop for summary range DateTimePicker off-by-one (diagnose-bug):
+ * toolbar uses local formatDate(from); picker is fed `new Date(from)` where from is
+ * local midnight — on UTC+8 that instant is the *previous* UTC calendar day, and
+ * native date pickers that read UTC show D-1 while the label shows D.
+ */
+describe("summary range picker value vs toolbar label (off-by-one hazard)", () => {
+  it("new Date(local-midnight from) UTC ymd matches formatDate (native picker contract)", () => {
+    const aug4 = new Date(2026, 7, 4, 12, 0).getTime();
+    const from = rangeFor("last10Days", aug4).from;
+    expect(formatDate(from)).toBe("2026/07/26");
+    // Same construction as summary-tab DateTimePicker `value={new Date(range.from)}`
+    const pickerValue = new Date(from);
+    expect(pickerValue.toISOString().slice(0, 10)).toBe("2026/07/26".replace(/\//g, "-"));
+  });
+});
