@@ -330,11 +330,11 @@ describe("StaffDetail — day-batched rendering (spec #04 AC4, ADR-0007)", () =>
 });
 
 describe("StaffDetail — member level badge in header (member-rename-level #03)", () => {
-  it("shows the 金站 badge next to the name for a gold member (read-only)", async () => {
+  it("shows the 星站 badge next to the name for a gold member (read-only)", async () => {
     const repos = setupRepos(new InMemoryAdapter());
     const gold = await repos.staff.create({ name: "金客", phone: "", notes: "", level: "gold" });
     const { view } = await renderDetail(<StaffDetail staffId={gold.id} onOpenRecord={jest.fn()} onOpenTopup={jest.fn()} />, { repos });
     await waitForSync(() => view.getByText("金客"));
-    expect(view.getByText("金站")).toBeTruthy();
+    expect(view.getByText("星站")).toBeTruthy();
   });
 });

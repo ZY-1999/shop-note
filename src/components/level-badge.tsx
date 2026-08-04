@@ -12,9 +12,9 @@ import { useTheme } from "@/hooks/use-theme";
  * in the manage list, the 记账 row, and the member detail header (spec #03).
  *
  * Rendered only for tiers ABOVE the default 普站: a 普站 member shows nothing
- * (the default is not worth list noise), 金站 gets a prominent tag. The label
+ * (the default is not worth list noise), 星站 gets a prominent tag. The label
  * comes from the single `STAFF_LEVELS` registry via `labelForLevel`, so this
- * component never hardcodes 「普站/金站」 — rebranding or adding a tier is a
+ * component never hardcodes 「普站/星站」 — rebranding or adding a tier is a
  * registry change, not an edit here.
  */
 export function LevelBadge({ level }: { level: StaffLevel }) {

@@ -164,7 +164,7 @@ describe("SummaryTab — day header uses FlowSummary (per-day bundles/retail)", 
 });
 
 describe("SummaryTab — staff row shows member level via MemberName", () => {
-  it("renders the 金站 badge next to a gold member's name in the day's staff row", async () => {
+  it("renders the 星站 badge next to a gold member's name in the day's staff row", async () => {
     const repos = setupRepos(new InMemoryAdapter());
     const gold = await repos.staff.create({ name: "金客", phone: "", notes: "", level: "gold" });
     const cola = await repos.products.create({ title: "可乐", purchase_price: cents(300), category: "饮料" });
@@ -177,7 +177,7 @@ describe("SummaryTab — staff row shows member level via MemberName", () => {
 
     expect(view.getByText("金客")).toBeTruthy();
     expect(view.getByTestId("level-badge")).toBeTruthy();
-    expect(view.getByText("金站")).toBeTruthy();
+    expect(view.getByText("星站")).toBeTruthy();
   });
 });
 

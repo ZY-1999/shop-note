@@ -211,7 +211,7 @@ describe("StaffRepository — admin '-1' protection (stock-balance-refactor)", (
 
 describe("StaffLevel registry — single source for labels + sort rank", () => {
   test("labelForLevel maps codes to display labels; gold ranks above normal", async () => {
-    expect(labelForLevel("gold")).toBe("金站");
+    expect(labelForLevel("gold")).toBe("星站");
     expect(labelForLevel("normal")).toBe("普站");
     expect(levelRank("gold")).toBeGreaterThan(levelRank("normal"));
     expect(DEFAULT_STAFF_LEVEL).toBe("normal");
@@ -237,7 +237,7 @@ describe("StaffRepository — level", () => {
       level: "gold",
     });
     expect(created.level).toBe("gold");
-    expect(labelForLevel(created.level)).toBe("金站");
+    expect(labelForLevel(created.level)).toBe("星站");
   });
 
   test("create audit captures level in the diff (auditable covers level)", async () => {

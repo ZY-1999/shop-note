@@ -14,7 +14,7 @@ import { useTheme } from "@/hooks/use-theme";
  * badge + derived balance + 欠款 marker" — a deep module.
  *
  * Renders exactly two rows, no border / no button / no callback:
- *  1. `<MemberName>` (name + LevelBadge; 普站 omits the badge, 金站 shows it)
+ *  1. `<MemberName>` (name + LevelBadge; 普站 omits the badge, 星站 shows it)
  *  2. 「余额」label + `<MoneyText>` (negative → 欠款 in danger)
  *
  * Data comes from two independent top-level `useQuery` calls (`useStaffById` +

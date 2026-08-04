@@ -6,25 +6,25 @@ import { id, now } from "@/data/primitives";
  * Member level (display word: 「会员等级」). Stored as a stable English code so
  * rebranding the label (cf. the direction display-label rename precedent — 出库↔出单, enum unchanged) needs no
  * data migration; the Chinese label lives only in {@link STAFF_LEVELS}. Two
- * tiers today (普站 / 金站); the registry is the single source for both UI
+ * tiers today (普站 / 星站); the registry is the single source for both UI
  * labels and the gold-first list sort, so adding a tier is one row here.
  */
 export type StaffLevel = "normal" | "gold";
 
 export interface StaffLevelDef {
   readonly code: StaffLevel;
-  readonly label: "普站" | "金站";
-  /** Higher rank sorts first (金站 before 普站). */
+  readonly label: "普站" | "星站";
+  /** Higher rank sorts first (星站 before 普站). */
   readonly rank: number;
 }
 
 /**
  * Single source of truth for level codes, display labels, and sort rank. Order
  * is rank-desc for display/sort consumers; UI reads labels via `labelForLevel`,
- * the repo sorts via `levelRank` — neither hardcodes 「普站/金站」.
+ * the repo sorts via `levelRank` — neither hardcodes 「普站/星站」.
  */
 export const STAFF_LEVELS: readonly StaffLevelDef[] = [
-  { code: "gold", label: "金站", rank: 1 },
+  { code: "gold", label: "星站", rank: 1 },
   { code: "normal", label: "普站", rank: 0 },
 ];
 
@@ -40,7 +40,7 @@ export const DEFAULT_STAFF_LEVEL: StaffLevel = "normal";
  */
 export const ADMIN_STAFF_ID = "-1";
 
-/** Display label for a level code (e.g. 'gold' → '金站'). */
+/** Display label for a level code (e.g. 'gold' → '星站'). */
 export function labelForLevel(code: StaffLevel): string {
   return defForLevel(code).label;
 }
@@ -127,7 +127,7 @@ export class StaffRepository {
       .filter((s) => s.id !== ADMIN_STAFF_ID) // '-1' is never a manageable member
       .filter((s) => (opts?.includeVoided ? true : s.voided_at == null));
     // Gold-first (rank desc), then created_at asc — one sort, every list view
-    // (记账, 管理) renders 金站 before 普站. rank is derived from the level
+    // (记账, 管理) renders 星站 before 普站. rank is derived from the level
     // code, not a stored column, so this must live here, not in the port query.
     return visible.slice().sort(byLevelThenCreated);
   }
@@ -230,7 +230,7 @@ function auditable(staff: Staff): Record<string, unknown> {
 /**
  * Gold-first list order: higher level rank first, then created_at ascending
  * (oldest within a tier first). Applied by `list` / `listActive` (and inherited
- * by `search`) so every member list renders 金站 before 普站 with no caller-side
+ * by `search`) so every member list renders 星站 before 普站 with no caller-side
  * re-sort.
  */
 function byLevelThenCreated(a: Staff, b: Staff): number {

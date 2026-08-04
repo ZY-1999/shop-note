@@ -17,12 +17,12 @@ async function render(ui: ReactElement) {
 }
 
 describe("MemberName — name + level badge", () => {
-  it("renders the member name and the 金站 badge for a gold member", async () => {
+  it("renders the member name and the 星站 badge for a gold member", async () => {
     const { view } = await render(<MemberName name="张三" level="gold" />);
 
     expect(view.getByText("张三")).toBeTruthy();
     expect(view.getByTestId("level-badge")).toBeTruthy();
-    expect(view.getByText("金站")).toBeTruthy();
+    expect(view.getByText("星站")).toBeTruthy();
   });
 
   it("omits the badge for a 普站 (default-level) member", async () => {
@@ -30,7 +30,7 @@ describe("MemberName — name + level badge", () => {
 
     expect(view.getByText("李四")).toBeTruthy();
     expect(view.queryByTestId("level-badge")).toBeNull();
-    expect(view.queryByText("金站")).toBeNull();
+    expect(view.queryByText("星站")).toBeNull();
   });
 
   it("ellipsizes the name with '…' when it overflows (single line, tail) so a long name never wraps or blows out the row", async () => {

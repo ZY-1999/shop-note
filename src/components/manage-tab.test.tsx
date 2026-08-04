@@ -434,7 +434,7 @@ describe("ManageTab — member level selector + badge (member-rename-level #03)"
     expect(created?.level).toBe("normal");
   });
 
-  it("picking 金站 creates a 金站 member and shows the 金站 badge in the list", async () => {
+  it("picking 星站 creates a 星站 member and shows the 星站 badge in the list", async () => {
     const { repos } = await seed();
     const { view } = await renderManage(<ManageTab />, { repos });
     await waitForSync(() => view.getByTestId("seg-staff"));
@@ -448,10 +448,10 @@ describe("ManageTab — member level selector + badge (member-rename-level #03)"
     await waitForSync(() => view.getByText("赵六"));
     const created = (await repos.staff.list()).find((s) => s.name === "赵六");
     expect(created?.level).toBe("gold");
-    expect(view.getByText("金站")).toBeTruthy(); // badge rendered in the row
+    expect(view.getByText("星站")).toBeTruthy(); // badge rendered in the row
   });
 
-  it("edit form preloads the member's level — a 金站 member saved untouched stays 金站", async () => {
+  it("edit form preloads the member's level — a 星站 member saved untouched stays 星站", async () => {
     const repos = setupRepos(new InMemoryAdapter());
     const gold = await repos.staff.create({ name: "金一", phone: "", notes: "", level: "gold" });
     const { view } = await renderManage(<ManageTab />, { repos });
@@ -459,7 +459,7 @@ describe("ManageTab — member level selector + badge (member-rename-level #03)"
 
     await fireEvent.press(view.getByTestId(`manage-staff-${gold.id}`)); // open edit
     await waitForSync(() => view.getByTestId("staff-name-input"));
-    // save without touching the selector → preloaded 金站 persists (not reset to 普站)
+    // save without touching the selector → preloaded 星站 persists (not reset to 普站)
     await fireEvent.press(view.getByTestId("staff-submit"));
     await waitForSync(() => view.getByText("金一"));
     expect((await repos.staff.getById(gold.id))?.level).toBe("gold");
@@ -470,15 +470,15 @@ describe("ManageTab — member level selector + badge (member-rename-level #03)"
     const gold = await repos.staff.create({ name: "金二", phone: "", notes: "", level: "gold" });
     const { view } = await renderManage(<ManageTab />, { repos });
     await waitForSync(() => view.getByTestId(`manage-staff-${gold.id}`));
-    expect(view.getByText("金站")).toBeTruthy(); // row badge before edit
+    expect(view.getByText("星站")).toBeTruthy(); // row badge before edit
 
     await fireEvent.press(view.getByTestId(`manage-staff-${gold.id}`)); // open edit
     await waitForSync(() => view.getByTestId("staff-name-input"));
-    await fireEvent.press(view.getByTestId("staff-level-normal")); // 金站 → 普站
+    await fireEvent.press(view.getByTestId("staff-level-normal")); // 星站 → 普站
     await fireEvent.press(view.getByTestId("staff-submit"));
 
     // back to list: badge gone (普站), repo reflects the change
-    await waitForSync(() => expect(() => view.getByText("金站")).toThrow());
+    await waitForSync(() => expect(() => view.getByText("星站")).toThrow());
     expect((await repos.staff.getById(gold.id))?.level).toBe("normal");
   });
 });
