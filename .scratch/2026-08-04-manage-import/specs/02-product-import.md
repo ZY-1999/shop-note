@@ -52,5 +52,5 @@ Blocked by: #01（导入壳 + bulk/toast 约定 + useExport 模板模式；不�
   - [x] 金额 — `parse-yuan-to-cents.test.ts`（合法 / 对称 `formatCentsAsYuan` / 缺必填与非法）+ preview 写入 `purchase_price`
   - [x] 写入 — `import-form.test.tsx::downloads product template…`（单次 toast / back / 无「商品已创建」）+ `::mid-fail…`（前缀保留 + toast.error）；`useImportProducts` → `qk.products`
   - Test run: `npx jest src/lib/parse-yuan-to-cents.test.ts src/import/build-product-import-template.test.ts src/import/preview-product-import.test.ts src/import/parse-product-import-workbook.test.ts src/components/import-form.test.tsx src/components/manage-tab.test.tsx --forceExit` → 53 passed, 0 failed（含 #01/#03 回归）
-  - Commit: _(filled after commit)_
+  - Commit: `f6afab0`
   - **待真机**：DocumentPicker 选文件 + 模板分享手验
