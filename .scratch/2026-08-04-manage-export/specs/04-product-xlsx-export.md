@@ -54,4 +54,4 @@ Blocked by: #01, #02, #03
   - [ ] 手动真机 — 待真机（可与 #03 合并 smoke；UTI 决策同 #03）
   - Test run: `npx jest src/export/build-product-workbook.test.ts src/export/build-staff-workbook.test.ts src/export/run-export.test.ts src/lib/format-cents-as-yuan.test.ts src/components/manage-tab.test.tsx --forceExit` → 48 passed, 0 failed
   - Lib: `xlsx@0.18.5`（reused from #03）
-  - Commit: (pending)
+  - Commit: `b491362`
