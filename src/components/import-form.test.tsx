@@ -146,7 +146,9 @@ describe("ImportForm — staff happy path (manage-import #01 tracer)", () => {
     const sheet = XLSX.utils.sheet_to_json<unknown[]>(wb.Sheets[wb.SheetNames[0]], {
       header: 1,
     });
-    expect(sheet).toEqual([["姓名", "电话", "备注", "等级"]]);
+    expect(sheet).toHaveLength(2);
+    expect(sheet[0]).toEqual(["姓名", "电话", "备注", "等级"]);
+    expect(sheet[1]).toEqual(["张三", "13800000000", "示例备注", "普站"]);
 
     const base64 = workbookBase64([
       ["姓名", "电话", "备注", "等级"],
@@ -306,7 +308,9 @@ describe("ImportForm — product happy path (manage-import #02 tracer)", () => {
     const sheet = XLSX.utils.sheet_to_json<unknown[]>(wb.Sheets[wb.SheetNames[0]], {
       header: 1,
     });
-    expect(sheet).toEqual([["名称", "单价"]]);
+    expect(sheet).toHaveLength(2);
+    expect(sheet[0]).toEqual(["名称", "单价"]);
+    expect(sheet[1]).toEqual(["可乐", "3.00"]);
 
     const base64 = productWorkbookBase64([
       ["名称", "单价"],
@@ -460,7 +464,9 @@ describe("ImportForm — restock happy path (manage-import #03 tracer)", () => {
       wb.Sheets[wb.SheetNames[0]],
       { header: 1 },
     );
-    expect(sheet).toEqual([["商品名称", "数量"]]);
+    expect(sheet).toHaveLength(2);
+    expect(sheet[0]).toEqual(["商品名称", "数量"]);
+    expect(String(sheet[1]![0])).toMatch(/示例/);
 
     const base64 = restockWorkbook([
       ["商品名称", "数量"],

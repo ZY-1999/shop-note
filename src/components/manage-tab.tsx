@@ -317,6 +317,9 @@ function RestockManage({ onImport }: { onImport: () => void }) {
       contentContainerStyle={styles.listContent}
     >
       <View style={styles.filterBar}>
+        <Text style={[styles.filterLabel, { color: theme.textSecondary }]}>
+          选择商品补货
+        </Text>
         <View style={styles.filterSpacer} />
         <Pressable
           testID="restock-import"
@@ -326,7 +329,6 @@ function RestockManage({ onImport }: { onImport: () => void }) {
           <Text style={{ color: theme.text, fontWeight: "600" }}>导入</Text>
         </Pressable>
       </View>
-      <Text style={{ color: theme.textSecondary }}>选择商品补货</Text>
       <ItemsSeletor
         value={selectedItems}
         onChange={(value) => {

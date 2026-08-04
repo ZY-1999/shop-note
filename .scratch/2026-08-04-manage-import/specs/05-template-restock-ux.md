@@ -1,7 +1,7 @@
 # 导入模板示例行 + 补货顶栏同行
 
 Type: spec
-Status: ready-for-agent
+Status: ready-for-human
 Parent: #02
 Blocked by: None — can start immediately
 
@@ -13,16 +13,16 @@ Blocked by: None — can start immediately
 
 ### 模板示例
 
-- [ ] 会员/商品/补货 `build*ImportTemplate` 输出表头 + **恰好一行**示例；列与现导入表头一致 — 真机可对照填写
-- [ ] 会员示例含合法等级展示词（普站/星站），可被 `parseStaffImportWorkbook` 读出；姓名**不是**「管理员」；商品示例可被对应 parse 读出；补货示例 parse 出一行即可（preview ok 不要求；进失败区可接受）— 示例可被管道理解
-- [ ] 补货示例对用户有可感知指引（如商品名含「示例」，或等价说明）：提示改成库内已有商品名或删除该行 — 避免误导入教学行
-- [ ] 相关 `build-*-import-template` 单测断言表头 + 恰好一行示例并通过；`import-form` 下载模板测例若断言 sheet 形状须同步更新 — 回归
-- [ ] 父 PRD `#01` 或本 bug `#02` Comments 注明模板条款修订为「表头 + 一行示例」— 文档对齐
+- [x] 会员/商品/补货 `build*ImportTemplate` 输出表头 + **恰好一行**示例；列与现导入表头一致 — 真机可对照填写
+- [x] 会员示例含合法等级展示词（普站/星站），可被 `parseStaffImportWorkbook` 读出；姓名**不是**「管理员」；商品示例可被对应 parse 读出；补货示例 parse 出一行即可（preview ok 不要求；进失败区可接受）— 示例可被管道理解
+- [x] 补货示例对用户有可感知指引（如商品名含「示例」，或等价说明）：提示改成库内已有商品名或删除该行 — 避免误导入教学行
+- [x] 相关 `build-*-import-template` 单测断言表头 + 恰好一行示例并通过；`import-form` 下载模板测例若断言 sheet 形状须同步更新 — 回归
+- [x] 父 PRD `#01` 或本 bug `#02` Comments 注明模板条款修订为「表头 + 一行示例」— 文档对齐
 
 ### 补货顶栏
 
-- [ ] 管理 → 补货：第一行顶栏左「选择商品补货」、右「导入」，不再分行 — UX
-- [ ] restock 视图测断言两者同处第一行顶栏并通过 — 回归
+- [x] 管理 → 补货：第一行顶栏左「选择商品补货」、右「导入」，不再分行 — UX
+- [x] restock 视图测断言两者同处第一行顶栏并通过 — 回归
 
 ## Scope
 
@@ -54,3 +54,16 @@ Blocked by: None — can start immediately
 ## Rework on failure
 
 failure is isolated; redo this spec only（回退三模板 + 补货顶栏 + 相关测/注释）。
+
+## Comments
+
+- 2026-08-04 — skeleton + design from Gate A；parent `#02`。
+- 2026-08-04 — implemented via `/tdd`；Status → `ready-for-human`
+  - [x] 会员模板 — `build-staff-import-template.test.ts::emits 会员导入模板.xlsx with header + exactly one example row`（parse：姓名≠管理员；等级∈普站/星站）
+  - [x] 商品模板 — `build-product-import-template.test.ts::emits 商品导入模板.xlsx with header + exactly one example row`
+  - [x] 补货模板 — `build-restock-import-template.test.ts::emits 补货导入模板.xlsx with header + exactly one 示例 row`（商品名含「示例」）
+  - [x] import-form sheet 形状 — `import-form.test.tsx` staff/product/restock download 断言同步为表头+示例
+  - [x] 补货顶栏 — `manage-tab.test.tsx::puts 选择商品补货 and 导入 on the same filterBar row`
+  - [x] 文档 — `#02` Comments：模板由「仅表头」修订为「表头 + 一行示例」
+  - Test run: `npx jest src/import/build-staff-import-template.test.ts src/import/build-product-import-template.test.ts src/import/build-restock-import-template.test.ts src/components/import-form.test.tsx src/components/manage-tab.test.tsx --forceExit` → 51 passed, 0 failed
+  - Commit: _(filled after commit)_

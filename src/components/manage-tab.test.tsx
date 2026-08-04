@@ -476,6 +476,17 @@ describe("ManageTab — restock segment (stock-balance-refactor AC3)", () => {
     expect(onImport).toHaveBeenCalledWith("restock");
   });
 
+  it("puts 选择商品补货 and 导入 on the same filterBar row (manage-import #05)", async () => {
+    const { repos } = await seed();
+    const { view } = await renderManage(<ManageTab onImport={onImport} />, { repos });
+    await fireEvent.press(view.getByTestId("seg-restock"));
+    await waitForSync(() => view.getByTestId("view-restock"));
+
+    const hint = view.getByText("选择商品补货");
+    const importBtn = view.getByTestId("restock-import");
+    expect(hint.parent).toBe(importBtn.parent);
+  });
+
   it("blocks restock when no product is selected", async () => {
     const { repos } = await seed();
     const { view } = await renderManage(<ManageTab onImport={onImport} />, { repos });

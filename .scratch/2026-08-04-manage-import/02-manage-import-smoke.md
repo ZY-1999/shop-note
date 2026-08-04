@@ -108,3 +108,4 @@ Done checklist：
 - 2026-08-04 — 对抗评审 PASS；Status → `ready-for-human`，待 Gate 0。
 - 2026-08-04 — 更正：预览长字段**应为省略**（确认大概即可），非展全文；从缺陷项中移除，写入 Expected/Out of Scope 锁定。
 - 2026-08-04 — Gate 0 通过；`/sdd-flow` 入口翻为 `ready-for-agent`。
+- 2026-08-04 — 模板由「仅表头」修订为「表头 + 一行示例」（spec #05）。
