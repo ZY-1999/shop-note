@@ -1,7 +1,7 @@
 # 汇总页时间段重构 + 多 Sheet 导出
 
 Type: prd
-Status: ready-for-agent
+Status: ready-for-human
 
 ## Problem Statement
 
@@ -131,3 +131,4 @@ Status: ready-for-agent
 - 2026-08-04 — Gate 0 前修订：白底铺满范围扩大至会员详情（`staff-detail` FlatList），与汇总同修法。
 - 2026-08-04 — Gate 0 PASS（user reviewed）→ `ready-for-agent`；进入 `/to-spec`。
 - 2026-08-04 — `/to-spec`：candidate-2 竖切（01→02→{03∥04}）；对抗覆盖+可行性 PASS；四份 spec `ready-for-human`（待 Gate A）。
+- 2026-08-04 — Specs #01–#04 均已实现并关闭（`ready-for-human`）；PRD → `ready-for-human`（待人工验收 / Gate B）。
