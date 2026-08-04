@@ -1,8 +1,9 @@
 import type { ReactElement } from "react";
-import { afterEach, describe, expect, it } from "@jest/globals";
+import { afterEach, describe, expect, it, jest } from "@jest/globals";
 import type { QueryClient } from "@tanstack/react-query";
 import { fireEvent } from "@testing-library/react-native";
 import { Text, View } from "react-native";
+import * as XLSX from "xlsx";
 
 import { ManageTab } from "@/components/manage-tab";
 import { useShopAggregate } from "@/hooks/reads";
@@ -10,6 +11,8 @@ import { InMemoryAdapter } from "@/data/in-memory";
 import { setupRepos, type Repos } from "@/data/composition";
 import { ADMIN_STAFF_ID } from "@/data/staff";
 import { cents } from "@/data/primitives";
+import type { ExportJob } from "@/export/types";
+import { staffExportFilename } from "@/export/build-staff-workbook";
 import { renderWithProviders, type RenderWithProvidersResult } from "@/testing/render";
 import { flushPending, waitForSync } from "@/testing/async";
 
@@ -17,7 +20,17 @@ import { flushPending, waitForSync } from "@/testing/async";
  * Spec #09 (manage-tab) — staff & product CRUD, through the real data stack
  * (ADR-0006: InMemoryAdapter, no mocked Repos). Async mechanics (waitForSync /
  * flushPending / QueryClient clear) live in [testing/async.ts](../testing/async.ts).
+ *
+ * Export IO (manage-export #03): `runExport` is mocked so share/write stay off-
+ * device; `useExport` stays real so pending + onError→toast wiring is exercised.
  */
+
+const mockRunExport = jest.fn<(job: ExportJob) => Promise<string>>(
+  async () => "file:///cache/out.xlsx",
+);
+jest.mock("@/export/run-export", () => ({
+  runExport: (job: ExportJob) => mockRunExport(job),
+}));
 
 let activeQueryClient: QueryClient | null = null;
 
@@ -29,6 +42,7 @@ afterEach(() => {
   // produce "overlapping act() calls", which corrupts the next test's render.)
   activeQueryClient?.clear();
   activeQueryClient = null;
+  mockRunExport.mockReset().mockResolvedValue("file:///cache/out.xlsx");
 });
 
 async function renderManage(
@@ -550,4 +564,94 @@ describe("ManageTab — member level selector + badge (member-rename-level #03)"
     expect((await repos.staff.getById(gold.id))?.level).toBe("normal");
   });
 });
+
+describe("ManageTab — staff export (manage-export #03)", () => {
+  it("shows 导出 on staff; restock/config have none; product has none yet", async () => {
+    const { repos } = await seed();
+    const { view } = await renderManage(<ManageTab />, { repos });
+    await waitForSync(() => view.getByTestId("view-staff"));
+    expect(view.getByTestId("staff-export")).toBeTruthy();
+    expect(view.getByText("导出")).toBeTruthy();
+
+    await fireEvent.press(view.getByTestId("seg-product"));
+    await waitForSync(() => view.getByTestId("view-product"));
+    expect(view.queryByTestId("staff-export")).toBeNull();
+
+    await fireEvent.press(view.getByTestId("seg-restock"));
+    await waitForSync(() => view.getByTestId("view-restock"));
+    expect(view.queryByTestId("staff-export")).toBeNull();
+
+    await fireEvent.press(view.getByTestId("seg-config"));
+    await waitForSync(() => view.getByTestId("config-price-input"));
+    expect(view.queryByTestId("staff-export")).toBeNull();
+  });
+
+  it("export job filename is 会员-YYYYMMDD.xlsx; build rows match current list (switch+search)", async () => {
+    const { repos, staffId } = await seed(); // 张三
+    await repos.staff.create({ name: "李四", phone: "139", notes: "n", level: "normal" });
+    await repos.staff.void(staffId); // 张三 voided
+    const { view } = await renderManage(<ManageTab />, { repos });
+    await waitForSync(() => view.getByTestId("staff-export"));
+
+    // default: only 李四 visible → export that set, no status column
+    await fireEvent.press(view.getByTestId("staff-export"));
+    await waitForSync(() => expect(mockRunExport).toHaveBeenCalled());
+    const job1 = mockRunExport.mock.calls[0]![0]!;
+    expect(job1.filename).toBe(staffExportFilename());
+    expect(job1.encoding).toBe("base64");
+    expect(job1.mimeType).toMatch(/spreadsheetml/);
+    const rows1 = sheetFromBase64(await job1.build());
+    expect(rows1[0]).toEqual(["姓名", "电话", "备注", "等级"]);
+    expect(rows1.slice(1).map((r) => r[0])).toEqual(["李四"]);
+
+    mockRunExport.mockClear();
+    // include voided + search 张 → only 张三, with 状态
+    await fireEvent(view.getByTestId("staff-include-voided"), "valueChange", true);
+    await fireEvent.changeText(view.getByTestId("staff-search"), "张");
+    await waitForSync(() => view.getByTestId(`manage-staff-${staffId}`));
+
+    await fireEvent.press(view.getByTestId("staff-export"));
+    await waitForSync(() => expect(mockRunExport).toHaveBeenCalled());
+    const job2 = mockRunExport.mock.calls[0]![0]!;
+    const rows2 = sheetFromBase64(await job2.build());
+    expect(rows2[0]).toEqual(["姓名", "电话", "备注", "等级", "状态"]);
+    expect(rows2.slice(1)).toEqual([["张三", "138", "", "普站", "已删除"]]);
+  });
+
+  it("disables 导出 while pending; toast.error on failure; cancel-style success does not toast", async () => {
+    const { repos } = await seed();
+    const { view } = await renderManage(<ManageTab />, { repos });
+    await waitForSync(() => view.getByTestId("staff-export"));
+
+    let resolveExport!: (uri: string) => void;
+    mockRunExport.mockImplementationOnce(
+      () =>
+        new Promise<string>((resolve) => {
+          resolveExport = resolve;
+        }),
+    );
+
+    await fireEvent.press(view.getByTestId("staff-export"));
+    await waitForSync(() => {
+      expect(view.getByTestId("staff-export").props.accessibilityState?.disabled).toBe(true);
+    });
+
+    resolveExport("file:///cache/out.xlsx");
+    await waitForSync(() => {
+      expect(view.getByTestId("staff-export").props.accessibilityState?.disabled).toBeFalsy();
+    });
+    expect(view.queryByTestId("toast")).toBeNull();
+
+    mockRunExport.mockRejectedValueOnce(new Error("disk full"));
+    await fireEvent.press(view.getByTestId("staff-export"));
+    expect(await waitForSync(() => view.getByText("disk full"))).toBeTruthy();
+    expect(view.getByTestId("toast")).toBeTruthy();
+  });
+});
+
+function sheetFromBase64(base64: string): unknown[][] {
+  const wb = XLSX.read(base64, { type: "base64" });
+  const sheet = wb.Sheets[wb.SheetNames[0]];
+  return XLSX.utils.sheet_to_json<unknown[]>(sheet, { header: 1 });
+}
 

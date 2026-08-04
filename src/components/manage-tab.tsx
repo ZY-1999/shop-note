@@ -11,6 +11,7 @@ import {
 
 import { MoneyText } from "@/components/money-text";
 import { SmokeEntry } from "@/components/smoke-entry";
+import { useToast } from "@/components/toast";
 import { BottomTabInset } from "@/constants/theme";
 import { cents, type Cents } from "@/data/primitives";
 import {
@@ -19,6 +20,11 @@ import {
   STAFF_LEVELS,
   type StaffLevel,
 } from "@/data/staff";
+import {
+  buildStaffWorkbook,
+  staffExportFilename,
+  STAFF_XLSX_MIME,
+} from "@/export/build-staff-workbook";
 import {
   useCreateProduct,
   useCreateStaff,
@@ -31,6 +37,7 @@ import {
   useVoidProduct,
   useVoidStaff,
 } from "@/hooks/mutations";
+import { useExport } from "@/hooks/use-export";
 import { useProducts, useStaff, useUnitPrice } from "@/hooks/reads";
 import { useTheme } from "@/hooks/use-theme";
 import { useRepos } from "@/providers/providers";
@@ -348,10 +355,13 @@ function RestockManage() {
 /**
  * Staff CRUD — searchable list + create/edit form. Default list is active-only;
  * 「包含删除」Switch (testID staff-include-voided) shares includeVoided with
- * search so voided members can be found and restored.
+ * search so voided members can be found and restored. Top-bar right 「导出」
+ * shares the same row set via buildStaffWorkbook (manage-export #03).
  */
 function StaffManage() {
   const theme = useTheme();
+  const toast = useToast();
+  const exportMutation = useExport();
   const [search, setSearch] = useState("");
   const [includeVoided, setIncludeVoided] = useState(false);
   const [creating, setCreating] = useState(false);
@@ -370,6 +380,19 @@ function StaffManage() {
     return <StaffForm staffId={editingId} onDone={() => setEditingId(null)} />;
   }
 
+  const onExport = () => {
+    exportMutation.mutate(
+      {
+        filename: staffExportFilename(),
+        mimeType: STAFF_XLSX_MIME,
+        encoding: "base64",
+        dialogTitle: "导出会员",
+        build: () => buildStaffWorkbook(rows, { includeVoided }),
+      },
+      { onError: (e) => toast.error(e.message) },
+    );
+  };
+
   return (
     <ScrollView
       testID="view-staff"
@@ -385,6 +408,23 @@ function StaffManage() {
           value={includeVoided}
           onValueChange={setIncludeVoided}
         />
+        <View style={styles.filterSpacer} />
+        <Pressable
+          testID="staff-export"
+          onPress={onExport}
+          disabled={exportMutation.isPending}
+          style={[
+            styles.exportBtn,
+            {
+              borderColor: theme.border,
+              opacity: exportMutation.isPending ? 0.5 : 1,
+            },
+          ]}
+        >
+          <Text style={{ color: theme.text, fontWeight: "600" }}>
+            {exportMutation.isPending ? "导出中…" : "导出"}
+          </Text>
+        </Pressable>
       </View>
       <TextInput
         testID="staff-search"
@@ -925,6 +965,13 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   filterLabel: { fontSize: 14, fontWeight: "500" },
+  filterSpacer: { flex: 1 },
+  exportBtn: {
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
 
   label: { fontSize: 13, fontWeight: "500", width: 84 },
   listContent: { gap: 8, paddingBottom: BottomTabInset },

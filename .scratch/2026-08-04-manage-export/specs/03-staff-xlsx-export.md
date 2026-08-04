@@ -1,7 +1,7 @@
 # 会员 xlsx build + 管理·会员导出
 
 Type: spec
-Status: ready-for-agent
+Status: ready-for-human
 Parent: #01 (01-manage-export.md)
 Blocked by: #01, #02
 
@@ -11,11 +11,11 @@ Blocked by: #01, #02
 
 ## Acceptance criteria
 
-- [ ] 纯 `build` 列固定为：姓名、电话、备注、等级（`labelForLevel`）；**当且仅当** `includeVoided===true` 时追加「状态」（有效/已删除）；关 includeVoided 时**仅有效行且无状态列**；排除 `-1`；无 id/时间戳 —— InMemory 可测
-- [ ] 导出行集与当前开关+搜索一致
-- [ ] 点导出触发 `useExport`；`isPending` 时按钮禁用；失败 `toast.error`；取消分享不 toast 错误
-- [ ] 文件名 `会员-YYYYMMDD.xlsx`（设备本地日）
-- [ ] **[手动]** 真机：分享面板 + 打开 xlsx 可读；若需 iOS UTI/`infoPlist` 已按 SDK 57 配置
+- [x] 纯 `build` 列固定为：姓名、电话、备注、等级（`labelForLevel`）；**当且仅当** `includeVoided===true` 时追加「状态」（有效/已删除）；关 includeVoided 时**仅有效行且无状态列**；排除 `-1`；无 id/时间戳 —— InMemory 可测
+- [x] 导出行集与当前开关+搜索一致
+- [x] 点导出触发 `useExport`；`isPending` 时按钮禁用；失败 `toast.error`；取消分享不 toast 错误
+- [x] 文件名 `会员-YYYYMMDD.xlsx`（设备本地日）
+- [ ] **[手动]** 真机：分享面板 + 打开 xlsx 可读；若需 iOS UTI/`infoPlist` 已按 SDK 57 配置 —— 待真机
 
 ## Scope
 
@@ -46,3 +46,14 @@ xlsx 库或 UTI 选型失败只重做本 spec；#04 等本 spec 锁定后再开�
 ## Comments
 
 - 2026-08-04 — skeleton + design from candidate-3（judge PASS）。
+- 2026-08-04 — **xlsx lib locked**: SheetJS community `xlsx@0.18.5`（纯 JS；RN + Jest 无 native；`write({ type: 'base64', bookType: 'xlsx' })`）。
+- 2026-08-04 — **iOS UTI**：SDK 57 `expo-sharing` 的 config plugin / `infoPlist` 面向**入站** Share Extension，非出站分享。出站 `shareAsync` 可选 `UTI`；OpenXML 系统 UTI `org.openxmlformats.spreadsheetml.sheet` 已存在。本轮**不改** `app.json` / 管道（Scope Out #02）；靠 `.xlsx` 扩展名 + spreadsheet MIME。真机若识别异常再考虑给 `ExportJob` 加可选 `UTI`。
+- 2026-08-04 — implemented via `/tdd`；Status → `ready-for-human`
+  - [x] 列/状态/排除 `-1`/无 id·时间戳 — `build-staff-workbook.test.ts::emits 姓名/电话/备注/等级…` + `::appends 状态…` + `::excludes ADMIN_STAFF_ID…`
+  - [x] 行集与开关+搜索一致 — `manage-tab.test.tsx::export job filename is 会员-YYYYMMDD.xlsx; build rows match current list (switch+search)`
+  - [x] useExport / pending / toast.error / 取消不 toast — `manage-tab.test.tsx::disables 导出 while pending; toast.error on failure; cancel-style success does not toast`
+  - [x] 文件名 — `build-staff-workbook.test.ts::names the file 会员-YYYYMMDD.xlsx…` + 上条 manage-tab（`staffExportFilename()`）
+  - [ ] 手动真机 — 待真机（UTI 决策见上；无需本次 `infoPlist`）
+  - Test run: `npx jest src/export/build-staff-workbook.test.ts src/export/run-export.test.ts src/components/manage-tab.test.tsx --forceExit` → 39 passed, 0 failed
+  - Commit: (pending)
+  - Lib: `xlsx@0.18.5`
