@@ -95,6 +95,14 @@
 - **适用边界**：任何「多行列表 + 父级 contentContainerStyle.gap」组合。
 - **验证**：`manage-tab.test.tsx` restock 双行 `marginTop===4` + `items-selector` 根存在。
 
+### date-mode DateTimePicker：勿把本地午夜直接当 value（UTC+）
+
+- **事实**：区间 `from` 为本地 `00:00` 时，`new Date(from)` 在东八区的 UTC 日历日是前一天；工具栏 `formatDate` 显示本地日，picker 易高亮 D−1。
+- **对策**：`dateForPickerValue(ms)` → `Date.UTC(本地Y,M,D,12)`；汇总 from/to 共用。选日后仍 `normalizeDayRange`。
+- **来源**：2026-08-04 真机（开始日 07/26 → 弹窗 07/25）+ `.scratch/2026-08-04-summary-range-picker-off-by-one`。
+- **适用边界**：UTC+8 为主承诺；其它页 date picker 应复用 helper。
+- **验证**：`date-format.test.ts` off-by-one；`summary-tab` from/to picker value 断言；真机 smoke 待操作员确认。
+
 ## UI / 布局
 
 ### 全页滚动底部留白用 `BottomTabInset`（theme.ts），别各页硬编码
