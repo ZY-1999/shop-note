@@ -26,13 +26,7 @@ import { flushPending, waitForSync } from "@/testing/async";
  * off-device; `useExport` stays real so pending + onError→toast wiring is exercised.
  */
 
-const mockPush = jest.fn<(href: unknown) => void>();
-jest.mock("expo-router", () => ({
-  router: {
-    push: (href: unknown) => mockPush(href),
-    back: () => undefined,
-  },
-}));
+const onImport = jest.fn();
 
 const mockRunExport = jest.fn<(job: ExportJob) => Promise<string>>(
   async () => "file:///cache/out.xlsx",
@@ -59,7 +53,7 @@ afterEach(() => {
   activeQueryClient?.clear();
   activeQueryClient = null;
   mockRunExport.mockReset().mockResolvedValue("file:///cache/out.xlsx");
-  mockPush.mockReset();
+  onImport.mockReset();
 });
 
 async function renderManage(
@@ -82,7 +76,7 @@ async function seed() {
 describe("ManageTab — staff|product toggle + staff list (spec #09 AC1)", () => {
   it("toggles between the staff and product domains", async () => {
     const { repos } = await seed();
-    const { view } = await renderManage(<ManageTab />, { repos });
+    const { view } = await renderManage(<ManageTab onImport={onImport} />, { repos });
 
     expect(view.getByTestId("seg-staff")).toBeTruthy();
     expect(view.getByTestId("seg-product")).toBeTruthy();
@@ -95,7 +89,7 @@ describe("ManageTab — staff|product toggle + staff list (spec #09 AC1)", () =>
 
   it("lists staff and narrows by search", async () => {
     const { repos, staffId } = await seed();
-    const { view } = await renderManage(<ManageTab />, { repos });
+    const { view } = await renderManage(<ManageTab onImport={onImport} />, { repos });
 
     await waitForSync(() => view.getByTestId(`manage-staff-${staffId}`));
     await fireEvent.changeText(view.getByTestId("staff-search"), "张");
@@ -109,7 +103,7 @@ describe("ManageTab — staff|product toggle + staff list (spec #09 AC1)", () =>
 describe("ManageTab — staff create (spec #09 AC2)", () => {
   it("creates a staff who then appears in the list", async () => {
     const { repos } = await seed();
-    const { view } = await renderManage(<ManageTab />, { repos });
+    const { view } = await renderManage(<ManageTab onImport={onImport} />, { repos });
     await waitForSync(() => view.getByTestId("seg-staff"));
 
     await fireEvent.press(view.getByTestId("staff-create"));
@@ -134,7 +128,7 @@ describe("ManageTab — staff create (spec #09 AC2)", () => {
 
   it("blocks create when the name is empty", async () => {
     const { repos } = await seed();
-    const { view } = await renderManage(<ManageTab />, { repos });
+    const { view } = await renderManage(<ManageTab onImport={onImport} />, { repos });
     await waitForSync(() => view.getByTestId("seg-staff"));
 
     await fireEvent.press(view.getByTestId("staff-create"));
@@ -148,7 +142,7 @@ describe("ManageTab — staff create (spec #09 AC2)", () => {
 describe("ManageTab — staff void/restore (spec #09 AC2)", () => {
   it("voids a staff then restores them; voided drops from active reads", async () => {
     const { repos, staffId } = await seed();
-    const { view } = await renderManage(<ManageTab />, { repos });
+    const { view } = await renderManage(<ManageTab onImport={onImport} />, { repos });
     await waitForSync(() => view.getByTestId(`manage-staff-${staffId}`));
 
     // void via the row action — soft-delete (voided_at), never erased
@@ -179,7 +173,7 @@ describe("ManageTab — includeVoided filter (manage-export #01)", () => {
   it("staff: default hides voided; switch shows them; search respects the switch", async () => {
     const { repos, staffId } = await seed(); // 张三
     await repos.staff.void(staffId);
-    const { view } = await renderManage(<ManageTab />, { repos });
+    const { view } = await renderManage(<ManageTab onImport={onImport} />, { repos });
 
     // default off — voided 张三 hidden; switch present
     expect(view.getByTestId("staff-include-voided")).toBeTruthy();
@@ -202,7 +196,7 @@ describe("ManageTab — includeVoided filter (manage-export #01)", () => {
   it("product: default hides voided; switch + search combination mirrors staff", async () => {
     const { repos, colaId } = await seed();
     await repos.products.void(colaId);
-    const { view } = await renderManage(<ManageTab />, { repos });
+    const { view } = await renderManage(<ManageTab onImport={onImport} />, { repos });
     await fireEvent.press(view.getByTestId("seg-product"));
     await waitForSync(() => view.getByTestId("view-product"));
 
@@ -222,7 +216,7 @@ describe("ManageTab — includeVoided filter (manage-export #01)", () => {
 
   it("restock / config segments have no include-voided switch", async () => {
     const { repos } = await seed();
-    const { view } = await renderManage(<ManageTab />, { repos });
+    const { view } = await renderManage(<ManageTab onImport={onImport} />, { repos });
 
     await fireEvent.press(view.getByTestId("seg-restock"));
     await waitForSync(() => view.getByTestId("view-restock"));
@@ -239,7 +233,7 @@ describe("ManageTab — includeVoided filter (manage-export #01)", () => {
 describe("ManageTab — staff edit via row tap (manage UI polish)", () => {
   it("tapping a staff row opens a preloaded edit form; saving persists the change", async () => {
     const { repos, staffId } = await seed(); // 张三 / phone 138
-    const { view } = await renderManage(<ManageTab />, { repos });
+    const { view } = await renderManage(<ManageTab onImport={onImport} />, { repos });
     await waitForSync(() => view.getByTestId(`manage-staff-${staffId}`));
 
     // tap the row → edit form opens, preloaded with the staff's current name
@@ -262,7 +256,7 @@ describe("ManageTab — staff row shows '--' when phone is empty (manage UI poli
   it("shows '--' in place of an empty phone", async () => {
     const repos = setupRepos(new InMemoryAdapter());
     const noPhone = await repos.staff.create({ name: "无名电话", phone: "", notes: "" });
-    const { view } = await renderManage(<ManageTab />, { repos });
+    const { view } = await renderManage(<ManageTab onImport={onImport} />, { repos });
     await waitForSync(() => view.getByTestId(`manage-staff-${noPhone.id}`));
     expect(view.getByText("--")).toBeTruthy();
   });
@@ -271,7 +265,7 @@ describe("ManageTab — staff row shows '--' when phone is empty (manage UI poli
 describe("ManageTab — product list + search + create (spec #09 AC1/AC3)", () => {
   it("lists products and narrows by title search", async () => {
     const { repos, colaId } = await seed();
-    const { view } = await renderManage(<ManageTab />, { repos });
+    const { view } = await renderManage(<ManageTab onImport={onImport} />, { repos });
     await fireEvent.press(view.getByTestId("seg-product"));
 
     await waitForSync(() => view.getByTestId(`manage-product-${colaId}`));
@@ -286,7 +280,7 @@ describe("ManageTab — product list + search + create (spec #09 AC1/AC3)", () =
 
   it("creates a product (title + 元-price → Cents) who then appears in the list", async () => {
     const { repos } = await seed();
-    const { view } = await renderManage(<ManageTab />, { repos });
+    const { view } = await renderManage(<ManageTab onImport={onImport} />, { repos });
     await fireEvent.press(view.getByTestId("seg-product"));
     await waitForSync(() => view.getByTestId("seg-product"));
 
@@ -312,7 +306,7 @@ describe("ManageTab — product list + search + create (spec #09 AC1/AC3)", () =
 
   it("blocks product create when the title is empty", async () => {
     const { repos } = await seed();
-    const { view } = await renderManage(<ManageTab />, { repos });
+    const { view } = await renderManage(<ManageTab onImport={onImport} />, { repos });
     await fireEvent.press(view.getByTestId("seg-product"));
     await waitForSync(() => view.getByTestId("seg-product"));
 
@@ -353,7 +347,7 @@ describe("ManageTab — product price edit revalues inventory (spec #09 AC4)", (
     });
     const { view } = await renderManage(
       <View>
-        <ManageTab />
+        <ManageTab onImport={onImport} />
         <InventoryReader productId={colaId} />
       </View>,
       { repos },
@@ -388,7 +382,7 @@ describe("ManageTab — product void/restore + snapshot preservation (spec #09 A
     });
     const { view } = await renderManage(
       <View>
-        <ManageTab />
+        <ManageTab onImport={onImport} />
         <InventoryReader productId={colaId} />
       </View>,
       { repos },
@@ -412,7 +406,7 @@ describe("ManageTab — product void/restore + snapshot preservation (spec #09 A
     await repos.products.void(colaId);
     const { view } = await renderManage(
       <View>
-        <ManageTab />
+        <ManageTab onImport={onImport} />
         <InventoryReader productId={colaId} />
       </View>,
       { repos },
@@ -436,7 +430,7 @@ describe("ManageTab — product void/restore + snapshot preservation (spec #09 A
       items: [{ product_id: colaId, qty: 2 }],
     });
 
-    const { view } = await renderManage(<ManageTab />, { repos });
+    const { view } = await renderManage(<ManageTab onImport={onImport} />, { repos });
     await fireEvent.press(view.getByTestId("seg-product"));
     await waitForSync(() => view.getByTestId(`manage-product-${colaId}`));
 
@@ -466,7 +460,7 @@ describe("ManageTab — product void/restore + snapshot preservation (spec #09 A
 describe("ManageTab — restock segment (stock-balance-refactor AC3)", () => {
   it("switches to the 补货 segment which lists products to pick", async () => {
     const { repos, colaId } = await seed();
-    const { view } = await renderManage(<ManageTab />, { repos });
+    const { view } = await renderManage(<ManageTab onImport={onImport} />, { repos });
     await fireEvent.press(view.getByTestId("seg-restock"));
     await waitForSync(() => view.getByTestId("view-restock"));
     await waitForSync(() => view.getByTestId(`pick-${colaId}`));
@@ -474,20 +468,17 @@ describe("ManageTab — restock segment (stock-balance-refactor AC3)", () => {
 
   it("toolbar 导入 opens import-form with kind=restock (manage-import #03)", async () => {
     const { repos } = await seed();
-    const { view } = await renderManage(<ManageTab />, { repos });
+    const { view } = await renderManage(<ManageTab onImport={onImport} />, { repos });
     await fireEvent.press(view.getByTestId("seg-restock"));
     await waitForSync(() => view.getByTestId("restock-import"));
     expect(view.queryByTestId("restock-export")).toBeNull();
     await fireEvent.press(view.getByTestId("restock-import"));
-    expect(mockPush).toHaveBeenCalledWith({
-      pathname: "/import-form",
-      params: { kind: "restock" },
-    });
+    expect(onImport).toHaveBeenCalledWith("restock");
   });
 
   it("blocks restock when no product is selected", async () => {
     const { repos } = await seed();
-    const { view } = await renderManage(<ManageTab />, { repos });
+    const { view } = await renderManage(<ManageTab onImport={onImport} />, { repos });
     await fireEvent.press(view.getByTestId("seg-restock"));
     await waitForSync(() => view.getByTestId("restock-submit"));
     await fireEvent.press(view.getByTestId("restock-submit"));
@@ -497,7 +488,7 @@ describe("ManageTab — restock segment (stock-balance-refactor AC3)", () => {
 
   it("picking a product + qty restocks under admin -1 → shopAggregate reflects it", async () => {
     const { repos, colaId } = await seed();
-    const { view } = await renderManage(<ManageTab />, { repos });
+    const { view } = await renderManage(<ManageTab onImport={onImport} />, { repos });
     await fireEvent.press(view.getByTestId("seg-restock"));
     await waitForSync(() => view.getByTestId(`pick-${colaId}`));
 
@@ -531,7 +522,7 @@ describe("ManageTab — restock segment (stock-balance-refactor AC3)", () => {
       title: "水",
       purchase_price: cents(200),
     });
-    const { view } = await renderManage(<ManageTab />, { repos });
+    const { view } = await renderManage(<ManageTab onImport={onImport} />, { repos });
     await fireEvent.press(view.getByTestId("seg-restock"));
     await waitForSync(() => view.getByTestId(`pick-${colaId}`));
     await fireEvent.press(view.getByTestId(`pick-${colaId}`));
@@ -552,7 +543,7 @@ describe("ManageTab — restock segment (stock-balance-refactor AC3)", () => {
 describe("ManageTab — config segment (stock-balance-refactor US2)", () => {
   it("switches to the 配置 segment showing the current unit price (0 on cold start)", async () => {
     const { repos } = await seed();
-    const { view } = await renderManage(<ManageTab />, { repos });
+    const { view } = await renderManage(<ManageTab onImport={onImport} />, { repos });
     await fireEvent.press(view.getByTestId("seg-config"));
     await waitForSync(() => view.getByTestId("config-price-input"));
     // input 直接承载当前单价 —— 冷启动 data=0 → input 显示 "0"
@@ -564,7 +555,7 @@ describe("ManageTab — config segment (stock-balance-refactor US2)", () => {
   it("pre-fills the input with an already-configured unit price once it loads", async () => {
     const { repos } = await seed();
     await repos.config.setUnitPrice(cents(2400)); // ¥24.00 already set
-    const { view } = await renderManage(<ManageTab />, { repos });
+    const { view } = await renderManage(<ManageTab onImport={onImport} />, { repos });
     await fireEvent.press(view.getByTestId("seg-config"));
     await waitForSync(() => view.getByTestId("config-price-input"));
     // the input reflects the loaded price (not stuck at the pre-load "0")
@@ -573,7 +564,7 @@ describe("ManageTab — config segment (stock-balance-refactor US2)", () => {
 
   it("entering a unit price + save posts it via useUpdateUnitPrice", async () => {
     const { repos } = await seed();
-    const { view } = await renderManage(<ManageTab />, { repos });
+    const { view } = await renderManage(<ManageTab onImport={onImport} />, { repos });
     await fireEvent.press(view.getByTestId("seg-config"));
     await waitForSync(() => view.getByTestId("config-price-input"));
 
@@ -590,7 +581,7 @@ describe("ManageTab — config segment (stock-balance-refactor US2)", () => {
 
   it("four segments toggle (会员 / 商品 / 补货 / 配置)", async () => {
     const { repos } = await seed();
-    const { view } = await renderManage(<ManageTab />, { repos });
+    const { view } = await renderManage(<ManageTab onImport={onImport} />, { repos });
     expect(view.getByTestId("seg-staff")).toBeTruthy();
     expect(view.getByTestId("seg-product")).toBeTruthy();
     expect(view.getByTestId("seg-restock")).toBeTruthy();
@@ -601,7 +592,7 @@ describe("ManageTab — config segment (stock-balance-refactor US2)", () => {
 describe("ManageTab — member level selector + badge (member-rename-level #03)", () => {
   it("create form has a level selector; submitting unchanged creates a 普站 member", async () => {
     const { repos } = await seed();
-    const { view } = await renderManage(<ManageTab />, { repos });
+    const { view } = await renderManage(<ManageTab onImport={onImport} />, { repos });
     await waitForSync(() => view.getByTestId("seg-staff"));
     await fireEvent.press(view.getByTestId("staff-create"));
     await waitForSync(() => view.getByTestId("staff-name-input"));
@@ -620,7 +611,7 @@ describe("ManageTab — member level selector + badge (member-rename-level #03)"
 
   it("picking 星站 creates a 星站 member and shows the 星站 badge in the list", async () => {
     const { repos } = await seed();
-    const { view } = await renderManage(<ManageTab />, { repos });
+    const { view } = await renderManage(<ManageTab onImport={onImport} />, { repos });
     await waitForSync(() => view.getByTestId("seg-staff"));
     await fireEvent.press(view.getByTestId("staff-create"));
     await waitForSync(() => view.getByTestId("staff-name-input"));
@@ -638,7 +629,7 @@ describe("ManageTab — member level selector + badge (member-rename-level #03)"
   it("edit form preloads the member's level — a 星站 member saved untouched stays 星站", async () => {
     const repos = setupRepos(new InMemoryAdapter());
     const gold = await repos.staff.create({ name: "金一", phone: "", notes: "", level: "gold" });
-    const { view } = await renderManage(<ManageTab />, { repos });
+    const { view } = await renderManage(<ManageTab onImport={onImport} />, { repos });
     await waitForSync(() => view.getByTestId(`manage-staff-${gold.id}`));
 
     await fireEvent.press(view.getByTestId(`manage-staff-${gold.id}`)); // open edit
@@ -652,7 +643,7 @@ describe("ManageTab — member level selector + badge (member-rename-level #03)"
   it("edit form: changing the level persists via useUpdateStaff and updates the row badge", async () => {
     const repos = setupRepos(new InMemoryAdapter());
     const gold = await repos.staff.create({ name: "金二", phone: "", notes: "", level: "gold" });
-    const { view } = await renderManage(<ManageTab />, { repos });
+    const { view } = await renderManage(<ManageTab onImport={onImport} />, { repos });
     await waitForSync(() => view.getByTestId(`manage-staff-${gold.id}`));
     expect(view.getByText("星站")).toBeTruthy(); // row badge before edit
 
@@ -670,7 +661,7 @@ describe("ManageTab — member level selector + badge (member-rename-level #03)"
 describe("ManageTab — staff export (manage-export #03)", () => {
   it("shows 导入 left of 导出 on staff; restock has 导入 only; config has none", async () => {
     const { repos } = await seed();
-    const { view } = await renderManage(<ManageTab />, { repos });
+    const { view } = await renderManage(<ManageTab onImport={onImport} />, { repos });
     await waitForSync(() => view.getByTestId("view-staff"));
     expect(view.getByTestId("staff-import")).toBeTruthy();
     expect(view.getByTestId("staff-export")).toBeTruthy();
@@ -681,10 +672,7 @@ describe("ManageTab — staff export (manage-export #03)", () => {
     expect(tree.indexOf("staff-import")).toBeLessThan(tree.indexOf("staff-export"));
 
     await fireEvent.press(view.getByTestId("staff-import"));
-    expect(mockPush).toHaveBeenCalledWith({
-      pathname: "/import-form",
-      params: { kind: "staff" },
-    });
+    expect(onImport).toHaveBeenCalledWith("staff");
 
     await fireEvent.press(view.getByTestId("seg-restock"));
     await waitForSync(() => view.getByTestId("view-restock"));
@@ -705,7 +693,7 @@ describe("ManageTab — staff export (manage-export #03)", () => {
     const { repos, staffId } = await seed(); // 张三
     await repos.staff.create({ name: "李四", phone: "139", notes: "n", level: "normal" });
     await repos.staff.void(staffId); // 张三 voided
-    const { view } = await renderManage(<ManageTab />, { repos });
+    const { view } = await renderManage(<ManageTab onImport={onImport} />, { repos });
     await waitForSync(() => view.getByTestId("staff-export"));
 
     // default: only 李四 visible → export that set, no status column
@@ -735,7 +723,7 @@ describe("ManageTab — staff export (manage-export #03)", () => {
 
   it("disables 导出 while pending; toast.error on failure; cancel-style success does not toast", async () => {
     const { repos } = await seed();
-    const { view } = await renderManage(<ManageTab />, { repos });
+    const { view } = await renderManage(<ManageTab onImport={onImport} />, { repos });
     await waitForSync(() => view.getByTestId("staff-export"));
 
     let resolveExport!: (uri: string) => void;
@@ -767,7 +755,7 @@ describe("ManageTab — staff export (manage-export #03)", () => {
 describe("ManageTab — product export (manage-export #04)", () => {
   it("shows 导入 left of 导出 on product; restock/config have no product-import/export", async () => {
     const { repos } = await seed();
-    const { view } = await renderManage(<ManageTab />, { repos });
+    const { view } = await renderManage(<ManageTab onImport={onImport} />, { repos });
 
     await fireEvent.press(view.getByTestId("seg-product"));
     await waitForSync(() => view.getByTestId("view-product"));
@@ -781,10 +769,7 @@ describe("ManageTab — product export (manage-export #04)", () => {
     );
 
     await fireEvent.press(view.getByTestId("product-import"));
-    expect(mockPush).toHaveBeenCalledWith({
-      pathname: "/import-form",
-      params: { kind: "product" },
-    });
+    expect(onImport).toHaveBeenCalledWith("product");
 
     await fireEvent.press(view.getByTestId("seg-restock"));
     await waitForSync(() => view.getByTestId("view-restock"));
@@ -806,7 +791,7 @@ describe("ManageTab — product export (manage-export #04)", () => {
       category: "饮料",
     });
     await repos.products.void(colaId); // 可乐 voided
-    const { view } = await renderManage(<ManageTab />, { repos });
+    const { view } = await renderManage(<ManageTab onImport={onImport} />, { repos });
     await fireEvent.press(view.getByTestId("seg-product"));
     await waitForSync(() => view.getByTestId(`manage-product-${sprite.id}`));
 
@@ -837,7 +822,7 @@ describe("ManageTab — product export (manage-export #04)", () => {
 
   it("disables 导出 while pending; toast.error on failure; cancel-style success does not toast", async () => {
     const { repos } = await seed();
-    const { view } = await renderManage(<ManageTab />, { repos });
+    const { view } = await renderManage(<ManageTab onImport={onImport} />, { repos });
     await fireEvent.press(view.getByTestId("seg-product"));
     await waitForSync(() => view.getByTestId("product-export"));
 

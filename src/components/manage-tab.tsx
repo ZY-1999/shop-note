@@ -1,4 +1,3 @@
-import { router } from "expo-router";
 import { useEffect, useRef, useState } from "react";
 import {
   Pressable,
@@ -63,7 +62,14 @@ import { MemberName } from "./member-name";
  */
 type Domain = "staff" | "product" | "restock" | "config";
 
-export function ManageTab() {
+export type ImportKind = "staff" | "product" | "restock";
+
+export type ManageTabProps = {
+  /** Route adapter supplies navigation — keep ManageTab router-agnostic (ADR-0006). */
+  onImport: (kind: ImportKind) => void;
+};
+
+export function ManageTab({ onImport }: ManageTabProps) {
   const theme = useTheme();
   const [domain, setDomain] = useState<Domain>("staff");
 
@@ -151,11 +157,11 @@ export function ManageTab() {
       </View>
 
       {domain === "staff" ? (
-        <StaffManage />
+        <StaffManage onImport={() => onImport("staff")} />
       ) : domain === "product" ? (
-        <ProductManage />
+        <ProductManage onImport={() => onImport("product")} />
       ) : domain === "restock" ? (
-        <RestockManage />
+        <RestockManage onImport={() => onImport("restock")} />
       ) : (
         <ConfigManage />
       )}
@@ -270,7 +276,7 @@ function ConfigManage() {
  * reflects the restock on the next read. This is the ONLY place stock enters the
  * system — members only check out. (配置 segment lands in spec 04.)
  */
-function RestockManage() {
+function RestockManage({ onImport }: { onImport: () => void }) {
   const theme = useTheme();
   const createRecord = useCreateStockRecord();
   const [error, setError] = useState<string | null>(null);
@@ -314,12 +320,7 @@ function RestockManage() {
         <View style={styles.filterSpacer} />
         <Pressable
           testID="restock-import"
-          onPress={() =>
-            router.push({
-              pathname: "/import-form",
-              params: { kind: "restock" },
-            })
-          }
+          onPress={onImport}
           style={[styles.exportBtn, { borderColor: theme.border }]}
         >
           <Text style={{ color: theme.text, fontWeight: "600" }}>导入</Text>
@@ -378,7 +379,7 @@ function RestockManage() {
  * search so voided members can be found and restored. Top-bar right
  * 「导入｜导出」— import left of export (manage-import #01 / manage-export #03).
  */
-function StaffManage() {
+function StaffManage({ onImport }: { onImport: () => void }) {
   const theme = useTheme();
   const toast = useToast();
   const exportMutation = useExport();
@@ -431,9 +432,7 @@ function StaffManage() {
         <View style={styles.filterSpacer} />
         <Pressable
           testID="staff-import"
-          onPress={() =>
-            router.push({ pathname: "/import-form", params: { kind: "staff" } })
-          }
+          onPress={onImport}
           style={[styles.exportBtn, { borderColor: theme.border }]}
         >
           <Text style={{ color: theme.text, fontWeight: "600" }}>导入</Text>
@@ -717,7 +716,7 @@ function StaffForm({
  * Top-bar right 「导入｜导出」— import left of export (manage-import #02 /
  * manage-export #04).
  */
-function ProductManage() {
+function ProductManage({ onImport }: { onImport: () => void }) {
   const theme = useTheme();
   const toast = useToast();
   const exportMutation = useExport();
@@ -774,12 +773,7 @@ function ProductManage() {
         <View style={styles.filterSpacer} />
         <Pressable
           testID="product-import"
-          onPress={() =>
-            router.push({
-              pathname: "/import-form",
-              params: { kind: "product" },
-            })
-          }
+          onPress={onImport}
           style={[styles.exportBtn, { borderColor: theme.border }]}
         >
           <Text style={{ color: theme.text, fontWeight: "600" }}>导入</Text>
