@@ -56,4 +56,4 @@ Status: ready-for-human
 - 2026-08-04 — 用户补充：全选时后两 sheet 无数据行，且第一行行号不是 1。
 - 2026-08-04 — implemented: 导出与页面同窗快照；页面有金额但明细空则 toast；`useExport` pending 仅 build+write，分享异步不占「导出中」。
 - Test run: `npx jest src/export/run-export.test.ts src/components/summary-tab.test.tsx src/components/manage-tab.test.tsx -t "export|…" --forceExit` → 23 passed
-- Commit: _(填入)_
+- Commit: `af217bd`
