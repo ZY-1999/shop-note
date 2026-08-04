@@ -58,4 +58,4 @@ failure is isolated; redo this spec only（回退读路径改动与相关测）�
   - [x] 无 `[DEBUG-…]` — `src/components/import-form.tsx` grep 无命中
   - [ ] **待真机**：Android Expo Go 管理→导入子页选合法 xlsx 可进入预览（自动化锁住修法；手验未做）
   - Test run: `npx jest src/components/import-form.test.tsx --colors=false --forceExit` → 11 passed, 0 failed
-  - Commit: 本条关闭提交
+  - Commit: `4045b37`
