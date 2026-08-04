@@ -62,7 +62,7 @@ describe("FlowEventRow — checkout", () => {
 });
 
 describe("FlowEventRow — checkout selfUse (checkout-self-use)", () => {
-  it("shows 自用 when selfUse is true; still no checkout amount", async () => {
+  it("shows 自用 and checkout amount; hides 出库 N 单 and 零售", async () => {
     const { view } = await render(
       <FlowEventRow
         kind="checkout"
@@ -76,11 +76,10 @@ describe("FlowEventRow — checkout selfUse (checkout-self-use)", () => {
     );
 
     expect(view.getByText("自用")).toBeTruthy();
-    expect(view.getByTestId("flow-event-bundle-count").props.children).toEqual(
-      expect.arrayContaining(["出库 ", 0, " 单"]),
-    );
-    expect(money(view.getByTestId("flow-event-retail"))).toMatch(/0\.00/);
-    expect(view.queryByTestId("flow-event-amount")).toBeNull();
+    expect(money(view.getByTestId("flow-event-amount"))).toMatch(/21\.00/);
+    expect(view.queryByTestId("flow-event-bundle-count")).toBeNull();
+    expect(view.queryByTestId("flow-event-retail")).toBeNull();
+    expect(view.queryByText("零售")).toBeNull();
   });
 
   it("does not show 自用 when selfUse is omitted/false", async () => {
@@ -95,6 +94,7 @@ describe("FlowEventRow — checkout selfUse (checkout-self-use)", () => {
       />,
     );
     expect(view.queryByText("自用")).toBeNull();
+    expect(view.queryByTestId("flow-event-amount")).toBeNull();
   });
 });
 

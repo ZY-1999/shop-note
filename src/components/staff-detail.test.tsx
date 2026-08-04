@@ -169,7 +169,7 @@ describe("StaffDetail — day header uses FlowSummary (per-day bundles/retail)",
 });
 
 describe("StaffDetail — 自用 checkout row (checkout-self-use)", () => {
-  it("self_use out row shows 自用 with 0 bundles/retail; out¥ still in day/summary; no amount on row", async () => {
+  it("self_use out row shows 自用 and amount; hides bundles/retail; out¥ still in day/summary", async () => {
     const { repos, staffId, productId } = await seedStaffProduct();
     await repos.config.setUnitPrice(cents(500));
     const { record } = await repos.stockRecords.create({
@@ -191,12 +191,9 @@ describe("StaffDetail — 自用 checkout row (checkout-self-use)", () => {
     const row = view.getByTestId(`history-${record.id}`);
     expect(row).toBeTruthy();
     expect(view.getByTestId(`history-${record.id}-self-use`).props.children).toBe("自用");
-    expect(view.getByTestId(`history-${record.id}-bundle-count`).props.children).toEqual(
-      expect.arrayContaining(["出库 ", 0, " 单"]),
-    );
-    expect(moneyText(view.getByTestId(`history-${record.id}-retail`))).toBe("¥0.00");
-    // convention: checkout row never shows amount
-    expect(view.queryByTestId(`history-${record.id}-amount`)).toBeNull();
+    expect(moneyText(view.getByTestId(`history-${record.id}-amount`))).toBe("¥21.00");
+    expect(view.queryByTestId(`history-${record.id}-bundle-count`)).toBeNull();
+    expect(view.queryByTestId(`history-${record.id}-retail`)).toBeNull();
     // day/overview out¥ still counts; bundles/retail exclude
     expect(moneyText(view.getByTestId("member-day-flow-2026/06/10-out-total"))).toBe("¥21.00");
     expect(view.getByTestId("member-day-flow-2026/06/10-bundle-count").props.children).toEqual(

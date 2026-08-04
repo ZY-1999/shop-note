@@ -22,7 +22,7 @@ export type FlowEventRowProps =
       amountCents: number;
       bundles: number;
       retailCents: number;
-      /** When true, show 「自用」 mark. Parent passes 0 bundles/retail for self-use. */
+      /** When true, show 「自用」 + 出库金额；隐藏「出库 N 单」与零售. */
       selfUse?: boolean;
       onPress: () => void;
       testID?: string;
@@ -67,33 +67,41 @@ export function FlowEventRow(props: FlowEventRowProps) {
           {formatTimeSeconds(timestamp)}
         </Text>
         {isCheckout ? (
-          <>
-            {props.selfUse === true && (
+          props.selfUse === true ? (
+            <>
               <Text
                 testID={testID ? `${testID}-self-use` : "flow-event-self-use"}
                 style={{ color: theme.textSecondary, fontSize: 12 }}
               >
                 自用
               </Text>
-            )}
-            <Text
-              testID={tid("bundles")}
-              style={{ color: theme.text, fontSize: 12 }}
-            >
-              出库 {props.bundles} 单
-            </Text>
-            <Text style={{ color: theme.text, fontSize: 12 }}>零售</Text>
-            <MoneyText
-              testID={tid("retail")}
-              cents={cents(props.retailCents)}
-              fontSize={12}
-            />
-          </>
+              <MoneyText
+                testID={tid("amount")}
+                cents={cents(amountCents)}
+                fontSize={12}
+              />
+            </>
+          ) : (
+            <>
+              <Text
+                testID={tid("bundles")}
+                style={{ color: theme.text, fontSize: 12 }}
+              >
+                出库 {props.bundles} 单
+              </Text>
+              <Text style={{ color: theme.text, fontSize: 12 }}>零售</Text>
+              <MoneyText
+                testID={tid("retail")}
+                cents={cents(props.retailCents)}
+                fontSize={12}
+              />
+            </>
+          )
         ) : (
           <>
             <Text
               style={{
-                color: isCheckout ? theme.text : theme.success,
+                color: theme.success,
                 fontSize: 12,
               }}
             >

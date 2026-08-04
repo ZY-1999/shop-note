@@ -250,7 +250,7 @@ describe("SummaryTab — day section collapsible: default collapsed, tap to togg
 });
 
 describe("SummaryTab — 自用 checkout row (checkout-self-use)", () => {
-  it("self_use out row shows 自用 with 0 bundles/retail; no amount on row", async () => {
+  it("self_use out row shows 自用 and amount; hides bundles/retail", async () => {
     const { repos, staffId, colaId } = await setup();
     await repos.config.setUnitPrice(cents(500));
     const { record } = await repos.stockRecords.create({
@@ -272,11 +272,9 @@ describe("SummaryTab — 自用 checkout row (checkout-self-use)", () => {
     await flushPending();
 
     expect(view.getByTestId(`flow-record-${record.id}-self-use`).props.children).toBe("自用");
-    expect(view.getByTestId(`flow-record-${record.id}-bundle-count`).props.children).toEqual(
-      expect.arrayContaining(["出库 ", 0, " 单"]),
-    );
-    expect(money(view.getByTestId(`flow-record-${record.id}-retail`))).toBe("¥0.00");
-    expect(view.queryByTestId(`flow-record-${record.id}-amount`)).toBeNull();
+    expect(money(view.getByTestId(`flow-record-${record.id}-amount`))).toBe("¥21.00");
+    expect(view.queryByTestId(`flow-record-${record.id}-bundle-count`)).toBeNull();
+    expect(view.queryByTestId(`flow-record-${record.id}-retail`)).toBeNull();
   });
 });
 
