@@ -55,4 +55,4 @@ Blocked by: #02 (02-export-config-inventory-sheet.md)
 > - [x] 勾选子集 — `…emits only the checked of the two sheets`
 > - [x] 商品串复用 `formatProductQtyList` — 聚合/明细断言含 `可乐×2、水×1、茶×1`
 > - Test run: `npx jest src/export/build-summary-workbook.test.ts src/components/summary-tab.test.tsx --forceExit` → 29 passed, 0 failed
-> - Commit: _(填入本 feat 提交 SHA)_
+> - Commit: `ee38b92`
