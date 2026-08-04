@@ -411,7 +411,10 @@ export function SummaryTab({
                     <MemberName
                       name={s?.name ?? sr.staffId}
                       level={s?.level ?? DEFAULT_STAFF_LEVEL}
-                      nameStyle={{ color: s?.voided_at ? theme.danger : theme.text }}
+                      nameStyle={{
+                        color:
+                          s?.voided_at != null ? theme.danger : theme.text,
+                      }}
                       maxWidth={42}
                     />
                     <FlowSummary

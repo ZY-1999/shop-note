@@ -61,3 +61,4 @@ Status: ready-for-agent
 - 2026-08-04 — Gate 0 澄清：已删除且库存为 0 的商品库存卡+导出均不展示；有库存的已删商品仍展示并标红/后缀。
 - 2026-08-04 — Gate 0 确认；Status → ready-for-agent；进入 /sdd-flow。
 - 2026-08-04 — /to-spec：2 specs（候选 1）；覆盖评审补强件数/金额 AC 后 PASS；可行性 PASS；待 Gate A。
+- 2026-08-04 — Gate A 确认并实现；双轴 review PASS（Standards 无硬违规 / Spec satisfied）。
