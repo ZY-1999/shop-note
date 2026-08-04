@@ -180,6 +180,7 @@ export function ItemsSeletor(props: ItemsSeletorProps) {
       {linesWithAmount.map((line, i) => (
         <View
           key={`${line.productId}-${i}`}
+          testID={`picked-line-${i}`}
           style={[styles.line, { borderColor: theme.border }]}
         >
           <View style={styles.lineLeft}>
@@ -246,7 +247,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 4,
     gap: 8,
-    marginTop: 8,
+    marginTop: 4,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",

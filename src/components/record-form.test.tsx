@@ -2,7 +2,7 @@ import type { ReactElement } from "react";
 import { afterEach, beforeEach, describe, expect, it, jest } from "@jest/globals";
 import type { QueryClient } from "@tanstack/react-query";
 import { fireEvent } from "@testing-library/react-native";
-import { Platform } from "react-native";
+import { Platform, StyleSheet } from "react-native";
 
 import { RecordForm } from "@/components/record-form";
 import { formatDateTime } from "@/components/date-format";
@@ -482,5 +482,35 @@ describe("RecordForm — buttonized time affordance shows formatDateTime (spec #
     // The affordance now shows the local formatDateTime of the backdated timestamp.
     expect(view.getByText(formatDateTime(mockBackdateMs))).toBeTruthy();
     void repos;
+  });
+});
+
+describe("ItemsSeletor — selected line density (summary-export-polish)", () => {
+  it("uses a 4px top margin between selected product lines", async () => {
+    const { repos, staffId } = await seed();
+    const { view } = await renderForm(
+      <RecordForm
+        staffId={staffId}
+        direction="in"
+        edit={{
+          recordId: "record-1",
+          timestamp: Date.now(),
+          note: null,
+          selfUse: false,
+          lines: [
+            {
+              id: "item-1",
+              productId: "product-1",
+              title: "可乐",
+              price: cents(300),
+              qty: 1,
+            },
+          ],
+        }}
+      />,
+      { repos },
+    );
+
+    expect(StyleSheet.flatten(view.getByTestId("picked-line-0").props.style).marginTop).toBe(4);
   });
 });

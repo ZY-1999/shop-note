@@ -1,7 +1,7 @@
 # 商品选择器：已选行间距收紧
 
 Type: spec
-Status: ready-for-agent
+Status: ready-for-human
 Parent: #01 (01-summary-export-polish.md)
 Blocked by: None — can start immediately
 
@@ -37,3 +37,9 @@ Blocked by: None — can start immediately
 ## Rework on failure
 
 失败隔离在 ItemsSelector 样式；单独重做。
+
+## Comments
+
+- 2026-08-04 — Evidence:
+  - AC1–AC3: `src/components/record-form.test.tsx` — `ItemsSeletor — selected line density / uses a 4px top margin between selected product lines`
+  - PASS: `npx jest src/components/record-form.test.tsx --colors=false --forceExit` — 1 suite / 19 tests
