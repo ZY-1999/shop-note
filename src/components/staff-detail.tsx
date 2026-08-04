@@ -240,6 +240,7 @@ export function StaffDetail({
   return (
     <FlatList
       testID="history-list"
+      style={{ flex: 1, backgroundColor: theme.background }}
       data={visible}
       keyExtractor={(item) => item.date}
       renderItem={renderDay}

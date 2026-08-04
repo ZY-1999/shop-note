@@ -2,7 +2,8 @@
 
 ## 1. Orientation
 
-- Last updated: `2026-08-04` (manage-export spec #04: `buildProductWorkbook` + ProductManage 顶栏「导出」; reuses `xlsx@0.18.5`)
+- Last updated: `2026-08-04` (summary-range-export #01: last10Days toolbar + white FlatList on summary/staff-detail)
+- Updated: `2026-08-04` (manage-export spec #04: `buildProductWorkbook` + ProductManage 顶栏「导出」; reuses `xlsx@0.18.5`)
 - Updated: `2026-08-04` (manage-export spec #03: `buildStaffWorkbook` + StaffManage 顶栏「导出」; lib `xlsx@0.18.5`)
 - Updated: `2026-08-04` (manage-export spec #02: `src/export/` write+share pipeline + `formatCentsAsYuan`; `MoneyText` uses the pure helper; `useExport` mutation wrapper)
 - Updated: `2026-08-04` (checkout-self-use spec #02: out form/detail/flow-row UI surfaces `self_use`; parents pass 0 bundles/retail)
@@ -63,7 +64,7 @@ Node: shop-note
 - Purpose: what the app *does* — three tabs of real shop-management capability over the repos.
 - Children:
   - `bookkeeping` (#05–#07) — staff list + per-staff summary + posting form + staff/record detail (view / edit / void). Main modules: [staff-list-tracer.tsx](../../../src/components/staff-list-tracer.tsx), [record-form.tsx](../../../src/components/record-form.tsx), [staff-detail.tsx](../../../src/components/staff-detail.tsx), [record-detail.tsx](../../../src/components/record-detail.tsx). Entries: `bookkeeping` tab + `bookkeeping/staff/[id]` + `bookkeeping/record/[id]`. Feature CodeMap: pending. Status: `confirmed`.
-  - `summary` (#08, rewritten #05/page-refactor) — a single time-range-scoped view: 时间段 selector (本月/上月/本周/上周) → 库存卡 (as-of-now `useShopAggregate`, range-independent) → 流水 (range-scoped `useDailyFlow` day×staff; each **day section is a collapsible card** default-collapsed, `openDays` set toggles on header tap; staff rows then expand to records via `useStockRecords`). Replaced the old four-segment switcher (overview/dailyFlow/byStaff/byProduct). Main module: [summary-tab.tsx](../../../src/components/summary-tab.tsx). Entry: `summary` tab. Feature CodeMap: pending. Status: `confirmed`.
+  - `summary` (#08, rewritten #05/page-refactor; summary-range-export #01) — time-range-scoped view: **toolbar first** (起止日 + 快捷下拉：近10天/本月/上月/本周/上周，默认近10天) → 库存卡 (as-of-now `useShopAggregate`, range-independent) → 流水 (range-scoped `useDailyFlow` day×staff; day sections collapsible). FlatList 白底铺满（会员详情同修）. Main module: [summary-tab.tsx](../../../src/components/summary-tab.tsx) + [date-format.ts](../../../src/components/date-format.ts) (`last10Days` / `matchRangePreset` / `normalizeDayRange`). Entry: `summary` tab. Feature CodeMap: pending. Status: `confirmed`.
   - `manage` (#09) — staff & product CRUD (search / create / edit / soft-delete / restore) + cost-price revaluation; staff/product 顶栏「包含删除」+「导出」xlsx (manage-export #01/#03/#04). Main module: [manage-tab.tsx](../../../src/components/manage-tab.tsx). Entry: `manage` tab. Feature CodeMap: pending. Status: `confirmed`.
   - `boot-shell` (#04) — production composition root: open DB → build Repos → splash/error/retry. Main module: [app-provider.tsx](../../../src/providers/app-provider.tsx). Status: `confirmed`.
   - `tab-navigation` — three-tab native navigator, icon-only bottom bar with Chinese top headers (nav-tweak). Main modules: [src/components/app-tabs.tsx](../../../src/components/app-tabs.tsx) + [src/navigation/tab-config.ts](../../../src/navigation/tab-config.ts). Status: `confirmed`.

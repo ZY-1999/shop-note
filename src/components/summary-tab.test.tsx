@@ -1,7 +1,7 @@
 import type { ReactElement } from "react";
 import { afterEach, describe, expect, it, jest } from "@jest/globals";
 import type { QueryClient } from "@tanstack/react-query";
-import { fireEvent } from "@testing-library/react-native";
+import { fireEvent, within } from "@testing-library/react-native";
 import { Pressable, Text, View } from "react-native";
 
 import { SummaryTab } from "@/components/summary-tab";
@@ -14,13 +14,50 @@ import { renderWithProviders, type RenderWithProvidersResult } from "@/testing/r
 import { flushPending, waitForSync } from "@/testing/async";
 
 /**
- * Spec #05 (page-refactor) — the rewritten 汇总 tab through the real data stack
- * (ADR-0006: InMemoryAdapter, no mocked Repos). Single time-range-scoped view:
- * 时间段 selector → 库存卡 (as-of-now, range-independent) → 流水 (range-scoped,
- * day×staff, expandable). `now` is injected (#01's rangeFor seam) so the
- * date_range filtering is deterministic. Async mechanics (waitForSync /
- * flushPending / QueryClient clear) live in [testing/async.ts](../testing/async.ts).
+ * Spec #05 (page-refactor) + summary-range-export #01 — 汇总 tab through the
+ * real data stack. `now` injects rangeFor; DateTimePicker stubbed (device picker
+ * stays device-verified).
  */
+
+jest.mock("@expo/ui/community/datetime-picker", () => {
+  const React = jest.requireActual("react") as typeof import("react");
+  const { View, Text, Pressable } = jest.requireActual(
+    "react-native",
+  ) as typeof import("react-native");
+  return {
+    __esModule: true,
+    default: ({
+      value,
+      testID,
+      onValueChange,
+    }: {
+      value: Date;
+      testID: string;
+      onValueChange?: (e: unknown, date: Date) => void;
+    }) =>
+      React.createElement(
+        View,
+        { testID, onValueChange } as any,
+        React.createElement(Text, null, value ? value.toISOString() : ""),
+        React.createElement(
+          Pressable,
+          {
+            testID: `${testID}-pick-earlier`,
+            onPress: () => onValueChange?.({}, new Date(2026, 5, 1, 12, 0)),
+          },
+          React.createElement(Text, null, "pick-earlier"),
+        ),
+        React.createElement(
+          Pressable,
+          {
+            testID: `${testID}-pick-later`,
+            onPress: () => onValueChange?.({}, new Date(2026, 7, 20, 12, 0)),
+          },
+          React.createElement(Text, null, "pick-later"),
+        ),
+      ),
+  };
+});
 
 let activeQueryClient: QueryClient | null = null;
 
@@ -45,7 +82,7 @@ function money(el: { props: { children?: unknown } }): string {
   return Array.isArray(c) ? (c as string[]).join("") : String(c ?? "");
 }
 
-/** Injected "now" = 2026-07-10 noon → thisMonth = July 2026, lastMonth = June 2026. */
+/** Injected "now" = 2026-07-10 noon → last10Days = Jul 1–10; lastMonth = June 2026. */
 const NOW = new Date(2026, 6, 10, 12, 0).getTime();
 const DAY = (d: number, h = 10, m = 0) => new Date(2026, 6, d, h, m).getTime(); // a day in July 2026
 
@@ -58,10 +95,59 @@ async function setup() {
   return { repos, staffId: staff.id, colaId: cola.id, waterId: water.id };
 }
 
-describe("SummaryTab — 时间段 selector + range refilter (spec #05 AC1)", () => {
-  it("defaults to 本月 with the range's flow totals, and switching the preset refilters the flow", async () => {
+async function pickPreset(
+  view: RenderWithProvidersResult["view"],
+  testID: string,
+) {
+  await fireEvent.press(view.getByTestId("range-preset-trigger"));
+  await flushPending();
+  await fireEvent.press(view.getByTestId(testID));
+  await flushPending();
+}
+
+function boundLabel(view: RenderWithProvidersResult["view"], testID: string): string {
+  const el = within(view.getByTestId(testID)).getByText(/\d{4}\/\d{2}\/\d{2}/);
+  const c = el.props.children;
+  return Array.isArray(c) ? c.join("") : String(c ?? "");
+}
+
+describe("SummaryTab — toolbar first + default 近10天 (summary-range-export #01)", () => {
+  it("puts range-toolbar above inventory and defaults to last 10 days", async () => {
+    const { repos, staffId, colaId } = await setup();
+    await repos.stockRecords.create({
+      staff_id: staffId,
+      direction: "out",
+      timestamp: DAY(9, 14),
+      items: [{ product_id: colaId, qty: 1 }],
+    });
+    const { view } = await renderTab(
+      <SummaryTab now={NOW} onOpenStaff={jest.fn()} />,
+      { repos },
+    );
+    await waitForSync(() => view.getByTestId("range-toolbar"));
+
+    const headerKids = (
+      view.getByTestId("summary-header").props.children as Array<{
+        props?: { testID?: string };
+      } | false | null | undefined>
+    ).filter(Boolean) as Array<{ props?: { testID?: string } }>;
+    const ids = headerKids.map((c) => c?.props?.testID).filter(Boolean);
+    expect(ids[0]).toBe("range-toolbar");
+    expect(ids).toContain("inventory-toggle");
+    expect(view.getByTestId("summary-list").props.style).toEqual(
+      expect.objectContaining({ backgroundColor: "#ffffff", flex: 1 }),
+    );
+    expect(boundLabel(view, "range-from")).toBe("2026/07/01");
+    expect(boundLabel(view, "range-to")).toBe("2026/07/10");
+    expect(view.getByTestId("range-preset-label").props.children).toBe("近10天");
+    await waitForSync(() => view.getByTestId("flow-summary"));
+    expect(money(view.getByTestId("flow-out-total"))).toMatch(/3\.00/);
+  });
+});
+
+describe("SummaryTab — 时间段 selector + flow refilter (spec #05 AC1 / #01)", () => {
+  it("defaults to 近10天 with the range's flow totals, and switching the preset refilters the flow", async () => {
     const { repos, staffId, colaId, waterId } = await setup();
-    // restock (admin -1): cola×4 + water×3 = 2700¢ (¥27.00); member out: cola×1 = 300¢ (¥3.00) — July 9
     await repos.stockRecords.create({
       staff_id: ADMIN_STAFF_ID, direction: "in", timestamp: DAY(9, 10),
       items: [{ product_id: colaId, qty: 4 }, { product_id: waterId, qty: 3 }],
@@ -73,16 +159,10 @@ describe("SummaryTab — 时间段 selector + range refilter (spec #05 AC1)", ()
     const { view } = await renderTab(<SummaryTab now={NOW} onOpenStaff={jest.fn()} />, { repos });
     await waitForSync(() => view.getByTestId("flow-summary"));
 
-    // default 本月 → the seeded July records are in range → range totals render.
-    // (补货 is intentionally absent from the summary header — FlowSummary shows
-    //  only 充值 / 出库 / 计单 / 零售 — so the out total is the flow signal here.)
     expect(money(view.getByTestId("flow-out-total"))).toMatch(/3\.00/);
 
-    // switch to 上月 (June 2026) → no records in range → flow totals drop to ¥0.00.
-    await fireEvent.press(view.getByTestId("range-lastMonth"));
-    await flushPending();
+    await pickPreset(view, "range-lastMonth");
     await waitForSync(() => expect(money(view.getByTestId("flow-out-total"))).toMatch(/0\.00/));
-    // no day separators render for an empty range.
     expect(view.queryAllByTestId(/^day-/)).toHaveLength(0);
   });
 });
@@ -113,9 +193,29 @@ describe("SummaryTab — 库存卡: as-of-now total, expandable, range-independe
     expect(view.getByTestId(`inventory-product-${waterId}`)).toBeTruthy();
 
     // switching the range does NOT change the as-of-now total (different caliber).
-    await fireEvent.press(view.getByTestId("range-lastMonth"));
-    await flushPending();
+    await pickPreset(view, "range-lastMonth");
     expect(money(view.getByTestId("inventory-total"))).toMatch(/24\.00/);
+  });
+});
+
+describe("SummaryTab — day pick swap + custom preset label (#01)", () => {
+  it("swaps when from > to and shows 自定义 when the window matches no preset", async () => {
+    const { repos } = await setup();
+    const { view } = await renderTab(
+      <SummaryTab now={NOW} onOpenStaff={jest.fn()} />,
+      { repos },
+    );
+    await waitForSync(() => view.getByTestId("range-toolbar"));
+
+    // Move "from" to Aug 20 (after current to Jul 10) → normalize swaps.
+    await fireEvent.press(view.getByTestId("range-from"));
+    await flushPending();
+    await fireEvent.press(view.getByTestId("range-from-picker-pick-later"));
+    await flushPending();
+
+    expect(boundLabel(view, "range-from")).toBe("2026/07/10");
+    expect(boundLabel(view, "range-to")).toBe("2026/08/20");
+    expect(view.getByTestId("range-preset-label").props.children).toBe("自定义");
   });
 });
 

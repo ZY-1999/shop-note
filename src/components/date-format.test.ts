@@ -1,6 +1,6 @@
 import { describe, expect, it } from "@jest/globals";
 
-import { formatDate, formatDateTime, formatTime, formatDateTimeSeconds, formatTimeSeconds, rangeFor } from "@/components/date-format";
+import { formatDate, formatDateTime, formatTime, formatDateTimeSeconds, formatTimeSeconds, rangeFor, matchRangePreset, normalizeDayRange } from "@/components/date-format";
 
 /**
  * Spec #01 — pure date/time formatting + range helpers. Local calendar day
@@ -97,5 +97,41 @@ describe("rangeFor — spec #01 (story 13)", () => {
     expect(a).toBe(new Date(2026, 5, 1).getTime());
     expect(b).toBe(new Date(2026, 6, 1).getTime());
     expect(a).not.toBe(b);
+  });
+
+  it("last10Days is today and the prior 9 local days (10 calendar days inclusive)", () => {
+    // 2026-08-04 noon → from 2026-07-26 00:00 → to 2026-08-04 23:59:59.999
+    const aug4 = new Date(2026, 7, 4, 12, 0).getTime();
+    const r = rangeFor("last10Days", aug4);
+    expect(r.from).toBe(new Date(2026, 6, 26, 0, 0, 0, 0).getTime());
+    expect(r.to).toBe(new Date(2026, 7, 4, 23, 59, 59, 999).getTime());
+  });
+});
+
+describe("matchRangePreset — summary-range-export #01", () => {
+  const aug4 = new Date(2026, 7, 4, 12, 0).getTime();
+
+  it("returns the preset when from/to exactly match rangeFor(preset, now)", () => {
+    expect(matchRangePreset(rangeFor("last10Days", aug4), aug4)).toBe("last10Days");
+    expect(matchRangePreset(rangeFor("thisMonth", aug4), aug4)).toBe("thisMonth");
+    expect(matchRangePreset(rangeFor("lastWeek", aug4), aug4)).toBe("lastWeek");
+  });
+
+  it("returns null when the window does not equal any preset", () => {
+    const custom = {
+      from: new Date(2026, 7, 1, 0, 0, 0, 0).getTime(),
+      to: new Date(2026, 7, 3, 23, 59, 59, 999).getTime(),
+    };
+    expect(matchRangePreset(custom, aug4)).toBeNull();
+  });
+});
+
+describe("normalizeDayRange — summary-range-export #01", () => {
+  it("snaps to local day bounds and swaps when start > end", () => {
+    const late = new Date(2026, 7, 5, 15, 30).getTime();
+    const early = new Date(2026, 7, 3, 9, 0).getTime();
+    const r = normalizeDayRange(late, early);
+    expect(r.from).toBe(new Date(2026, 7, 3, 0, 0, 0, 0).getTime());
+    expect(r.to).toBe(new Date(2026, 7, 5, 23, 59, 59, 999).getTime());
   });
 });

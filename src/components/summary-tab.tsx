@@ -1,9 +1,14 @@
+import DateTimePicker, {
+  type DateTimePickerChangeEvent,
+} from "@expo/ui/community/datetime-picker";
 import { Ionicons } from "@expo/vector-icons";
 import { useMemo, useState } from "react";
 import { FlatList, Pressable, StyleSheet, Text, View } from "react-native";
 
 import {
   formatDate,
+  matchRangePreset,
+  normalizeDayRange,
   rangeFor,
   type RangePreset,
 } from "@/components/date-format";
@@ -30,39 +35,14 @@ import {
 import { useTheme } from "@/hooks/use-theme";
 
 /**
- * The 汇总 tab (rewritten, spec #05 / page-refactor) — a single time-range-scoped
- * supervision view that replaced the old four-segment switcher. Three regions:
- *
- *  1. 时间段 selector (本月/上月/本周/上周) — drives the flow region's `date_range`
- *     via #01's `rangeFor`. `now` is injectable (rangeFor's designed test seam).
- *  2. 库存卡 — an as-of-now snapshot of the whole shop's stock value
- *     (`useShopAggregate`, NOT range-scoped): the total never changes when you
- *     switch the range. Labelled 「当前」 so the operator feels the caliber
- *     difference from the flow (current price vs frozen history — ADR-0002).
- *  3. 流水 — the range's in/out totals + a day-grouped (newest-first) × staff
- *     movement from one `useDailyFlow({ date_range })` pass. Each staff row
- *     expands to that day's records (drilled from the range-scoped
- *     `useStockRecords`, filtered by staff + local day). Record rows tap through
- *     to record detail (edit / void live there).
- *
- * Each FlatList item is one whole DAY SECTION (the day card + its staff cards
- * nested together), so `visibleDays` caps how many days render and a batch
- * boundary can never split a day (ADR-0007; same structural-wholeness trick as
- * staff-detail #04). Each level is a **container card** mirroring the 库存卡:
- * the day card (`styles.card`) wraps its header + staff cards; a staff card
- * (`styles.staffCard`) wraps its header + record lines. `openDays` holds the
- * expanded dateDash set (default empty = all collapsed) — a header tap toggles
- * membership, and the card's height grows to contain its children with `gap`
- * only when open. `expandedStaffDay` is the same pattern one level down (staff
- * card → record lines). `onEndReached` reveals more days; a `加载更多` footer
- * is the same reveal via an explicit tap. Navigation is delegated
- * (`onOpenStaff` / `onOpenRecord`); the route wires the router, so the tab is
- * RNTL-testable.
+ * The 汇总 tab — time-range-scoped supervision view (summary-range-export #01):
+ * toolbar (from/to + preset dropdown) → 库存卡 (as-of-now) → 流水 (range-scoped).
  */
 const INITIAL_DAYS = 5;
 const DAYS_PER_BATCH = 5;
 
 const PRESETS: Array<{ key: RangePreset; label: string; testID: string }> = [
+  { key: "last10Days", label: "近10天", testID: "range-last10Days" },
   { key: "thisMonth", label: "本月", testID: "range-thisMonth" },
   { key: "lastMonth", label: "上月", testID: "range-lastMonth" },
   { key: "thisWeek", label: "本周", testID: "range-thisWeek" },
@@ -71,20 +51,17 @@ const PRESETS: Array<{ key: RangePreset; label: string; testID: string }> = [
 
 export interface SummaryTabProps {
   onOpenStaff: (staffId: string) => void;
-  /** Record-row tap (inside an expanded staff row) → record detail (#07 route). */
   onOpenRecord?: (recordId: string) => void;
-  /** Top-up row tap → topup detail route. */
   onOpenTopup?: (topupId: string) => void;
-  /** Epoch-ms "now" threaded into `rangeFor` — #01's deterministic-test seam. Defaults to Date.now(). */
+  /** Epoch-ms "now" threaded into `rangeFor` — deterministic-test seam. */
   now?: number;
 }
 
-/** One FlatList item = one local calendar day: its separator totals + staff rows. */
 interface DaySection {
-  dateDash: string; // 'YYYY-MM-DD' (dailyFlow row.date) — the day key + keyExtractor
-  dateSlash: string; // 'YYYY/MM/DD' — display + testID (matches formatDate)
-  dayOut: number; // Σ out_amount across the day's member staff (cents)
-  dayTopup: number; // Σ topup_amount across the day's member staff (cents)
+  dateDash: string;
+  dateSlash: string;
+  dayOut: number;
+  dayTopup: number;
   staffRows: {
     staffId: string;
     outAmount: number;
@@ -99,18 +76,21 @@ export function SummaryTab({
   now = Date.now(),
 }: SummaryTabProps) {
   const theme = useTheme();
-  const [preset, setPreset] = useState<RangePreset>("thisMonth");
+  const [range, setRange] = useState(() => rangeFor("last10Days", now));
+  const [presetOpen, setPresetOpen] = useState(false);
+  const [editingBound, setEditingBound] = useState<"from" | "to" | null>(null);
   const [inventoryOpen, setInventoryOpen] = useState(false);
   const [expandedStaffDay, setExpandedStaffDay] = useState<string | null>(null);
-  // Per-day collapse (day-collapse spec): empty set = every day collapsed. A day
-  // header tap toggles its dateDash in the set; staff rows render only when open.
   const [openDays, setOpenDays] = useState<Set<string>>(new Set());
   const [visibleDays, setVisibleDays] = useState(INITIAL_DAYS);
 
-  const range = useMemo(() => rangeFor(preset, now), [preset, now]);
-  const aggregate = useShopAggregate(); // as-of-now, NOT range-scoped
+  const activePreset = matchRangePreset(range, now);
+  const presetLabel =
+    PRESETS.find((p) => p.key === activePreset)?.label ?? "自定义";
+
+  const aggregate = useShopAggregate();
   const flow = useDailyFlow({ date_range: range });
-  const records = useStockRecords({ date_range: range }); // drill-down for staff-row expand
+  const records = useStockRecords({ date_range: range });
   const topups = useTopups({ date_range: range });
   const staff = useStaff();
   const staffById = useMemo(
@@ -124,16 +104,12 @@ export function SummaryTab({
     0,
   );
 
-  // Group the (already newest-first) dailyFlow rows by day, folding each row into
-  // the day + section totals. Pure derived shape — never stored. Restock (`in`
-  // under the admin -1) is excluded — 补货 is an inventory op that surfaces in the
-  // 库存卡, not in this member-flow view; a restock-only day renders no section.
   const { sections, totalDays, outTotal, topupTotal } = useMemo(() => {
     const byDay = new Map<string, DaySection>();
     let outT = 0;
     let topupT = 0;
     for (const row of flow.data ?? []) {
-      if (row.staff_id === ADMIN_STAFF_ID) continue; // restock — not member flow
+      if (row.staff_id === ADMIN_STAFF_ID) continue;
       let day = byDay.get(row.date);
       if (!day) {
         day = {
@@ -155,7 +131,6 @@ export function SummaryTab({
         topupAmount: row.topup_amount,
       });
     }
-    // flow returns newest-first; Map preserves first-seen order, so sections stay newest-first.
     const all = [...byDay.values()];
     return {
       sections: all,
@@ -165,18 +140,11 @@ export function SummaryTab({
     };
   }, [flow.data]);
 
-  // 出库单数零售聚合 (US8): each 'out' record in range splits via its OWN frozen
-  // unit_price_snapshot (not the current unit price), then Σ bundles / Σ retail.
-  // A unit-price change does not re-split history — every record uses its snapshot.
   const bundleAggregate = useMemo(
     () => aggregateBundleRetail(records.data ?? []),
     [records.data],
   );
 
-  // Per-day and per-(day, staff) bundles/retail — feeds each day card header's
-  // FlowSummary and each staff row's FlowSummary. Group the range's records once,
-  // then aggregateBundleRetail per group (it filters to 'out' internally, so
-  // restock 'in' never feeds a member-flow total). Frozen per-record snapshots.
   const { dayBrMap, staffDayBrMap } = useMemo(() => {
     const dayGroups = new Map<string, BundleRetailRecord[]>();
     const staffDayGroups = new Map<string, BundleRetailRecord[]>();
@@ -201,9 +169,22 @@ export function SummaryTab({
     };
   }, [records.data]);
 
-  // Day-batched slice (ADR-0007): each section is a whole day, so slicing at a day
-  // boundary can never split a day's separator from its staff rows.
   const visible = sections.slice(0, visibleDays);
+
+  const applyPreset = (key: RangePreset) => {
+    setRange(rangeFor(key, now));
+    setPresetOpen(false);
+    setEditingBound(null);
+  };
+
+  const onPickBound = (bound: "from" | "to", date: Date) => {
+    const next =
+      bound === "from"
+        ? normalizeDayRange(date.getTime(), range.to)
+        : normalizeDayRange(range.from, date.getTime());
+    setRange(next);
+    setEditingBound(null);
+  };
 
   const renderDay = ({ item }: { item: DaySection }) => {
     const dayOpen = openDays.has(item.dateDash);
@@ -244,8 +225,6 @@ export function SummaryTab({
               bundles: 0,
               retail: 0,
             };
-            // Restock (-1) is filtered out of the summary (member-flow only), so
-            // every row here is a member; fall back to the id / 普站 if unknown.
             const s = staffById.get(sr.staffId);
             return (
               <View
@@ -381,7 +360,6 @@ export function SummaryTab({
   const revealMore = () =>
     setVisibleDays((n) => Math.min(n + DAYS_PER_BATCH, totalDays));
 
-  // Toggle one day's collapse without mutating the current set (rules-of-react).
   const toggleDay = (dateDash: string) =>
     setOpenDays((prev) => {
       const next = new Set(prev);
@@ -393,6 +371,7 @@ export function SummaryTab({
   return (
     <FlatList
       testID="summary-list"
+      style={{ flex: 1, backgroundColor: theme.background }}
       data={visible}
       keyExtractor={(item) => item.dateDash}
       renderItem={renderDay}
@@ -414,8 +393,109 @@ export function SummaryTab({
         { backgroundColor: theme.background },
       ]}
       ListHeaderComponent={
-        <View style={styles.header}>
-          {/* 库存卡 — as-of-now snapshot, range-independent. 「当前」 flags the caliber. */}
+          <View testID="summary-header" style={styles.header}>
+          <View
+            testID="range-toolbar"
+            style={[styles.toolbar, { borderColor: theme.border }]}
+          >
+            <Pressable
+              testID="range-from"
+              onPress={() =>
+                setEditingBound((b) => (b === "from" ? null : "from"))
+              }
+              style={styles.boundBtn}
+            >
+              <Text style={{ color: theme.text, fontSize: 13 }}>
+                {formatDate(range.from)}
+              </Text>
+            </Pressable>
+            <Text style={{ color: theme.textSecondary }}>～</Text>
+            <Pressable
+              testID="range-to"
+              onPress={() =>
+                setEditingBound((b) => (b === "to" ? null : "to"))
+              }
+              style={styles.boundBtn}
+            >
+              <Text style={{ color: theme.text, fontSize: 13 }}>
+                {formatDate(range.to)}
+              </Text>
+            </Pressable>
+            <View style={styles.presetWrap}>
+              <Pressable
+                testID="range-preset-trigger"
+                onPress={() => setPresetOpen((v) => !v)}
+                style={[
+                  styles.presetTrigger,
+                  {
+                    borderColor: theme.border,
+                    backgroundColor: theme.inputBg,
+                  },
+                ]}
+              >
+                <Text
+                  testID="range-preset-label"
+                  style={{ color: theme.text, fontSize: 13 }}
+                >
+                  {presetLabel}
+                </Text>
+                <Ionicons
+                  name={presetOpen ? "chevron-up" : "chevron-down"}
+                  size={14}
+                  color={theme.textSecondary}
+                />
+              </Pressable>
+              {presetOpen && (
+                <View
+                  testID="range-preset-menu"
+                  style={[
+                    styles.presetMenu,
+                    {
+                      borderColor: theme.border,
+                      backgroundColor: theme.background,
+                    },
+                  ]}
+                >
+                  {PRESETS.map((p) => {
+                    const active = p.key === activePreset;
+                    return (
+                      <Pressable
+                        key={p.key}
+                        testID={p.testID}
+                        onPress={() => applyPreset(p.key)}
+                        style={[
+                          styles.presetItem,
+                          active && {
+                            backgroundColor: theme.backgroundSelected,
+                          },
+                        ]}
+                      >
+                        <Text
+                          style={{
+                            color: active ? theme.text : theme.textSecondary,
+                          }}
+                        >
+                          {p.label}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+              )}
+            </View>
+          </View>
+
+          {editingBound && (
+            <DateTimePicker
+              testID={`range-${editingBound}-picker`}
+              mode="date"
+              value={new Date(editingBound === "from" ? range.from : range.to)}
+              onValueChange={(_e: DateTimePickerChangeEvent, date: Date) =>
+                onPickBound(editingBound, date)
+              }
+            />
+          )}
+
           <Pressable
             testID="inventory-toggle"
             onPress={() => setInventoryOpen((v) => !v)}
@@ -452,36 +532,7 @@ export function SummaryTab({
                 </View>
               ))}
           </Pressable>
-          {/* 时间段 selector — drives the flow region's date_range */}
-          <View style={[styles.presets, { borderColor: theme.border }]}>
-            {PRESETS.map((p) => {
-              const active = p.key === preset;
-              return (
-                <Pressable
-                  key={p.key}
-                  testID={p.testID}
-                  onPress={() => setPreset(p.key)}
-                  style={[
-                    styles.preset,
-                    active && { backgroundColor: theme.backgroundSelected },
-                  ]}
-                >
-                  <Text
-                    style={{ color: active ? theme.text : theme.textSecondary }}
-                  >
-                    {p.label}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </View>
 
-          {/* 流水 region header — the range's member-flow totals in two lines
-              (FlowSummary): line 1 充值 alone; line 2 出库 / 计 N 单 / 零售.
-              补货 (restock) is intentionally absent — it's an inventory op, shown
-              in the 库存卡 + per-day drill-down, not in this member-flow summary.
-              Frozen amounts (ADR-0002); bundle/retail split per out record's OWN
-              unit_price_snapshot (US8). */}
           <FlowSummary
             topup={topupTotal}
             out={outTotal}
@@ -498,13 +549,42 @@ export function SummaryTab({
 const styles = StyleSheet.create({
   content: { padding: 12, gap: 8, paddingBottom: BottomTabInset },
   header: { gap: 8, paddingBottom: 4 },
-  presets: {
+  toolbar: {
     flexDirection: "row",
+    alignItems: "center",
+    flexWrap: "wrap",
+    gap: 6,
     borderWidth: 1,
     borderRadius: 8,
-    overflow: "hidden",
+    paddingHorizontal: 8,
+    paddingVertical: 8,
+    zIndex: 2,
   },
-  preset: { flex: 1, paddingVertical: 10, alignItems: "center" },
+  boundBtn: { paddingVertical: 4, paddingHorizontal: 4 },
+  presetWrap: { flex: 1, minWidth: 88, zIndex: 3 },
+  presetTrigger: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 4,
+    borderWidth: 1,
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+  },
+  presetMenu: {
+    position: "absolute",
+    top: "100%",
+    left: 0,
+    right: 0,
+    marginTop: 4,
+    borderWidth: 1,
+    borderRadius: 6,
+    overflow: "hidden",
+    zIndex: 10,
+    elevation: 4,
+  },
+  presetItem: { paddingVertical: 10, paddingHorizontal: 10 },
   card: {
     borderWidth: 1,
     borderRadius: 8,
@@ -521,9 +601,6 @@ const styles = StyleSheet.create({
   cardTitle: { flex: 1, fontSize: 15, fontWeight: "600" },
   dayDate: { flex: 1, fontSize: 13, fontWeight: "600" },
   dayHead: { gap: 4 },
-  // Nested container card (a day card holds staff cards; a staff card holds
-  // record lines) — same containment model as `card`/库存卡, just tighter so the
-  // nesting reads. `gap` spaces the header from its expanded children.
   staffCard: {
     borderWidth: 1,
     borderRadius: 6,

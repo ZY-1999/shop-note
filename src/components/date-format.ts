@@ -42,13 +42,19 @@ export function formatDateTimeSeconds(ms: number): string {
   return `${formatDate(ms)} ${formatTimeSeconds(ms)}`;
 }
 
-export type RangePreset = "thisMonth" | "lastMonth" | "thisWeek" | "lastWeek";
+export type RangePreset =
+  | "last10Days"
+  | "thisMonth"
+  | "lastMonth"
+  | "thisWeek"
+  | "lastWeek";
 
 /**
  * Local-day `[from, to]` epoch-ms window for a preset — feeds the summary
- * screen's `date_range` (spec #05 / story 13). `from` is the start day's
- * 00:00:00.000, `to` the end day's 23:59:59.999, both local. Weeks start
- * Monday. `now` defaults to `Date.now()`; inject it for deterministic tests.
+ * screen's `date_range`. `from` is the start day's 00:00:00.000, `to` the end
+ * day's 23:59:59.999, both local. Weeks start Monday. `last10Days` is today
+ * plus the prior 9 local calendar days (10 days inclusive). `now` defaults to
+ * `Date.now()`; inject it for deterministic tests.
  */
 export function rangeFor(
   preset: RangePreset,
@@ -58,6 +64,14 @@ export function rangeFor(
   const year = ref.getFullYear();
   const month = ref.getMonth();
   switch (preset) {
+    case "last10Days": {
+      const end = new Date(year, month, ref.getDate());
+      const start = addDays(end, -9);
+      return {
+        from: atStartOfDay(start.getFullYear(), start.getMonth(), start.getDate()),
+        to: atEndOfDay(end.getFullYear(), end.getMonth(), end.getDate()),
+      };
+    }
     case "thisMonth":
       return { from: atStartOfDay(year, month, 1), to: atEndOfDay(year, month + 1, 0) };
     case "lastMonth":
@@ -97,4 +111,48 @@ function addDays(d: Date, n: number): Date {
   const r = new Date(d);
   r.setDate(r.getDate() + n);
   return r;
+}
+
+const ALL_PRESETS: RangePreset[] = [
+  "last10Days",
+  "thisMonth",
+  "lastMonth",
+  "thisWeek",
+  "lastWeek",
+];
+
+/**
+ * If `range` exactly equals `rangeFor(preset, now)` for some preset, return it;
+ * otherwise `null` (custom / unmatched window — dropdown shows no highlight).
+ */
+export function matchRangePreset(
+  range: { from: number; to: number },
+  now: number = Date.now(),
+): RangePreset | null {
+  for (const preset of ALL_PRESETS) {
+    const p = rangeFor(preset, now);
+    if (p.from === range.from && p.to === range.to) return preset;
+  }
+  return null;
+}
+
+/**
+ * Snap both ends to local calendar-day bounds (`from` 00:00:00.000, `to`
+ * 23:59:59.999). If start > end after snapping, swap them.
+ */
+export function normalizeDayRange(
+  fromMs: number,
+  toMs: number,
+): { from: number; to: number } {
+  const a = new Date(fromMs);
+  const b = new Date(toMs);
+  let from = atStartOfDay(a.getFullYear(), a.getMonth(), a.getDate());
+  let to = atEndOfDay(b.getFullYear(), b.getMonth(), b.getDate());
+  if (from > to) {
+    const af = new Date(fromMs);
+    const bt = new Date(toMs);
+    from = atStartOfDay(bt.getFullYear(), bt.getMonth(), bt.getDate());
+    to = atEndOfDay(af.getFullYear(), af.getMonth(), af.getDate());
+  }
+  return { from, to };
 }

@@ -53,6 +53,19 @@ async function seedStaffProduct() {
 }
 
 describe("StaffDetail — 余额 partition + summary (balance-domain)", () => {
+  it("fills the list with theme white background (summary-range-export #01)", async () => {
+    const { repos, staffId } = await seedStaffProduct();
+    const { view } = await renderDetail(
+      <StaffDetail staffId={staffId} onOpenRecord={jest.fn()} onOpenTopup={jest.fn()} />,
+      { repos },
+    );
+    await waitForSync(() => view.getByTestId("history-list"));
+    const list = view.getByTestId("history-list");
+    expect(list.props.style).toEqual(
+      expect.objectContaining({ backgroundColor: "#ffffff", flex: 1 }),
+    );
+  });
+
   it("shows the derived 余额 (Σ topup − Σ out) + the 充值/出库 summary totals", async () => {
     const { repos, staffId, productId } = await seedStaffProduct();
     await repos.topups.create({ staff_id: staffId, amount: cents(10000) }); // ¥100
