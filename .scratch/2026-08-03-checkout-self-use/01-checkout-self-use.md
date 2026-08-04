@@ -104,3 +104,5 @@ Status: ready-for-agent
 
 - 2026-08-03 — grill 完成；对抗评审 PASS（修正：会员详情双路径、FlowEventRow 无金额、v1+v3 双冻）；Status `ready-for-human`，待 Gate 0。
 - 2026-08-03 — Gate 0 通过；`/sdd-flow` 入口翻为 `ready-for-agent`。
+- 2026-08-04 — 设备 smoke 25/25 PASS（含 v5 `self_use` 真实 SQLite 路径）；发布手动门关闭。
+- 2026-08-04 — 跟进：出库表单选中自用时，合计行也隐藏计单/零售（仍显示金额）。

@@ -19,7 +19,7 @@ Blocked by: None — 可立即开始
 - [x] 混合账本：`aggregateBundleRetail` 对 `out && self_use` 跳过单数/零售；非自用仍拆分；`in` 仍忽略。— 聚合缝
 - [x] 会员详情按天路径（`dayBundles` / `dayRetail` 手工 `splitBundleRetail` 累加）与 `aggregateBundleRetail` 同一口径跳过自用（相对总览无漂移）。— 双路径对齐（PRD）
 - [x] 作废一笔自用出库后，余额 / 库存 / 出库金额回滚与普通出库一致，且从派生单数·零售中排除（与任意作废相同）。— US14
-- [ ] **[手动 / 发布门]** 真实 SQLite 下 v5 ALTER（老库升级 + 全新库路径）设备 smoke 通过 — ADR-0004；非 Jest。
+- [x] **[手动 / 发布门]** 真实 SQLite 下 v5 ALTER（老库升级 + 全新库路径）设备 smoke 通过 — ADR-0004；非 Jest。
 
 ## Scope
 
@@ -75,6 +75,7 @@ Blocked by: None — 可立即开始
   - [x] aggregateBundleRetail 跳过 — `split-bundle.test.ts::mixed ledger: skips out&&self_use…`
   - [x] 按天双路径对齐 — `staff-detail.test.tsx::day header skips self_use out for bundles/retail…`
   - [x] void 回滚 — `stock-record.test.ts::voiding a self_use out rolls back…`
-  - [ ] **[手动/发布门]** 真实 SQLite v5 ALTER 设备 smoke — 未由 /tdd 跑（ADR-0004）
+  - [x] **[手动/发布门]** 真实 SQLite v5 ALTER 设备 smoke — 2026-08-04 用户确认：25 个 smoke 运行正常（ADR-0004）
   - Test run: `npx jest src/data/stock-record.test.ts src/data/split-bundle.test.ts src/data/expo-sqlite-migration.test.ts src/data/sql-logic.test.ts src/components/staff-detail.test.tsx --forceExit` → 78 passed, 0 failed
   - Commit: `0dbada1`
+- 2026-08-04 — 设备 smoke 发布门关闭：25/25 PASS。

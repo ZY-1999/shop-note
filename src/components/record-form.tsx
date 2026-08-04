@@ -146,7 +146,7 @@ export function RecordForm({
           setSelectedItems(value);
           setError(null);
         }}
-        unitPrice={unitPrice.data}
+        unitPrice={selfUse ? undefined : unitPrice.data}
       />
 
       <View style={styles.field}>

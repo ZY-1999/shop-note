@@ -423,6 +423,37 @@ describe("RecordForm — 自用 switch (checkout-self-use)", () => {
     void staffId;
     void productId;
   });
+
+  it("选中自用后合计行隐藏计单与零售，金额仍显示；关掉后恢复", async () => {
+    const { repos, staffId, productId } = await seed();
+    await repos.config.setUnitPrice(cents(300));
+    const { view } = await renderForm(<RecordForm staffId={staffId} direction="out" />, {
+      repos,
+    });
+    fireEvent.press(await waitForSync(() => view.getByTestId(`pick-${productId}`)));
+    fireEvent.changeText(await waitForSync(() => view.getByTestId("qty-0")), "4");
+    await flushPending();
+
+    // 1200¢ / 300¢ = 4 单；开关关时合计行露出拆分
+    await waitForSync(() => expect(view.getByText("计 4 单")).toBeTruthy());
+    expect(view.getByText("零售")).toBeTruthy();
+
+    fireEvent(view.getByTestId("self-use-switch"), "valueChange", true);
+    await flushPending();
+    expect(view.queryByText(/计 \d+ 单/)).toBeNull();
+    expect(view.queryByText("零售")).toBeNull();
+    // 合计金额仍在（此时仅一处 running-total）
+    await waitForSync(() =>
+      expect(
+        (view.getByTestId("running-total").props.children as string[]).join(""),
+      ).toMatch(/12\.00/),
+    );
+
+    fireEvent(view.getByTestId("self-use-switch"), "valueChange", false);
+    await flushPending();
+    await waitForSync(() => expect(view.getByText("计 4 单")).toBeTruthy());
+    expect(view.getByText("零售")).toBeTruthy();
+  });
 });
 
 describe("RecordForm — buttonized time affordance shows formatDateTime (spec #03 AC4)", () => {
