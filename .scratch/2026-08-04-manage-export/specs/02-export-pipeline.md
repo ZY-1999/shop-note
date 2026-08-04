@@ -1,7 +1,7 @@
 # 公共导出管道 + 金额纯函数
 
 Type: spec
-Status: ready-for-agent
+Status: ready-for-human
 Parent: #01 (01-manage-export.md)
 Blocked by: None — 可与 #01 并行
 
@@ -11,13 +11,13 @@ Blocked by: None — 可与 #01 并行
 
 ## Acceptance criteria
 
-- [ ] `runExport` 正常路径：`build` → 写 cache → `shareAsync`，返回文件 URI；filename/mimeType/encoding 正确传递
-- [ ] 用户取消分享（错误信息含 `User canceled`）不 throw
-- [ ] **真错误**：`shareAsync` reject 且信息**不含** `User canceled` → `runExport` throw
-- [ ] 分享不可用 / `build` 抛错 → throw，且不写盘；写盘失败 → throw
-- [ ] `useExport` 为 `useMutation({ mutationFn: runExport })`，暴露 `mutate` / `isPending` / `error`
-- [ ] 金额纯函数：整数分 → 元、两位小数；无 React 依赖
-- [ ] `MoneyText` 的数字部分改为调用该纯函数（`¥` / 颜色 / `negativeLabel` 仍在组件内）——与导出共用单源
+- [x] `runExport` 正常路径：`build` → 写 cache → `shareAsync`，返回文件 URI；filename/mimeType/encoding 正确传递
+- [x] 用户取消分享（错误信息含 `User canceled`）不 throw
+- [x] **真错误**：`shareAsync` reject 且信息**不含** `User canceled` → `runExport` throw
+- [x] 分享不可用 / `build` 抛错 → throw，且不写盘；写盘失败 → throw
+- [x] `useExport` 为 `useMutation({ mutationFn: runExport })`，暴露 `mutate` / `isPending` / `error`
+- [x] 金额纯函数：整数分 → 元、两位小数；无 React 依赖
+- [x] `MoneyText` 的数字部分改为调用该纯函数（`¥` / 颜色 / `negativeLabel` 仍在组件内）——与导出共用单源
 
 ## Scope
 
@@ -60,3 +60,13 @@ Blocked by: None — 可与 #01 并行
 ## Comments
 
 - 2026-08-04 — skeleton + design from candidate-3（judge PASS）。
+- 2026-08-04 — implemented via `/tdd`；Status → `ready-for-human`
+  - [x] 正常路径 — `run-export.test.ts::builds, writes cache, shares, and returns the file URI`
+  - [x] 用户取消 — `::does not throw when the user cancels sharing`
+  - [x] 真错误 — `::rethrows when shareAsync rejects without User canceled`
+  - [x] 不可用 / build 错 / 写盘失败 — `::throws when sharing is unavailable…` / `::propagates build errors…` / `::throws when writing the cache file fails`
+  - [x] `useExport` — `src/hooks/use-export.ts`（`useMutation({ mutationFn: runExport })`；不单测）
+  - [x] `formatCentsAsYuan` — `format-cents-as-yuan.test.ts::formats integer 分 as 元…` (+ signed)
+  - [x] `MoneyText` 改调纯函数 — `money-text.test.tsx`（既有 3 条仍 GREEN）+ `money-text.tsx` import
+  - Test run: `npx jest src/export/run-export.test.ts src/lib/format-cents-as-yuan.test.ts src/components/money-text.test.tsx --forceExit` → 11 passed, 0 failed
+  - Commit: `c8241a1`

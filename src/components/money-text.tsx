@@ -2,6 +2,7 @@ import { Text, type TextProps } from "react-native";
 
 import type { Cents } from "@/data/primitives";
 import { useTheme } from "@/hooks/use-theme";
+import { formatCentsAsYuan } from "@/lib/format-cents-as-yuan";
 
 /**
  * The single money-formatting primitive (spec #05 / ADR-0005). Every later screen
@@ -11,8 +12,9 @@ import { useTheme } from "@/hooks/use-theme";
  * - `cents > 0` → `¥X.XX` in the success token.
  * - `0` → `¥0.00` in the neutral textSecondary token.
  *
- * Cents are integer 分; yuan is cents/100 to two decimals. The negative form shows
- * the absolute amount (the debt magnitude) — the danger color + prefix carry the sign.
+ * Cents are integer 分; yuan via `formatCentsAsYuan` (shared with export). The
+ * negative form shows the absolute amount (the debt magnitude) — the danger
+ * color + prefix carry the sign.
  */
 export function MoneyText({
   cents,
@@ -24,20 +26,20 @@ export function MoneyText({
   if (cents < 0) {
     return (
       <Text style={[{ color: theme.danger, fontSize }]} {...rest}>
-        {negativeLabel} ¥{(-cents / 100).toFixed(2)}
+        {negativeLabel} ¥{formatCentsAsYuan(-cents)}
       </Text>
     );
   }
   if (cents > 0) {
     return (
       <Text style={[{ color: theme.text, fontSize }]} {...rest}>
-        ¥{(cents / 100).toFixed(2)}
+        ¥{formatCentsAsYuan(cents)}
       </Text>
     );
   }
   return (
     <Text style={[{ color: theme.textSecondary, fontSize }]} {...rest}>
-      ¥0.00
+      ¥{formatCentsAsYuan(0)}
     </Text>
   );
 }
