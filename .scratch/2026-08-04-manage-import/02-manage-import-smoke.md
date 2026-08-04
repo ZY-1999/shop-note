@@ -109,3 +109,4 @@ Done checklist：
 - 2026-08-04 — 更正：预览长字段**应为省略**（确认大概即可），非展全文；从缺陷项中移除，写入 Expected/Out of Scope 锁定。
 - 2026-08-04 — Gate 0 通过；`/sdd-flow` 入口翻为 `ready-for-agent`。
 - 2026-08-04 — 模板由「仅表头」修订为「表头 + 一行示例」（spec #05）。
+- 2026-08-04 — Stage 4：#04/#05 已实现；Standards 硬伤（codemap DocumentPicker 路径）已修；Spec PASS；**待真机**仍开放（#04）。

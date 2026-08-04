@@ -46,6 +46,13 @@
 - **适用边界**：任何写 cache / 读本地文件的新代码；Jest mock 路径须与 import 一致（`jest.mock('expo-file-system/legacy')`）。
 - **验证**：`src/export/run-export.ts` + `run-export.test.ts`；装依赖后 `expo start --clear`。
 
+### Android Expo Go：DocumentPicker 勿依赖自带 cache 再 legacy 读
+
+- **事实**：`expo-document-picker` 在 `copyToCacheDirectory: true` 时把文件落到宿主 `…/cache/DocumentPicker/`；Expo Go 下 legacy `readAsStringAsync` 的可读沙箱是体验 `cacheDirectory`，二者错位 → `Location '…' isn't readable`。修法：`copyToCacheDirectory: false`，对 `content://` / 作用域外 uri `copyAsync` 进体验 cache 后再读。
+- **来源**：manage-import 真机 smoke + diagnose-bug（2026-08-04，#02/#04）。
+- **适用边界**：任何 DocumentPicker + legacy FileSystem 读；独立 APK 常无此错位，应用层仍应按作用域 cache 读。Jest mock 须含 `copyAsync`。
+- **验证**：`import-form.test.tsx` content:// / 作用域外 / 已在 cache 三路径；真机 Expo Go 选手 xlsx。
+
 ## 资源 / 图标
 
 ### 应用图标：Z logo + 关键约束
