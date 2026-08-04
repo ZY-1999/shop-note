@@ -765,22 +765,36 @@ describe("ManageTab — staff export (manage-export #03)", () => {
 });
 
 describe("ManageTab — product export (manage-export #04)", () => {
-  it("shows 导出 on product; restock/config have no product-export", async () => {
+  it("shows 导入 left of 导出 on product; restock/config have no product-import/export", async () => {
     const { repos } = await seed();
     const { view } = await renderManage(<ManageTab />, { repos });
 
     await fireEvent.press(view.getByTestId("seg-product"));
     await waitForSync(() => view.getByTestId("view-product"));
+    expect(view.getByTestId("product-import")).toBeTruthy();
     expect(view.getByTestId("product-export")).toBeTruthy();
-    expect(view.getByText("导出")).toBeTruthy();
+
+    const tree = JSON.stringify(view.toJSON());
+    expect(tree.indexOf("product-import")).toBeGreaterThan(-1);
+    expect(tree.indexOf("product-import")).toBeLessThan(
+      tree.indexOf("product-export"),
+    );
+
+    await fireEvent.press(view.getByTestId("product-import"));
+    expect(mockPush).toHaveBeenCalledWith({
+      pathname: "/import-form",
+      params: { kind: "product" },
+    });
 
     await fireEvent.press(view.getByTestId("seg-restock"));
     await waitForSync(() => view.getByTestId("view-restock"));
     expect(view.queryByTestId("product-export")).toBeNull();
+    expect(view.queryByTestId("product-import")).toBeNull();
 
     await fireEvent.press(view.getByTestId("seg-config"));
     await waitForSync(() => view.getByTestId("config-price-input"));
     expect(view.queryByTestId("product-export")).toBeNull();
+    expect(view.queryByTestId("product-import")).toBeNull();
   });
 
   it("export job filename is 商品-YYYYMMDD.xlsx; build rows match current list (switch+search)", async () => {

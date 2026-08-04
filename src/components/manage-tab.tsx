@@ -714,8 +714,8 @@ function StaffForm({
 /**
  * Product CRUD — mirrors StaffManage: searchable list + create/edit form.
  * Default list is active-only; 「包含删除」shares includeVoided with search.
- * Top-bar right 「导出」shares the same row set via buildProductWorkbook
- * (manage-export #04).
+ * Top-bar right 「导入｜导出」— import left of export (manage-import #02 /
+ * manage-export #04).
  */
 function ProductManage() {
   const theme = useTheme();
@@ -772,6 +772,18 @@ function ProductManage() {
           onValueChange={setIncludeVoided}
         />
         <View style={styles.filterSpacer} />
+        <Pressable
+          testID="product-import"
+          onPress={() =>
+            router.push({
+              pathname: "/import-form",
+              params: { kind: "product" },
+            })
+          }
+          style={[styles.exportBtn, { borderColor: theme.border }]}
+        >
+          <Text style={{ color: theme.text, fontWeight: "600" }}>导入</Text>
+        </Pressable>
         <Pressable
           testID="product-export"
           onPress={onExport}

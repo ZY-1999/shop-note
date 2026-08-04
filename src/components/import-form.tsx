@@ -15,9 +15,17 @@ import { useToast } from "@/components/toast";
 import { BottomTabInset } from "@/constants/theme";
 import { ADMIN_STAFF_ID } from "@/data/staff";
 import { XLSX_MIME } from "@/export/types";
-import { useImportRestocks, useImportStaff } from "@/hooks/mutations";
+import {
+  useImportProducts,
+  useImportRestocks,
+  useImportStaff,
+} from "@/hooks/mutations";
 import { useExport } from "@/hooks/use-export";
 import { useTheme } from "@/hooks/use-theme";
+import {
+  buildProductImportTemplate,
+  PRODUCT_IMPORT_TEMPLATE_FILENAME,
+} from "@/import/build-product-import-template";
 import {
   buildRestockImportTemplate,
   RESTOCK_IMPORT_TEMPLATE_FILENAME,
@@ -26,8 +34,14 @@ import {
   buildStaffImportTemplate,
   STAFF_IMPORT_TEMPLATE_FILENAME,
 } from "@/import/build-staff-import-template";
+import { parseProductImportWorkbook } from "@/import/parse-product-import-workbook";
 import { parseRestockImportWorkbook } from "@/import/parse-restock-import-workbook";
 import { parseStaffImportWorkbook } from "@/import/parse-staff-import-workbook";
+import {
+  previewProductImport,
+  type ProductImportFail,
+  type ProductImportOk,
+} from "@/import/preview-product-import";
 import {
   previewRestockImport,
   type RestockImportFail,
@@ -38,9 +52,10 @@ import {
   type StaffImportFail,
   type StaffImportOk,
 } from "@/import/preview-staff-import";
+import { formatCentsAsYuan } from "@/lib/format-cents-as-yuan";
 import { useRepos } from "@/providers/providers";
 
-/** Import kinds the shell accepts; product wires in #02. */
+/** Import kinds the shell accepts (manage-import #01/#02/#03). */
 export type ImportKind = "staff" | "product" | "restock";
 
 export type ImportFormProps = {
@@ -58,15 +73,20 @@ type StaffPreview = {
   fail: StaffImportFail[];
 };
 
+type ProductPreview = {
+  ok: ProductImportOk[];
+  fail: ProductImportFail[];
+};
+
 type RestockPreview = {
   ok: RestockImportOk[];
   fail: RestockImportFail[];
 };
 
 /**
- * Kind-parameterized import shell (manage-import #01/#03).
- * Root-Stack sibling of record-form / topup-form. Staff + restock paths wired;
- * product kind reserves the route shape for #02.
+ * Kind-parameterized import shell (manage-import #01/#02/#03).
+ * Root-Stack sibling of record-form / topup-form. Staff / product / restock
+ * paths share download → pick → preview → confirm UX.
  */
 export function ImportForm({ kind, confirmExtra }: ImportFormProps) {
   const theme = useTheme();
@@ -74,35 +94,33 @@ export function ImportForm({ kind, confirmExtra }: ImportFormProps) {
   const repos = useRepos();
   const exportMutation = useExport();
   const importStaff = useImportStaff();
+  const importProducts = useImportProducts();
   const importRestocks = useImportRestocks();
   const [staffPreview, setStaffPreview] = useState<StaffPreview | null>(null);
+  const [productPreview, setProductPreview] = useState<ProductPreview | null>(
+    null,
+  );
   const [restockPreview, setRestockPreview] = useState<RestockPreview | null>(
     null,
   );
   const [failOpen, setFailOpen] = useState(false);
   const [batchNote, setBatchNote] = useState("");
 
-  if (kind === "product") {
-    return (
-      <View
-        testID="import-form-unsupported"
-        style={[styles.container, { backgroundColor: theme.background }]}
-      >
-        <Text style={{ color: theme.textSecondary }}>
-          该导入类型尚未接入
-        </Text>
-      </View>
-    );
-  }
-
-  const isStaff = kind === "staff";
-  const preview = isStaff ? staffPreview : restockPreview;
-  const importPending = isStaff
-    ? importStaff.isPending
-    : importRestocks.isPending;
+  const preview =
+    kind === "staff"
+      ? staffPreview
+      : kind === "product"
+        ? productPreview
+        : restockPreview;
+  const importPending =
+    kind === "staff"
+      ? importStaff.isPending
+      : kind === "product"
+        ? importProducts.isPending
+        : importRestocks.isPending;
 
   const onDownloadTemplate = () => {
-    if (isStaff) {
+    if (kind === "staff") {
       exportMutation.mutate(
         {
           filename: STAFF_IMPORT_TEMPLATE_FILENAME,
@@ -110,6 +128,19 @@ export function ImportForm({ kind, confirmExtra }: ImportFormProps) {
           encoding: "base64",
           dialogTitle: "下载会员导入模板",
           build: () => buildStaffImportTemplate(),
+        },
+        { onError: (e) => toast.error(e.message) },
+      );
+      return;
+    }
+    if (kind === "product") {
+      exportMutation.mutate(
+        {
+          filename: PRODUCT_IMPORT_TEMPLATE_FILENAME,
+          mimeType: XLSX_MIME,
+          encoding: "base64",
+          dialogTitle: "下载商品导入模板",
+          build: () => buildProductImportTemplate(),
         },
         { onError: (e) => toast.error(e.message) },
       );
@@ -156,12 +187,16 @@ export function ImportForm({ kind, confirmExtra }: ImportFormProps) {
       const base64 = await readAsStringAsync(asset.uri, {
         encoding: EncodingType.Base64,
       });
-      if (isStaff) {
+      if (kind === "staff") {
         const rows = parseStaffImportWorkbook(base64);
         const existing = await repos.staff.list({ includeVoided: true });
         const admin = await repos.staff.getById(ADMIN_STAFF_ID);
         const adminName = admin?.name ?? "管理员";
         setStaffPreview(previewStaffImport(rows, existing, adminName));
+      } else if (kind === "product") {
+        const rows = parseProductImportWorkbook(base64);
+        const existing = await repos.products.list({ includeVoided: true });
+        setProductPreview(previewProductImport(rows, existing));
       } else {
         const rows = parseRestockImportWorkbook(base64);
         // includeVoided so preview can distinguish 不存在 vs 已删除
@@ -176,8 +211,14 @@ export function ImportForm({ kind, confirmExtra }: ImportFormProps) {
 
   const onConfirm = () => {
     if (!preview || preview.ok.length === 0) return;
-    if (isStaff) {
+    if (kind === "staff") {
       importStaff.mutate(preview.ok as StaffImportOk[], {
+        onSuccess: () => router.back(),
+      });
+      return;
+    }
+    if (kind === "product") {
+      importProducts.mutate(preview.ok as ProductImportOk[], {
         onSuccess: () => router.back(),
       });
       return;
@@ -189,9 +230,19 @@ export function ImportForm({ kind, confirmExtra }: ImportFormProps) {
   };
 
   const n = preview?.ok.length ?? 0;
-  const confirmLabel = isStaff
-    ? `确认导入 ${n} 个会员`
-    : `确认导入 ${n} 笔补货`;
+  const confirmLabel =
+    kind === "staff"
+      ? `确认导入 ${n} 个会员`
+      : kind === "product"
+        ? `确认导入 ${n} 个商品`
+        : `确认导入 ${n} 笔补货`;
+
+  const formTestId =
+    kind === "staff"
+      ? "import-form-staff"
+      : kind === "product"
+        ? "import-form-product"
+        : "import-form-restock";
 
   const restockNoteSlot = (
     <View style={styles.batchNoteField}>
@@ -225,7 +276,7 @@ export function ImportForm({ kind, confirmExtra }: ImportFormProps) {
 
   return (
     <ScrollView
-      testID={isStaff ? "import-form-staff" : "import-form-restock"}
+      testID={formTestId}
       style={[styles.container, { backgroundColor: theme.background }]}
       contentContainerStyle={styles.content}
     >
@@ -271,7 +322,7 @@ export function ImportForm({ kind, confirmExtra }: ImportFormProps) {
             testID="import-ok-table"
             style={[styles.table, { borderColor: theme.border }]}
           >
-            {isStaff ? (
+            {kind === "staff" ? (
               <>
                 <View style={[styles.tableRow, styles.tableHead]}>
                   {["姓名", "电话", "备注", "等级"].map((h) => (
@@ -304,6 +355,37 @@ export function ImportForm({ kind, confirmExtra }: ImportFormProps) {
                     </Text>
                     <Text style={[styles.cell, { color: theme.text }]}>
                       {row.level === "gold" ? "星站" : "普站"}
+                    </Text>
+                  </View>
+                ))}
+              </>
+            ) : kind === "product" ? (
+              <>
+                <View style={[styles.tableRow, styles.tableHead]}>
+                  {["名称", "单价"].map((h) => (
+                    <Text
+                      key={h}
+                      style={[
+                        styles.cell,
+                        styles.headCell,
+                        { color: theme.textSecondary },
+                      ]}
+                    >
+                      {h}
+                    </Text>
+                  ))}
+                </View>
+                {(preview.ok as ProductImportOk[]).map((row) => (
+                  <View
+                    key={row.row}
+                    testID={`import-ok-row-${row.row}`}
+                    style={styles.tableRow}
+                  >
+                    <Text style={[styles.cell, { color: theme.text }]}>
+                      {row.title}
+                    </Text>
+                    <Text style={[styles.cell, { color: theme.text }]}>
+                      {formatCentsAsYuan(row.purchase_price)}
                     </Text>
                   </View>
                 ))}

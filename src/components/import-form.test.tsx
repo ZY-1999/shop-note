@@ -11,6 +11,7 @@ import { setupRepos, type Repos } from "@/data/composition";
 import { cents } from "@/data/primitives";
 import { ADMIN_STAFF_ID, type Staff } from "@/data/staff";
 import type { ExportJob } from "@/export/types";
+import { PRODUCT_IMPORT_TEMPLATE_FILENAME } from "@/import/build-product-import-template";
 import { RESTOCK_IMPORT_TEMPLATE_FILENAME } from "@/import/build-restock-import-template";
 import { STAFF_IMPORT_TEMPLATE_FILENAME } from "@/import/build-staff-import-template";
 import { renderWithProviders, type RenderWithProvidersResult } from "@/testing/render";
@@ -258,6 +259,134 @@ describe("ImportForm — cancel / non-xlsx / failures / mid-fail / confirmExtra"
 
     const listed = await repos.staff.list();
     expect(listed.map((s) => s.name)).toEqual(["甲"]);
+  });
+});
+
+function productWorkbookBase64(rows: string[][]): string {
+  const ws = XLSX.utils.aoa_to_sheet(rows);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, "商品");
+  return XLSX.write(wb, { type: "base64", bookType: "xlsx" }) as string;
+}
+
+describe("ImportForm — product happy path (manage-import #02 tracer)", () => {
+  it("downloads product template via useExport; picks xlsx → preview; confirm imports once and backs", async () => {
+    const { repos } = await seed();
+    const { view } = await renderImport(<ImportForm kind="product" />, { repos });
+
+    expect(view.getByTestId("import-form-product")).toBeTruthy();
+    expect(view.queryByTestId("import-form-unsupported")).toBeNull();
+    expect(view.queryByTestId("import-confirm-extra")).toBeNull();
+
+    await fireEvent.press(view.getByTestId("import-download-template"));
+    await waitForSync(() => expect(mockRunExport).toHaveBeenCalled());
+    const job = mockRunExport.mock.calls[0]![0]!;
+    expect(job.filename).toBe(PRODUCT_IMPORT_TEMPLATE_FILENAME);
+    expect(job.encoding).toBe("base64");
+    const built = await job.build();
+    const wb = XLSX.read(built, { type: "base64" });
+    const sheet = XLSX.utils.sheet_to_json<unknown[]>(wb.Sheets[wb.SheetNames[0]], {
+      header: 1,
+    });
+    expect(sheet).toEqual([["名称", "单价"]]);
+
+    const base64 = productWorkbookBase64([
+      ["名称", "单价"],
+      ["可乐", "3.00"],
+      ["雪碧", "2.5"],
+    ]);
+    mockGetDocumentAsync.mockResolvedValueOnce({
+      canceled: false,
+      assets: [
+        {
+          uri: "file:///cache/in.xlsx",
+          name: "in.xlsx",
+          mimeType:
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        },
+      ],
+    });
+    mockReadAsStringAsync.mockResolvedValueOnce(base64);
+
+    await fireEvent.press(view.getByTestId("import-pick-file"));
+    await waitForSync(() => view.getByTestId("import-preview"));
+    expect(textOf(view.getByTestId("import-ok-count"))).toContain("2");
+    expect(view.getByText("确认导入 2 个商品")).toBeTruthy();
+    expect(view.getByTestId("import-ok-row-2")).toBeTruthy();
+    expect(view.getByTestId("import-ok-row-3")).toBeTruthy();
+
+    await fireEvent.press(view.getByTestId("import-confirm"));
+    await waitForSync(() => expect(mockBack).toHaveBeenCalled());
+    expect(await waitForSync(() => view.getByText("已导入 2 个商品"))).toBeTruthy();
+
+    const listed = await repos.products.list();
+    expect(listed.map((p) => p.title).sort()).toEqual(["可乐", "雪碧"]);
+    expect(listed.find((p) => p.title === "可乐")?.purchase_price).toBe(cents(300));
+    expect(listed.find((p) => p.title === "雪碧")?.purchase_price).toBe(cents(250));
+    expect(view.queryAllByText("商品已创建")).toHaveLength(0);
+  });
+});
+
+describe("ImportForm — product failures / mid-fail", () => {
+  it("shows expandable product failures for title clash and illegal price", async () => {
+    const { repos } = await seed();
+    await repos.products.create({ title: "撞名", purchase_price: cents(100) });
+    const { view } = await renderImport(<ImportForm kind="product" />, { repos });
+
+    const base64 = productWorkbookBase64([
+      ["名称", "单价"],
+      ["撞名", "1.00"],
+      ["坏价", "abc"],
+      ["好品", "2.00"],
+    ]);
+    mockGetDocumentAsync.mockResolvedValueOnce({
+      canceled: false,
+      assets: [{ uri: "file:///cache/in.xlsx", name: "in.xlsx" }],
+    });
+    mockReadAsStringAsync.mockResolvedValueOnce(base64);
+
+    await fireEvent.press(view.getByTestId("import-pick-file"));
+    await waitForSync(() => view.getByTestId("import-preview"));
+    expect(view.getByText("确认导入 1 个商品")).toBeTruthy();
+
+    await fireEvent.press(view.getByTestId("import-fail-toggle"));
+    await waitForSync(() => view.getByTestId("import-fail-row-2"));
+    expect(view.getByText(/已存在/)).toBeTruthy();
+    expect(view.getByTestId("import-fail-row-3")).toBeTruthy();
+  });
+
+  it("mid-fail: keeps already-created product prefix, one toast.error, stays on page", async () => {
+    const { repos } = await seed();
+    const { view } = await renderImport(<ImportForm kind="product" />, { repos });
+
+    const base64 = productWorkbookBase64([
+      ["名称", "单价"],
+      ["甲品", "1.00"],
+      ["乙品", "2.00"],
+    ]);
+    mockGetDocumentAsync.mockResolvedValueOnce({
+      canceled: false,
+      assets: [{ uri: "file:///cache/in.xlsx", name: "in.xlsx" }],
+    });
+    mockReadAsStringAsync.mockResolvedValueOnce(base64);
+    await fireEvent.press(view.getByTestId("import-pick-file"));
+    await waitForSync(() => view.getByText("确认导入 2 个商品"));
+
+    const original = repos.products.create.bind(repos.products);
+    let calls = 0;
+    jest.spyOn(repos.products, "create").mockImplementation(async (input) => {
+      calls += 1;
+      if (calls === 2) throw new Error("模拟中途失败");
+      return original(input);
+    });
+
+    await fireEvent.press(view.getByTestId("import-confirm"));
+    expect(await waitForSync(() => view.getByText("模拟中途失败"))).toBeTruthy();
+    expect(mockBack).not.toHaveBeenCalled();
+    expect(view.getByTestId("import-preview")).toBeTruthy();
+
+    const listed = await repos.products.list();
+    expect(listed.map((p) => p.title)).toEqual(["甲品"]);
   });
 });
 

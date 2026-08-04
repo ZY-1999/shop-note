@@ -16,6 +16,7 @@ import type {
 import type { Topup, TopupCreateInput } from "@/data/topup";
 import type { Cents } from "@/data/primitives";
 import type { SummaryExportSheets } from "@/data/config";
+import type { ProductImportOk } from "@/import/preview-product-import";
 import type { RestockImportOk } from "@/import/preview-restock-import";
 import type { StaffImportOk } from "@/import/preview-staff-import";
 import { qk } from "@/hooks/query-keys";
@@ -84,6 +85,43 @@ export function useImportStaff(): UseMutationResult<
     onSuccess: (created) => {
       void queryClient.invalidateQueries({ queryKey: qk.staff.all });
       toast.success(`已导入 ${created.length} 个会员`);
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+}
+
+/**
+ * Bulk product import (manage-import #02). Sequential `products.create` inside
+ * one MutationQueue turn — single invalidate `qk.products` + single success
+ * toast. Mid-fail keeps already-written rows and surfaces one `toast.error`
+ * (does NOT loop `useCreateProduct`).
+ */
+export function useImportProducts(): UseMutationResult<
+  Product[],
+  Error,
+  ProductImportOk[]
+> {
+  const repos = useRepos();
+  const queue = useMutationQueue();
+  const queryClient = useQueryClient();
+  const toast = useToast();
+  return useMutation<Product[], Error, ProductImportOk[]>({
+    mutationFn: (rows) =>
+      queue.run(async () => {
+        const created: Product[] = [];
+        for (const row of rows) {
+          created.push(
+            await repos.products.create({
+              title: row.title,
+              purchase_price: row.purchase_price,
+            }),
+          );
+        }
+        return created;
+      }),
+    onSuccess: (created) => {
+      void queryClient.invalidateQueries({ queryKey: qk.products.all });
+      toast.success(`已导入 ${created.length} 个商品`);
     },
     onError: (e: Error) => toast.error(e.message),
   });
