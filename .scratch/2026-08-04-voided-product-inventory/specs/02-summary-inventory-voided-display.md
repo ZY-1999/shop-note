@@ -1,7 +1,7 @@
 # 汇总库存卡 + 导出：已删商品标红/后缀/零库存隐藏
 
 Type: spec
-Status: ready-for-agent
+Status: ready-for-human
 Parent: #01 (01-voided-product-inventory.md)
 Blocked by: #01 (01-invalidate-inventory-on-product-void.md)
 
@@ -43,3 +43,11 @@ Blocked by: #01 (01-invalidate-inventory-on-product-void.md)
 ## Rework on failure
 
 失败隔离在 summary-tab 库存渲染 + workbook 库存列；可单独重做。
+
+> **Comment** — implemented 2026-08-04; Status → ready-for-human
+> - [x] voided 且 `total_qty !== 0`：库存卡可见、标红且口径不变 — `src/components/summary-tab.test.tsx::shows a non-zero voided product in danger while retaining an active zero-quantity row`；`src/export/build-summary-workbook.test.ts::suffixes a voided product without changing its quantity, amount, or totals`
+> - [x] voided 且 `total_qty === 0` 隐藏、有效商品净 0 保持展示、有效商品不标红 — `src/components/summary-tab.test.tsx::hides a voided zero-quantity product`；`src/components/summary-tab.test.tsx::shows a non-zero voided product in danger while retaining an active zero-quantity row`
+> - [x] 导出库存后缀与零库存过滤、合计无后缀 — `src/export/build-summary-workbook.test.ts::suffixes a voided product without changing its quantity, amount, or totals`
+> - [x] 管理页 void/restore 后已开汇总同步 — `src/components/summary-tab.test.tsx::voiding and restoring elsewhere refreshes the open inventory card name color`
+> - Test run: `npx jest --colors=false --forceExit` → 419 passed, 0 failed
+> - Commit: `d1b8d82`
