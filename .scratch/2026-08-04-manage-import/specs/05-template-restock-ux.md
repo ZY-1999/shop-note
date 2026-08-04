@@ -66,4 +66,4 @@ failure is isolated; redo this spec only（回退三模板 + 补货顶栏 + 相�
   - [x] 补货顶栏 — `manage-tab.test.tsx::puts 选择商品补货 and 导入 on the same filterBar row`
   - [x] 文档 — `#02` Comments：模板由「仅表头」修订为「表头 + 一行示例」
   - Test run: `npx jest src/import/build-staff-import-template.test.ts src/import/build-product-import-template.test.ts src/import/build-restock-import-template.test.ts src/components/import-form.test.tsx src/components/manage-tab.test.tsx --forceExit` → 51 passed, 0 failed
-  - Commit: _(filled after commit)_
+  - Commit: `27814a6`
