@@ -28,6 +28,7 @@ function agg(
   title: string,
   qty: number,
   purchasePrice: number,
+  voidedAt: number | null = null,
 ): Aggregate {
   return {
     product: {
@@ -36,7 +37,7 @@ function agg(
       purchase_price: cents(purchasePrice),
       code: "",
       category: "",
-      voided_at: null,
+      voided_at: voidedAt,
       created_at: 0,
       updated_at: 0,
     },
@@ -75,6 +76,24 @@ describe("buildSummaryWorkbook — inventory sheet (#02)", () => {
       ["商品", "件数", "金额"],
       ["可乐", 3, "9.00"],
       ["茶", 2, "8.00"],
+      ["合计", 5, "17.00"],
+    ]);
+  });
+
+  it("suffixes a voided product without changing its quantity, amount, or totals", () => {
+    const b64 = buildSummaryWorkbook({
+      sheets: { ...ALL_SHEETS, inbound: false, topupCheckout: false, topupCheckoutDetail: false },
+      inventory: [
+        agg("已删可乐", 3, 300, 1),
+        agg("已删零库存", 0, 500, 1),
+        agg("有效水", 2, 400),
+      ],
+    });
+
+    expect(sheetRows(b64, "库存")).toEqual([
+      ["商品", "件数", "金额"],
+      ["已删可乐（已删除）", 3, "9.00"],
+      ["有效水", 2, "8.00"],
       ["合计", 5, "17.00"],
     ]);
   });

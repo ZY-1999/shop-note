@@ -5,7 +5,11 @@ import { fireEvent, within } from "@testing-library/react-native";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import { SummaryTab } from "@/components/summary-tab";
-import { useCreateStockRecord } from "@/hooks/mutations";
+import {
+  useCreateStockRecord,
+  useRestoreProduct,
+  useVoidProduct,
+} from "@/hooks/mutations";
 import { InMemoryAdapter } from "@/data/in-memory";
 import { setupRepos, type Repos } from "@/data/composition";
 import { ADMIN_STAFF_ID } from "@/data/staff";
@@ -221,6 +225,89 @@ describe("SummaryTab — 库存卡: as-of-now total, expandable, range-independe
     // switching the range does NOT change the as-of-now total (different caliber).
     await pickPreset(view, "range-lastMonth");
     expect(money(view.getByTestId("inventory-total"))).toMatch(/24\.00/);
+  });
+});
+
+describe("SummaryTab — 已删商品库存", () => {
+  it("shows a non-zero voided product in danger while retaining an active zero-quantity row", async () => {
+    const repos = setupRepos(new InMemoryAdapter());
+    const staff = await repos.staff.create({ name: "张三", phone: "", notes: "" });
+    const voided = await repos.products.create({
+      title: "已删可乐",
+      purchase_price: cents(300),
+      category: "饮料",
+    });
+    const activeZero = await repos.products.create({
+      title: "有效零库存水",
+      purchase_price: cents(500),
+      category: "饮料",
+    });
+    await repos.stockRecords.create({
+      staff_id: ADMIN_STAFF_ID,
+      direction: "in",
+      timestamp: DAY(9, 10),
+      items: [
+        { product_id: voided.id, qty: 3 },
+        { product_id: activeZero.id, qty: 1 },
+      ],
+    });
+    await repos.stockRecords.create({
+      staff_id: staff.id,
+      direction: "out",
+      timestamp: DAY(9, 11),
+      items: [{ product_id: activeZero.id, qty: 1 }],
+    });
+    await repos.products.void(voided.id);
+
+    const { view } = await renderTab(
+      <SummaryTab now={NOW} onOpenStaff={jest.fn()} />,
+      { repos },
+    );
+    await waitForSync(() => view.getByTestId("inventory-total"));
+    await fireEvent.press(view.getByTestId("inventory-toggle"));
+    await flushPending();
+
+    expect(view.getByTestId(`inventory-product-${voided.id}`)).toBeTruthy();
+    expect(StyleSheet.flatten(view.getByText("已删可乐").props.style).color).toBe(
+      "#D93B3B",
+    );
+    expect(view.getByTestId(`inventory-product-${activeZero.id}`)).toBeTruthy();
+    expect(
+      StyleSheet.flatten(view.getByText("有效零库存水").props.style).color,
+    ).toBe("#000000");
+  });
+
+  it("hides a voided zero-quantity product", async () => {
+    const repos = setupRepos(new InMemoryAdapter());
+    const staff = await repos.staff.create({ name: "张三", phone: "", notes: "" });
+    const voided = await repos.products.create({
+      title: "已删零库存可乐",
+      purchase_price: cents(300),
+      category: "饮料",
+    });
+    await repos.stockRecords.create({
+      staff_id: ADMIN_STAFF_ID,
+      direction: "in",
+      timestamp: DAY(9, 10),
+      items: [{ product_id: voided.id, qty: 1 }],
+    });
+    await repos.stockRecords.create({
+      staff_id: staff.id,
+      direction: "out",
+      timestamp: DAY(9, 11),
+      items: [{ product_id: voided.id, qty: 1 }],
+    });
+    await repos.products.void(voided.id);
+
+    const { view } = await renderTab(
+      <SummaryTab now={NOW} onOpenStaff={jest.fn()} />,
+      { repos },
+    );
+    await waitForSync(() => view.getByTestId("inventory-total"));
+    await fireEvent.press(view.getByTestId("inventory-toggle"));
+    await flushPending();
+
+    expect(view.queryByTestId(`inventory-product-${voided.id}`)).toBeNull();
   });
 });
 
@@ -545,6 +632,27 @@ function Poster({ productId }: { productId: string }) {
   );
 }
 
+function ProductVoidControls({ productId }: { productId: string }) {
+  const voidProduct = useVoidProduct();
+  const restoreProduct = useRestoreProduct();
+  return (
+    <View>
+      <Pressable
+        testID="void-product"
+        onPress={() => voidProduct.mutate(productId)}
+      >
+        <Text>void</Text>
+      </Pressable>
+      <Pressable
+        testID="restore-product"
+        onPress={() => restoreProduct.mutate(productId)}
+      >
+        <Text>restore</Text>
+      </Pressable>
+    </View>
+  );
+}
+
 describe("SummaryTab — 会员流水（出库/充值）+ 单数零售聚合；补货不进汇总 (restock-excluded)", () => {
   it("summary header shows 出库/充值 only (no 补货); restock (-1) is excluded from the day drill-down", async () => {
     const { repos, staffId, colaId } = await setup();
@@ -615,6 +723,43 @@ describe("SummaryTab — cross-view refresh (spec #05 AC7)", () => {
 
     // inventory revalues live: cola net 4 × 300¢ + water 1500¢ = 2700¢ = ¥27.00
     await waitForSync(() => expect(money(view.getByTestId("inventory-total"))).toMatch(/27\.00/));
+  });
+
+  it("voiding and restoring elsewhere refreshes the open inventory card name color", async () => {
+    const { repos, colaId } = await setup();
+    await repos.stockRecords.create({
+      staff_id: ADMIN_STAFF_ID,
+      direction: "in",
+      timestamp: DAY(9, 10),
+      items: [{ product_id: colaId, qty: 1 }],
+    });
+    const { view } = await renderTab(
+      <View>
+        <SummaryTab now={NOW} onOpenStaff={jest.fn()} />
+        <ProductVoidControls productId={colaId} />
+      </View>,
+      { repos },
+    );
+    await waitForSync(() => view.getByTestId("inventory-total"));
+    await fireEvent.press(view.getByTestId("inventory-toggle"));
+    await flushPending();
+    expect(StyleSheet.flatten(view.getByText("可乐").props.style).color).toBe(
+      "#000000",
+    );
+
+    await fireEvent.press(view.getByTestId("void-product"));
+    await waitForSync(() =>
+      expect(StyleSheet.flatten(view.getByText("可乐").props.style).color).toBe(
+        "#D93B3B",
+      ),
+    );
+
+    await fireEvent.press(view.getByTestId("restore-product"));
+    await waitForSync(() =>
+      expect(StyleSheet.flatten(view.getByText("可乐").props.style).color).toBe(
+        "#000000",
+      ),
+    );
   });
 });
 

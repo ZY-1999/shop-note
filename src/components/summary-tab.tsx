@@ -148,6 +148,9 @@ export function SummaryTab({
   );
 
   const aggregateRows = aggregate.data ?? [];
+  const inventoryRows = aggregateRows.filter(
+    (r) => r.product.voided_at == null || r.total_qty !== 0,
+  );
   const inventoryTotal = aggregateRows.reduce(
     (sum, r) => sum + r.total_cost,
     0,
@@ -769,13 +772,23 @@ export function SummaryTab({
               />
             </View>
             {inventoryOpen &&
-              aggregateRows.map((r) => (
+              inventoryRows.map((r) => (
                 <View
                   key={r.product.id}
                   testID={`inventory-product-${r.product.id}`}
                   style={[styles.subRow, { borderColor: theme.border }]}
                 >
-                  <Text style={[styles.title, { color: theme.text }]}>
+                  <Text
+                    style={[
+                      styles.title,
+                      {
+                        color:
+                          r.product.voided_at != null
+                            ? theme.danger
+                            : theme.text,
+                      },
+                    ]}
+                  >
                     {r.product.title}
                   </Text>
                   <Text style={{ color: theme.textSecondary }}>

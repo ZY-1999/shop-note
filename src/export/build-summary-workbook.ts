@@ -108,7 +108,10 @@ export function buildSummaryWorkbook(input: SummaryWorkbookInput): string {
     const body = rows.map((r) => {
       qtySum += r.total_qty;
       costSum += r.total_cost;
-      return [r.product.title, r.total_qty, formatCentsAsYuan(r.total_cost)];
+      const title = r.product.voided_at
+        ? `${r.product.title}（已删除）`
+        : r.product.title;
+      return [title, r.total_qty, formatCentsAsYuan(r.total_cost)];
     });
     const aoa: unknown[][] = [
       ["商品", "件数", "金额"],
