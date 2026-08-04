@@ -26,6 +26,14 @@ import { flushPending, waitForSync } from "@/testing/async";
  * off-device; `useExport` stays real so pending + onError→toast wiring is exercised.
  */
 
+const mockPush = jest.fn<(href: unknown) => void>();
+jest.mock("expo-router", () => ({
+  router: {
+    push: (href: unknown) => mockPush(href),
+    back: () => undefined,
+  },
+}));
+
 const mockRunExport = jest.fn<(job: ExportJob) => Promise<string>>(
   async () => "file:///cache/out.xlsx",
 );
@@ -51,6 +59,7 @@ afterEach(() => {
   activeQueryClient?.clear();
   activeQueryClient = null;
   mockRunExport.mockReset().mockResolvedValue("file:///cache/out.xlsx");
+  mockPush.mockReset();
 });
 
 async function renderManage(
@@ -646,21 +655,34 @@ describe("ManageTab — member level selector + badge (member-rename-level #03)"
 });
 
 describe("ManageTab — staff export (manage-export #03)", () => {
-  it("shows 导出 on staff; restock/config have none", async () => {
+  it("shows 导入 left of 导出 on staff; restock/config have none", async () => {
     const { repos } = await seed();
     const { view } = await renderManage(<ManageTab />, { repos });
     await waitForSync(() => view.getByTestId("view-staff"));
+    expect(view.getByTestId("staff-import")).toBeTruthy();
     expect(view.getByTestId("staff-export")).toBeTruthy();
-    expect(view.getByText("导出")).toBeTruthy();
+
+    // 导入｜导出：serialized tree keeps import testID before export
+    const tree = JSON.stringify(view.toJSON());
+    expect(tree.indexOf("staff-import")).toBeGreaterThan(-1);
+    expect(tree.indexOf("staff-import")).toBeLessThan(tree.indexOf("staff-export"));
+
+    await fireEvent.press(view.getByTestId("staff-import"));
+    expect(mockPush).toHaveBeenCalledWith({
+      pathname: "/import-form",
+      params: { kind: "staff" },
+    });
 
     await fireEvent.press(view.getByTestId("seg-restock"));
     await waitForSync(() => view.getByTestId("view-restock"));
     expect(view.queryByTestId("staff-export")).toBeNull();
+    expect(view.queryByTestId("staff-import")).toBeNull();
     expect(view.queryByTestId("product-export")).toBeNull();
 
     await fireEvent.press(view.getByTestId("seg-config"));
     await waitForSync(() => view.getByTestId("config-price-input"));
     expect(view.queryByTestId("staff-export")).toBeNull();
+    expect(view.queryByTestId("staff-import")).toBeNull();
     expect(view.queryByTestId("product-export")).toBeNull();
   });
 

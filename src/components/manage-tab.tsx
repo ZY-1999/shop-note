@@ -1,3 +1,4 @@
+import { router } from "expo-router";
 import { useEffect, useRef, useState } from "react";
 import {
   Pressable,
@@ -359,8 +360,8 @@ function RestockManage() {
 /**
  * Staff CRUD — searchable list + create/edit form. Default list is active-only;
  * 「包含删除」Switch (testID staff-include-voided) shares includeVoided with
- * search so voided members can be found and restored. Top-bar right 「导出」
- * shares the same row set via buildStaffWorkbook (manage-export #03).
+ * search so voided members can be found and restored. Top-bar right
+ * 「导入｜导出」— import left of export (manage-import #01 / manage-export #03).
  */
 function StaffManage() {
   const theme = useTheme();
@@ -413,6 +414,15 @@ function StaffManage() {
           onValueChange={setIncludeVoided}
         />
         <View style={styles.filterSpacer} />
+        <Pressable
+          testID="staff-import"
+          onPress={() =>
+            router.push({ pathname: "/import-form", params: { kind: "staff" } })
+          }
+          style={[styles.exportBtn, { borderColor: theme.border }]}
+        >
+          <Text style={{ color: theme.text, fontWeight: "600" }}>导入</Text>
+        </Pressable>
         <Pressable
           testID="staff-export"
           onPress={onExport}

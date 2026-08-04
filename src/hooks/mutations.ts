@@ -15,6 +15,7 @@ import type {
 import type { Topup, TopupCreateInput } from "@/data/topup";
 import type { Cents } from "@/data/primitives";
 import type { SummaryExportSheets } from "@/data/config";
+import type { StaffImportOk } from "@/import/preview-staff-import";
 import { qk } from "@/hooks/query-keys";
 
 /**
@@ -42,6 +43,45 @@ export function useCreateStaff(): UseMutationResult<Staff, Error, StaffCreateInp
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: qk.staff.all });
       toast.success("会员已创建");
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+}
+
+/**
+ * Bulk staff import (manage-import #01). Sequential `staff.create` inside one
+ * MutationQueue turn — single invalidate + single success toast. Mid-fail keeps
+ * already-written rows and surfaces one `toast.error` (does NOT loop
+ * `useCreateStaff`, which would toast per row).
+ */
+export function useImportStaff(): UseMutationResult<
+  Staff[],
+  Error,
+  StaffImportOk[]
+> {
+  const repos = useRepos();
+  const queue = useMutationQueue();
+  const queryClient = useQueryClient();
+  const toast = useToast();
+  return useMutation<Staff[], Error, StaffImportOk[]>({
+    mutationFn: (rows) =>
+      queue.run(async () => {
+        const created: Staff[] = [];
+        for (const row of rows) {
+          created.push(
+            await repos.staff.create({
+              name: row.name,
+              phone: row.phone,
+              notes: row.notes,
+              level: row.level,
+            }),
+          );
+        }
+        return created;
+      }),
+    onSuccess: (created) => {
+      void queryClient.invalidateQueries({ queryKey: qk.staff.all });
+      toast.success(`已导入 ${created.length} 个会员`);
     },
     onError: (e: Error) => toast.error(e.message),
   });

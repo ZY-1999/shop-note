@@ -1,7 +1,7 @@
 # 管理·会员导入 + kind 参数化导入壳
 
 Type: spec
-Status: ready-for-agent
+Status: ready-for-human
 Parent: #01 (01-manage-import.md)
 Blocked by: None — 可立即开始
 
@@ -11,13 +11,13 @@ Blocked by: None — 可立即开始
 
 ## Acceptance criteria
 
-- [ ] 会员顶栏「导入」在「导出」左侧；进入导入子页且 `kind=staff`（壳可参数化，非 staff 一次性页）— 入口 + 壳契约
-- [ ] 可下载仅表头 `会员导入模板.xlsx`（姓名、电话、备注、等级）；经 `useExport`；取消分享非错 — 模板
-- [ ] 选合法 xlsx 后预览：可导入表+条数；失败底栏可展开（行号+原因）；取消选文件 / 非 xlsx 不改库、不报错 — 预览
-- [ ] 「确认导入 n 个会员」只写可导入行；`MutationQueue` 内顺序 create；一次 invalidate `qk.staff` + 一次成功 toast → back；中途失败一次 `toast.error`、留页、前缀保留；无 n 次「已创建」toast — bulk 约定
-- [ ] 姓名 trim：有效/已删除撞名失败（原因区分）；保留名/管理员同名失败；文件内重复后者失败；缺必填失败；等级空=普站、等级非法文案失败；只新建不 update/restore — 校验
-- [ ] **Tracer 优先**：先 happy path 闭环，再补齐失败原因与中途失败用例
-- [ ] 壳含可选确认区扩展点（kind 可注入确认钮上方附加 UI；staff 不用）— 供后续 restock 备注，本切片验收「扩展点存在且 staff 路径无多余控件」即可
+- [x] 会员顶栏「导入」在「导出」左侧；进入导入子页且 `kind=staff`（壳可参数化，非 staff 一次性页）— 入口 + 壳契约
+- [x] 可下载仅表头 `会员导入模板.xlsx`（姓名、电话、备注、等级）；经 `useExport`；取消分享非错 — 模板
+- [x] 选合法 xlsx 后预览：可导入表+条数；失败底栏可展开（行号+原因）；取消选文件 / 非 xlsx 不改库、不报错 — 预览
+- [x] 「确认导入 n 个会员」只写可导入行；`MutationQueue` 内顺序 create；一次 invalidate `qk.staff` + 一次成功 toast → back；中途失败一次 `toast.error`、留页、前缀保留；无 n 次「已创建」toast — bulk 约定
+- [x] 姓名 trim：有效/已删除撞名失败（原因区分）；保留名/管理员同名失败；文件内重复后者失败；缺必填失败；等级空=普站、等级非法文案失败；只新建不 update/restore — 校验
+- [x] **Tracer 优先**：先 happy path 闭环，再补齐失败原因与中途失败用例
+- [x] 壳含可选确认区扩展点（kind 可注入确认钮上方附加 UI；staff 不用）— 供后续 restock 备注，本切片验收「扩展点存在且 staff 路径无多余控件」即可
 
 ## Scope
 
@@ -53,3 +53,15 @@ Blocked by: None — 可立即开始
 ## Comments
 
 - 2026-08-04 — skeleton + design from candidate-2（judge R2 PASS）。
+- 2026-08-04 — implemented via `/tdd`；Status → `ready-for-human`
+  - [x] 入口 + 壳契约 — `manage-tab.test.tsx::shows 导入 left of 导出 on staff…` + `import-form.test.tsx::downloads template…`（`kind=staff`；`confirmExtra` 默认无）
+  - [x] 模板 — `build-staff-import-template.test.ts::emits header-only…` + `import-form.test.tsx::downloads template via useExport…`（`会员导入模板.xlsx`）
+  - [x] 预览 — `import-form.test.tsx::downloads template…` + `::cancel pick and non-xlsx…` + `::shows expandable failures…`
+  - [x] bulk 约定 — `import-form.test.tsx::downloads template…`（单次 toast / back）+ `::mid-fail…`（前缀保留 + toast.error）
+  - [x] 校验 — `preview-staff-import.test.ts` happy + validation failures；`parse-staff-import-workbook.test.ts`
+  - [x] Tracer — happy path 先于失败用例（同上）
+  - [x] confirmExtra — `import-form.test.tsx::shows expandable failures; confirmExtra slot…`（注入可见；staff 默认无控件）
+  - Test run: `npx jest src/import/ src/components/import-form.test.tsx src/components/manage-tab.test.tsx src/export/ --forceExit` → 78 passed, 0 failed
+  - Commit: `807da07`
+  - Dep: `expo-document-picker@~57.0.1`；写盘仍 `expo-file-system/legacy`
+  - **待真机**：DocumentPicker 选文件 + 模板分享手验
