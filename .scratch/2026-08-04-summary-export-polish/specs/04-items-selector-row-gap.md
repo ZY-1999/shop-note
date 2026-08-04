@@ -43,3 +43,4 @@ Blocked by: None — can start immediately
 - 2026-08-04 — Evidence:
   - AC1–AC3: `src/components/record-form.test.tsx` — `ItemsSeletor — selected line density / uses a 4px top margin between selected product lines`
   - PASS: `npx jest src/components/record-form.test.tsx --colors=false --forceExit` — 1 suite / 19 tests
+  - Commit: `9bfe729 fix(summary-export-polish): 收紧商品选择器行距`
