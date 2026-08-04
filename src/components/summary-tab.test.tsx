@@ -307,6 +307,58 @@ describe("SummaryTab — staff row shows member level via MemberName", () => {
   });
 });
 
+describe("SummaryTab — 已删会员历史流水", () => {
+  it("保留已删会员原名并以危险色显示，同时有效会员保持主题文字色", async () => {
+    const repos = setupRepos(new InMemoryAdapter());
+    const voided = await repos.staff.create({
+      name: "已删会员",
+      phone: "",
+      notes: "",
+      level: "gold",
+    });
+    const active = await repos.staff.create({
+      name: "有效会员",
+      phone: "",
+      notes: "",
+    });
+    const cola = await repos.products.create({
+      title: "可乐",
+      purchase_price: cents(300),
+      category: "饮料",
+    });
+    await repos.stockRecords.create({
+      staff_id: voided.id,
+      direction: "out",
+      timestamp: DAY(9, 10),
+      items: [{ product_id: cola.id, qty: 1 }],
+    });
+    await repos.stockRecords.create({
+      staff_id: active.id,
+      direction: "out",
+      timestamp: DAY(9, 11),
+      items: [{ product_id: cola.id, qty: 1 }],
+    });
+    await repos.staff.void(voided.id);
+
+    const { view } = await renderTab(
+      <SummaryTab now={NOW} onOpenStaff={jest.fn()} />,
+      { repos },
+    );
+    await waitForSync(() => view.getByTestId("day-2026/07/09"));
+    await fireEvent.press(view.getByTestId("day-2026/07/09"));
+    await flushPending();
+
+    expect(view.getByText("已删会员")).toBeTruthy();
+    expect(StyleSheet.flatten(view.getByText("已删会员").props.style).color).toBe(
+      "#D93B3B",
+    );
+    expect(StyleSheet.flatten(view.getByText("有效会员").props.style).color).toBe(
+      "#000000",
+    );
+    expect(view.getByText("星站")).toBeTruthy();
+  });
+});
+
 describe("SummaryTab — staff row uses FlowSummary (per-member-per-day bundles/retail)", () => {
   it("a day's staff row shows that member's flow that day via FlowSummary (out/bundles/retail)", async () => {
     const { repos, staffId, colaId } = await setup();
@@ -649,6 +701,60 @@ describe("SummaryTab — export config + inventory sheet (summary-range-export #
     );
     for (const name of wb.SheetNames) {
       expect(wb.Sheets[name]!["!ref"]).toMatch(/^A1:/);
+    }
+  });
+
+  it("exports voided member names with the deleted suffix on both member sheets", async () => {
+    const repos = setupRepos(new InMemoryAdapter());
+    const voided = await repos.staff.create({
+      name: "已删会员",
+      phone: "",
+      notes: "",
+    });
+    const active = await repos.staff.create({
+      name: "有效会员",
+      phone: "",
+      notes: "",
+    });
+    const cola = await repos.products.create({
+      title: "可乐",
+      purchase_price: cents(300),
+      category: "饮料",
+    });
+    await repos.stockRecords.create({
+      staff_id: voided.id,
+      direction: "out",
+      timestamp: DAY(9, 10),
+      items: [{ product_id: cola.id, qty: 1 }],
+    });
+    await repos.topups.create({
+      staff_id: active.id,
+      amount: cents(500),
+      timestamp: DAY(9, 11),
+    });
+    await repos.staff.void(voided.id);
+
+    const { view } = await renderTab(
+      <SummaryTab now={NOW} onOpenStaff={jest.fn()} />,
+      { repos },
+    );
+    await waitForSync(() => view.getByTestId("summary-export"));
+    await fireEvent.press(view.getByTestId("summary-export"));
+    await waitForSync(() => expect(mockRunExport).toHaveBeenCalled());
+
+    const wb = XLSX.read(await mockRunExport.mock.calls[0]![0]!.build(), {
+      type: "base64",
+    });
+    for (const name of ["充值出库", "充值出库明细"]) {
+      const rows = XLSX.utils.sheet_to_json<unknown[]>(wb.Sheets[name]!, {
+        header: 1,
+      });
+      expect(rows).toEqual(
+        expect.arrayContaining([
+          expect.arrayContaining(["已删会员（已删除）"]),
+          expect.arrayContaining(["有效会员"]),
+        ]),
+      );
     }
   });
 

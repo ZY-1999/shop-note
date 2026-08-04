@@ -132,7 +132,7 @@ export function SummaryTab({
   const flow = useDailyFlow({ date_range: range });
   const records = useStockRecords({ date_range: range });
   const topups = useTopups({ date_range: range });
-  const staff = useStaff();
+  const staff = useStaff({ includeVoided: true });
   const sheetsQ = useSummaryExportSheets();
   const updateSheets = useUpdateSummaryExportSheets();
   const exportMutation = useExport();
@@ -242,9 +242,19 @@ export function SummaryTab({
               })
             : [];
 
-          const staffRows = needMemberSheets ? await repos.staff.list() : [];
-          const staffNames: Record<string, string> = {};
-          for (const s of staffRows) staffNames[s.id] = s.name;
+          const staffRows = needMemberSheets
+            ? await repos.staff.list({ includeVoided: true })
+            : [];
+          const staffDirectory: Record<
+            string,
+            { name: string; voided: boolean }
+          > = {};
+          for (const s of staffRows) {
+            staffDirectory[s.id] = {
+              name: s.name,
+              voided: s.voided_at != null,
+            };
+          }
 
           const checkouts = outRaw.map(({ record, items }) => ({
             staffId: record.staff_id,
@@ -285,7 +295,7 @@ export function SummaryTab({
               amountCents: items.reduce((s, i) => s + i.line_amount, 0),
               note: record.note,
             })),
-            staffNames,
+            staffDirectory,
             topups: topupEvents,
             checkouts,
           });
@@ -398,7 +408,7 @@ export function SummaryTab({
                     <MemberName
                       name={s?.name ?? sr.staffId}
                       level={s?.level ?? DEFAULT_STAFF_LEVEL}
-                      nameStyle={{ color: theme.text }}
+                      nameStyle={{ color: s?.voided_at ? theme.danger : theme.text }}
                       maxWidth={42}
                     />
                     <FlowSummary

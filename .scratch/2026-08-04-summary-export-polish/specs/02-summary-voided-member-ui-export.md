@@ -1,7 +1,7 @@
 # 汇总页：已删会员原名标红 + 导出接线
 
 Type: spec
-Status: ready-for-agent
+Status: ready-for-human
 Parent: #01 (01-summary-export-polish.md)
 Blocked by: #01 (01-workbook-time-width-voided-suffix.md)
 
@@ -43,3 +43,13 @@ Blocked by: #01 (01-workbook-time-width-voided-suffix.md)
 ## Rework on failure
 
 失败隔离在 summary-tab 读 staff + 样式 + 导出 directory 接线；可单独重做本 spec。
+
+## Comments
+
+- 2026-08-04 — Evidence:
+  - AC1–AC2: `src/components/summary-tab.test.tsx` — `SummaryTab — 已删会员历史流水 / 保留已删会员原名并以危险色显示，同时有效会员保持主题文字色`
+  - AC3: `src/components/summary-tab.test.tsx` — `SummaryTab — export config + inventory sheet / exports voided member names with the deleted suffix on both member sheets`
+  - AC4: 上述两个测试均通过；只读取会员目录和构造 workbook 输入，未改 ledger、金额或汇总计算。
+  - PASS: `source "$HOME/.bashrc" && npx jest src/components/summary-tab.test.tsx --colors=false --forceExit` — 1 suite / 25 tests；`source "$HOME/.bashrc" && npx jest --colors=false --forceExit` — 48 suites / 412 tests。
+  - TypeScript: `npx tsc --noEmit` 仍有 5 个既有错误（`animated-icon.module.css`、`global.css` 声明和 `run-export.test.ts` 元组索引），本改动未新增诊断。
+  - Commit: 本条关闭提交。
