@@ -159,84 +159,6 @@ export function SummaryTab({
     updateSheets.mutate(next);
   };
 
-  const onExport = () => {
-    const snapshotSheets = sheets;
-    const snapshotInventory = aggregateRows;
-    const snapshotFrom = range.from;
-    const snapshotTo = range.to;
-    exportMutation.mutate(
-      {
-        filename: summaryExportFilename(snapshotFrom, snapshotTo),
-        mimeType: XLSX_MIME,
-        encoding: "base64",
-        dialogTitle: "导出汇总",
-        build: async () => {
-          const needInbound = snapshotSheets.inbound;
-          const needMemberSheets =
-            snapshotSheets.topupCheckout || snapshotSheets.topupCheckoutDetail;
-          const historicalBalance = needInbound
-            ? await repos.inventory.shopAggregateAsOf(snapshotFrom)
-            : [];
-          const inboundRaw = needInbound
-            ? await repos.stockRecords.list({
-                direction: "in",
-                date_range: { from: snapshotFrom, to: snapshotTo },
-              })
-            : [];
-          const outRaw = needMemberSheets
-            ? await repos.stockRecords.list({
-                direction: "out",
-                date_range: { from: snapshotFrom, to: snapshotTo },
-              })
-            : [];
-          const topupRaw = needMemberSheets
-            ? await repos.topups.list({
-                date_range: { from: snapshotFrom, to: snapshotTo },
-              })
-            : [];
-          const staffRows = needMemberSheets
-            ? await repos.staff.list()
-            : [];
-          const staffNames: Record<string, string> = {};
-          for (const s of staffRows) staffNames[s.id] = s.name;
-
-          return buildSummaryWorkbook({
-            sheets: snapshotSheets,
-            inventory: snapshotInventory,
-            rangeFrom: snapshotFrom,
-            historicalBalance,
-            inboundRecords: inboundRaw.map(({ record, items }) => ({
-              timestamp: record.timestamp,
-              items: items.map((i) => ({ title: i.title, qty: i.qty })),
-              amountCents: items.reduce((s, i) => s + i.line_amount, 0),
-              note: record.note,
-            })),
-            staffNames,
-            topups: topupRaw
-              .filter((t) => t.staff_id !== ADMIN_STAFF_ID)
-              .map((t) => ({
-                staffId: t.staff_id,
-                amountCents: t.amount,
-                timestamp: t.timestamp,
-                note: t.note,
-              })),
-            checkouts: outRaw
-              .filter(({ record }) => record.staff_id !== ADMIN_STAFF_ID)
-              .map(({ record, items }) => ({
-                staffId: record.staff_id,
-                timestamp: record.timestamp,
-                selfUse: record.self_use,
-                items: items.map((i) => ({ title: i.title, qty: i.qty })),
-                amountCents: items.reduce((s, i) => s + i.line_amount, 0),
-                note: record.note,
-              })),
-          });
-        },
-      },
-      { onError: (e) => toast.error(e.message) },
-    );
-  };
-
   const { sections, totalDays, outTotal, topupTotal } = useMemo(() => {
     const byDay = new Map<string, DaySection>();
     let outT = 0;
@@ -272,6 +194,114 @@ export function SummaryTab({
       topupTotal: topupT,
     };
   }, [flow.data]);
+
+  const onExport = () => {
+    const snapshotSheets = sheets;
+    const snapshotInventory = aggregateRows;
+    const snapshotFrom = range.from;
+    const snapshotTo = range.to;
+    const snapshotOutTotal = outTotal;
+    const snapshotTopupTotal = topupTotal;
+    const snapshotRecords = records.data ?? [];
+    const snapshotTopups = topups.data ?? [];
+    const snapshotStaff = staff.data ?? [];
+    exportMutation.mutate(
+      {
+        filename: summaryExportFilename(snapshotFrom, snapshotTo),
+        mimeType: XLSX_MIME,
+        encoding: "base64",
+        dialogTitle: "导出汇总",
+        build: async () => {
+          const needInbound = snapshotSheets.inbound;
+          const needMemberSheets =
+            snapshotSheets.topupCheckout || snapshotSheets.topupCheckoutDetail;
+
+          const rangedRecords =
+            snapshotRecords.length > 0
+              ? snapshotRecords
+              : await repos.stockRecords.list({
+                  date_range: { from: snapshotFrom, to: snapshotTo },
+                });
+
+          const historicalBalance = needInbound
+            ? await repos.inventory.shopAggregateAsOf(snapshotFrom)
+            : [];
+          const inboundRaw = needInbound
+            ? rangedRecords.filter(({ record }) => record.direction === "in")
+            : [];
+          const outRaw = needMemberSheets
+            ? rangedRecords.filter(
+                ({ record }) =>
+                  record.direction === "out" &&
+                  record.staff_id !== ADMIN_STAFF_ID,
+              )
+            : [];
+
+          const topupRaw = needMemberSheets
+            ? snapshotTopups.length > 0
+              ? snapshotTopups
+              : await repos.topups.list({
+                  date_range: { from: snapshotFrom, to: snapshotTo },
+                })
+            : [];
+
+          const staffRows = needMemberSheets
+            ? snapshotStaff.length > 0
+              ? snapshotStaff
+              : await repos.staff.list()
+            : [];
+          const staffNames: Record<string, string> = {};
+          for (const s of staffRows) staffNames[s.id] = s.name;
+
+          const checkouts = outRaw.map(({ record, items }) => ({
+            staffId: record.staff_id,
+            timestamp: record.timestamp,
+            selfUse: record.self_use,
+            items: items.map((i) => ({ title: i.title, qty: i.qty })),
+            amountCents: items.reduce((s, i) => s + i.line_amount, 0),
+            note: record.note,
+          }));
+          const topupEvents = topupRaw
+            .filter((t) => t.staff_id !== ADMIN_STAFF_ID)
+            .map((t) => ({
+              staffId: t.staff_id,
+              amountCents: t.amount,
+              timestamp: t.timestamp,
+              note: t.note,
+            }));
+
+          // Same window as the page: UI shows money but rows missing → hard fail.
+          if (needMemberSheets && snapshotOutTotal > 0 && checkouts.length === 0) {
+            throw new Error("导出异常：页面有出库记录但明细为空，请重试");
+          }
+          if (
+            needMemberSheets &&
+            snapshotTopupTotal > 0 &&
+            topupEvents.length === 0
+          ) {
+            throw new Error("导出异常：页面有充值记录但明细为空，请重试");
+          }
+
+          return buildSummaryWorkbook({
+            sheets: snapshotSheets,
+            inventory: snapshotInventory,
+            rangeFrom: snapshotFrom,
+            historicalBalance,
+            inboundRecords: inboundRaw.map(({ record, items }) => ({
+              timestamp: record.timestamp,
+              items: items.map((i) => ({ title: i.title, qty: i.qty })),
+              amountCents: items.reduce((s, i) => s + i.line_amount, 0),
+              note: record.note,
+            })),
+            staffNames,
+            topups: topupEvents,
+            checkouts,
+          });
+        },
+      },
+      { onError: (e) => toast.error(e.message) },
+    );
+  };
 
   const bundleAggregate = useMemo(
     () => aggregateBundleRetail(records.data ?? []),

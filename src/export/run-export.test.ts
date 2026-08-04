@@ -15,7 +15,11 @@ jest.mock("expo-sharing", () => ({
   shareAsync,
 }));
 
-import { runExport } from "@/export/run-export";
+import {
+  runExport,
+  shareExportFile,
+  writeExportFile,
+} from "@/export/run-export";
 import type { ExportJob } from "@/export/types";
 
 function job(overrides: Partial<ExportJob> = {}): ExportJob {
@@ -27,6 +31,56 @@ function job(overrides: Partial<ExportJob> = {}): ExportJob {
     ...overrides,
   };
 }
+
+describe("writeExportFile", () => {
+  beforeEach(() => {
+    writeAsStringAsync.mockReset().mockResolvedValue(undefined);
+  });
+
+  it("builds and writes cache without sharing", async () => {
+    const uri = await writeExportFile(
+      job({
+        filename: "out.xlsx",
+        encoding: "base64",
+        build: async () => "YmluYXJ5",
+      }),
+    );
+    expect(uri).toBe("file:///cache/out.xlsx");
+    expect(writeAsStringAsync).toHaveBeenCalledWith(
+      "file:///cache/out.xlsx",
+      "YmluYXJ5",
+      { encoding: "base64" },
+    );
+  });
+});
+
+describe("shareExportFile", () => {
+  beforeEach(() => {
+    shareAsync.mockReset().mockResolvedValue(undefined);
+    isAvailableAsync.mockReset().mockResolvedValue(true);
+  });
+
+  it("does not throw when the user cancels sharing", async () => {
+    shareAsync.mockRejectedValueOnce(new Error("User canceled sharing"));
+    await expect(
+      shareExportFile("file:///cache/report.csv", { mimeType: "text/csv" }),
+    ).resolves.toBeUndefined();
+  });
+
+  it("rethrows when shareAsync rejects without User canceled", async () => {
+    shareAsync.mockRejectedValueOnce(new Error("Share failed: no activity"));
+    await expect(
+      shareExportFile("file:///cache/report.csv", { mimeType: "text/csv" }),
+    ).rejects.toThrow("Share failed: no activity");
+  });
+
+  it("throws when sharing is unavailable", async () => {
+    isAvailableAsync.mockResolvedValueOnce(false);
+    await expect(
+      shareExportFile("file:///cache/report.csv", { mimeType: "text/csv" }),
+    ).rejects.toThrow(/not available/i);
+  });
+});
 
 describe("runExport", () => {
   beforeEach(() => {

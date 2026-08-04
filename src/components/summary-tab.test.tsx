@@ -25,7 +25,14 @@ const mockRunExport = jest.fn<(job: ExportJob) => Promise<string>>(
   async () => "file:///cache/out.xlsx",
 );
 jest.mock("@/export/run-export", () => ({
+  writeExportFile: (job: ExportJob) => mockRunExport(job),
+  shareExportFile: async () => undefined,
   runExport: (job: ExportJob) => mockRunExport(job),
+}));
+
+jest.mock("expo-sharing", () => ({
+  isAvailableAsync: async () => true,
+  shareAsync: async () => undefined,
 }));
 
 jest.mock("@expo/ui/community/datetime-picker", () => {
@@ -626,6 +633,29 @@ describe("SummaryTab — export config + inventory sheet (summary-range-export #
     expect(inbound).toEqual(
       expect.arrayContaining([[expect.any(String), "可乐×4、矿泉水×3", "27.00", ""]]),
     );
+    // #04 wire-through: member out in range must land on both member sheets
+    // (regression for "最后两个 sheet 没有内容").
+    const topupCheckout = XLSX.utils.sheet_to_json<unknown[]>(
+      wb.Sheets["充值出库"]!,
+      { header: 1 },
+    );
+    const topupDetail = XLSX.utils.sheet_to_json<unknown[]>(
+      wb.Sheets["充值出库明细"]!,
+      { header: 1 },
+    );
+    expect(topupCheckout).toEqual(
+      expect.arrayContaining([
+        ["2026/07/09", "张三", "0.00", "3.00", "0.00", "可乐×1"],
+      ]),
+    );
+    expect(topupDetail).toEqual(
+      expect.arrayContaining([
+        ["2026/07/09 14:00", "张三", "0.00", "3.00", "0.00", "可乐×1"],
+      ]),
+    );
+    for (const name of wb.SheetNames) {
+      expect(wb.Sheets[name]!["!ref"]).toMatch(/^A1:/);
+    }
   });
 
   it("persists sheet toggles immediately; disables export when none selected", async () => {

@@ -30,7 +30,14 @@ const mockRunExport = jest.fn<(job: ExportJob) => Promise<string>>(
   async () => "file:///cache/out.xlsx",
 );
 jest.mock("@/export/run-export", () => ({
+  writeExportFile: (job: ExportJob) => mockRunExport(job),
+  shareExportFile: async () => undefined,
   runExport: (job: ExportJob) => mockRunExport(job),
+}));
+
+jest.mock("expo-sharing", () => ({
+  isAvailableAsync: async () => true,
+  shareAsync: async () => undefined,
 }));
 
 let activeQueryClient: QueryClient | null = null;
