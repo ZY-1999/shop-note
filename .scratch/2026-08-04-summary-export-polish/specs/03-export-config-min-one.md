@@ -38,3 +38,10 @@ Blocked by: None — can start immediately
 ## Rework on failure
 
 失败隔离在 toggle 守卫；单独重做。
+
+## Comments
+
+- 2026-08-04 — Evidence:
+  - AC1–AC3: `src/components/summary-tab.test.tsx` — `persists non-final changes, rejects closing the final sheet, and keeps export enabled`
+  - PASS: `npx jest src/components/summary-tab.test.tsx --colors=false --forceExit` — 1 suite / 23 tests
+  - Commit: `f7217ed fix(summary-export-polish): 保留至少一个导出 sheet`
