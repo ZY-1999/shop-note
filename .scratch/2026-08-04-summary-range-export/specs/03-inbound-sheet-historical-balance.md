@@ -54,4 +54,4 @@ Blocked by: #02 (02-export-config-inventory-sheet.md)
 > - [x] 表末合计含结余 — `leads with historical balance…`（12+11+12=35）
 > - [x] 作废/`-1`/as-of — `inventory.test.ts::counts only unvoided moves with timestamp < beforeExclusiveMs…`；inbound list 仅 `direction=in`（含 `-1`）
 > - Test run: `npx jest src/data/inventory.test.ts src/export/build-summary-workbook.test.ts src/components/summary-tab.test.tsx --forceExit` → 35 passed, 0 failed
-> - Commit: _(填入本 feat 提交 SHA)_
+> - Commit: `0b0d514`
