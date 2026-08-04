@@ -21,6 +21,10 @@ import {
   type StaffLevel,
 } from "@/data/staff";
 import {
+  buildProductWorkbook,
+  productExportFilename,
+} from "@/export/build-product-workbook";
+import {
   buildStaffWorkbook,
   staffExportFilename,
   STAFF_XLSX_MIME,
@@ -685,9 +689,13 @@ function StaffForm({
 /**
  * Product CRUD — mirrors StaffManage: searchable list + create/edit form.
  * Default list is active-only; 「包含删除」shares includeVoided with search.
+ * Top-bar right 「导出」shares the same row set via buildProductWorkbook
+ * (manage-export #04).
  */
 function ProductManage() {
   const theme = useTheme();
+  const toast = useToast();
+  const exportMutation = useExport();
   const [search, setSearch] = useState("");
   const [includeVoided, setIncludeVoided] = useState(false);
   const [creating, setCreating] = useState(false);
@@ -710,6 +718,19 @@ function ProductManage() {
     );
   }
 
+  const onExport = () => {
+    exportMutation.mutate(
+      {
+        filename: productExportFilename(),
+        mimeType: STAFF_XLSX_MIME,
+        encoding: "base64",
+        dialogTitle: "导出商品",
+        build: () => buildProductWorkbook(rows, { includeVoided }),
+      },
+      { onError: (e) => toast.error(e.message) },
+    );
+  };
+
   return (
     <ScrollView
       testID="view-product"
@@ -725,6 +746,23 @@ function ProductManage() {
           value={includeVoided}
           onValueChange={setIncludeVoided}
         />
+        <View style={styles.filterSpacer} />
+        <Pressable
+          testID="product-export"
+          onPress={onExport}
+          disabled={exportMutation.isPending}
+          style={[
+            styles.exportBtn,
+            {
+              borderColor: theme.border,
+              opacity: exportMutation.isPending ? 0.5 : 1,
+            },
+          ]}
+        >
+          <Text style={{ color: theme.text, fontWeight: "600" }}>
+            {exportMutation.isPending ? "导出中…" : "导出"}
+          </Text>
+        </Pressable>
       </View>
       <TextInput
         testID="product-search"

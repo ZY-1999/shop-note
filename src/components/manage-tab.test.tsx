@@ -13,6 +13,7 @@ import { ADMIN_STAFF_ID } from "@/data/staff";
 import { cents } from "@/data/primitives";
 import type { ExportJob } from "@/export/types";
 import { staffExportFilename } from "@/export/build-staff-workbook";
+import { productExportFilename } from "@/export/build-product-workbook";
 import { renderWithProviders, type RenderWithProvidersResult } from "@/testing/render";
 import { flushPending, waitForSync } from "@/testing/async";
 
@@ -21,8 +22,8 @@ import { flushPending, waitForSync } from "@/testing/async";
  * (ADR-0006: InMemoryAdapter, no mocked Repos). Async mechanics (waitForSync /
  * flushPending / QueryClient clear) live in [testing/async.ts](../testing/async.ts).
  *
- * Export IO (manage-export #03): `runExport` is mocked so share/write stay off-
- * device; `useExport` stays real so pending + onError→toast wiring is exercised.
+ * Export IO (manage-export #03/#04): `runExport` is mocked so share/write stay
+ * off-device; `useExport` stays real so pending + onError→toast wiring is exercised.
  */
 
 const mockRunExport = jest.fn<(job: ExportJob) => Promise<string>>(
@@ -566,24 +567,22 @@ describe("ManageTab — member level selector + badge (member-rename-level #03)"
 });
 
 describe("ManageTab — staff export (manage-export #03)", () => {
-  it("shows 导出 on staff; restock/config have none; product has none yet", async () => {
+  it("shows 导出 on staff; restock/config have none", async () => {
     const { repos } = await seed();
     const { view } = await renderManage(<ManageTab />, { repos });
     await waitForSync(() => view.getByTestId("view-staff"));
     expect(view.getByTestId("staff-export")).toBeTruthy();
     expect(view.getByText("导出")).toBeTruthy();
 
-    await fireEvent.press(view.getByTestId("seg-product"));
-    await waitForSync(() => view.getByTestId("view-product"));
-    expect(view.queryByTestId("staff-export")).toBeNull();
-
     await fireEvent.press(view.getByTestId("seg-restock"));
     await waitForSync(() => view.getByTestId("view-restock"));
     expect(view.queryByTestId("staff-export")).toBeNull();
+    expect(view.queryByTestId("product-export")).toBeNull();
 
     await fireEvent.press(view.getByTestId("seg-config"));
     await waitForSync(() => view.getByTestId("config-price-input"));
     expect(view.queryByTestId("staff-export")).toBeNull();
+    expect(view.queryByTestId("product-export")).toBeNull();
   });
 
   it("export job filename is 会员-YYYYMMDD.xlsx; build rows match current list (switch+search)", async () => {
@@ -644,6 +643,95 @@ describe("ManageTab — staff export (manage-export #03)", () => {
 
     mockRunExport.mockRejectedValueOnce(new Error("disk full"));
     await fireEvent.press(view.getByTestId("staff-export"));
+    expect(await waitForSync(() => view.getByText("disk full"))).toBeTruthy();
+    expect(view.getByTestId("toast")).toBeTruthy();
+  });
+});
+
+describe("ManageTab — product export (manage-export #04)", () => {
+  it("shows 导出 on product; restock/config have none", async () => {
+    const { repos } = await seed();
+    const { view } = await renderManage(<ManageTab />, { repos });
+
+    await fireEvent.press(view.getByTestId("seg-product"));
+    await waitForSync(() => view.getByTestId("view-product"));
+    expect(view.getByTestId("product-export")).toBeTruthy();
+    expect(view.getByText("导出")).toBeTruthy();
+
+    await fireEvent.press(view.getByTestId("seg-restock"));
+    await waitForSync(() => view.getByTestId("view-restock"));
+    expect(view.queryByTestId("product-export")).toBeNull();
+
+    await fireEvent.press(view.getByTestId("seg-config"));
+    await waitForSync(() => view.getByTestId("config-price-input"));
+    expect(view.queryByTestId("product-export")).toBeNull();
+  });
+
+  it("export job filename is 商品-YYYYMMDD.xlsx; build rows match current list (switch+search)", async () => {
+    const { repos, colaId } = await seed(); // 可乐
+    const sprite = await repos.products.create({
+      title: "雪碧",
+      purchase_price: cents(250),
+      code: "S001",
+      category: "饮料",
+    });
+    await repos.products.void(colaId); // 可乐 voided
+    const { view } = await renderManage(<ManageTab />, { repos });
+    await fireEvent.press(view.getByTestId("seg-product"));
+    await waitForSync(() => view.getByTestId(`manage-product-${sprite.id}`));
+
+    // default: only 雪碧 visible → export that set, no status column
+    await fireEvent.press(view.getByTestId("product-export"));
+    await waitForSync(() => expect(mockRunExport).toHaveBeenCalled());
+    const job1 = mockRunExport.mock.calls[0]![0]!;
+    expect(job1.filename).toBe(productExportFilename());
+    expect(job1.encoding).toBe("base64");
+    expect(job1.mimeType).toMatch(/spreadsheetml/);
+    const rows1 = sheetFromBase64(await job1.build());
+    expect(rows1[0]).toEqual(["名称", "单价"]);
+    expect(rows1.slice(1)).toEqual([["雪碧", "2.50"]]);
+
+    mockRunExport.mockClear();
+    // include voided + search 可 → only 可乐, with 状态
+    await fireEvent(view.getByTestId("product-include-voided"), "valueChange", true);
+    await fireEvent.changeText(view.getByTestId("product-search"), "可");
+    await waitForSync(() => view.getByTestId(`manage-product-${colaId}`));
+
+    await fireEvent.press(view.getByTestId("product-export"));
+    await waitForSync(() => expect(mockRunExport).toHaveBeenCalled());
+    const job2 = mockRunExport.mock.calls[0]![0]!;
+    const rows2 = sheetFromBase64(await job2.build());
+    expect(rows2[0]).toEqual(["名称", "单价", "状态"]);
+    expect(rows2.slice(1)).toEqual([["可乐", "3.00", "已删除"]]);
+  });
+
+  it("disables 导出 while pending; toast.error on failure; cancel-style success does not toast", async () => {
+    const { repos } = await seed();
+    const { view } = await renderManage(<ManageTab />, { repos });
+    await fireEvent.press(view.getByTestId("seg-product"));
+    await waitForSync(() => view.getByTestId("product-export"));
+
+    let resolveExport!: (uri: string) => void;
+    mockRunExport.mockImplementationOnce(
+      () =>
+        new Promise<string>((resolve) => {
+          resolveExport = resolve;
+        }),
+    );
+
+    await fireEvent.press(view.getByTestId("product-export"));
+    await waitForSync(() => {
+      expect(view.getByTestId("product-export").props.accessibilityState?.disabled).toBe(true);
+    });
+
+    resolveExport("file:///cache/out.xlsx");
+    await waitForSync(() => {
+      expect(view.getByTestId("product-export").props.accessibilityState?.disabled).toBeFalsy();
+    });
+    expect(view.queryByTestId("toast")).toBeNull();
+
+    mockRunExport.mockRejectedValueOnce(new Error("disk full"));
+    await fireEvent.press(view.getByTestId("product-export"));
     expect(await waitForSync(() => view.getByText("disk full"))).toBeTruthy();
     expect(view.getByTestId("toast")).toBeTruthy();
   });
