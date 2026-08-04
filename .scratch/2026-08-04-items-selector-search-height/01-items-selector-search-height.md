@@ -43,3 +43,4 @@ Status: ready-for-agent
 
 - 2026-08-04 — /route → /to-prd；对抗评审 PASS；Gate 0 待确认。
 - 2026-08-04 — Gate 0 确认；Status → ready-for-agent；进入 /sdd-flow。
+- 2026-08-04 — /to-spec：单 spec（paddingVertical: 8）；待 Gate A。

@@ -1,7 +1,7 @@
 # 商品选择搜索框补 paddingVertical
 
 Type: spec
-Status: ready-for-human
+Status: ready-for-agent
 Parent: #01 (01-items-selector-search-height.md)
 Blocked by: None — can start immediately
 
