@@ -2,7 +2,7 @@ import type { ReactElement } from "react";
 import { afterEach, describe, expect, it, jest } from "@jest/globals";
 import type { QueryClient } from "@tanstack/react-query";
 import { fireEvent, within } from "@testing-library/react-native";
-import { Pressable, Text, View } from "react-native";
+import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import { SummaryTab } from "@/components/summary-tab";
 import { useCreateStockRecord } from "@/hooks/mutations";
@@ -39,14 +39,16 @@ jest.mock("@expo/ui/community/datetime-picker", () => {
       value,
       testID,
       onValueChange,
+      onDismiss,
     }: {
       value: Date;
       testID: string;
       onValueChange?: (e: unknown, date: Date) => void;
+      onDismiss?: () => void;
     }) =>
       React.createElement(
         View,
-        { testID, onValueChange } as any,
+        { testID, onValueChange, onDismiss } as any,
         React.createElement(Text, null, value ? value.toISOString() : ""),
         React.createElement(
           Pressable,
@@ -63,6 +65,14 @@ jest.mock("@expo/ui/community/datetime-picker", () => {
             onPress: () => onValueChange?.({}, new Date(2026, 7, 20, 12, 0)),
           },
           React.createElement(Text, null, "pick-later"),
+        ),
+        React.createElement(
+          Pressable,
+          {
+            testID: `${testID}-dismiss`,
+            onPress: () => onDismiss?.(),
+          },
+          React.createElement(Text, null, "dismiss"),
         ),
       ),
   };
@@ -711,5 +721,70 @@ describe("SummaryTab — export config + inventory sheet (summary-range-export #
     mockRunExport.mockRejectedValueOnce(new Error("boom"));
     await fireEvent.press(view.getByTestId("summary-export"));
     await waitForSync(() => expect(view.getByTestId("toast")).toBeTruthy());
+  });
+});
+
+describe("SummaryTab — toolbar dismiss / layer / compact (summary-toolbar-ux #01)", () => {
+  it("onDismiss cancels day pick without changing the range", async () => {
+    const { repos } = await setup();
+    const { view } = await renderTab(
+      <SummaryTab now={NOW} onOpenStaff={jest.fn()} />,
+      { repos },
+    );
+    await waitForSync(() => view.getByTestId("range-toolbar"));
+    expect(boundLabel(view, "range-from")).toBe("2026/07/01");
+    expect(boundLabel(view, "range-to")).toBe("2026/07/10");
+
+    await fireEvent.press(view.getByTestId("range-from"));
+    await flushPending();
+    expect(view.getByTestId("range-from-picker")).toBeTruthy();
+
+    await fireEvent(view.getByTestId("range-from-picker"), "onDismiss");
+    await flushPending();
+    expect(() => view.getByTestId("range-from-picker")).toThrow();
+    expect(boundLabel(view, "range-from")).toBe("2026/07/01");
+    expect(boundLabel(view, "range-to")).toBe("2026/07/10");
+  });
+
+  it("opens preset choices in a Modal layer above the list", async () => {
+    const { repos } = await setup();
+    const { view } = await renderTab(
+      <SummaryTab now={NOW} onOpenStaff={jest.fn()} />,
+      { repos },
+    );
+    await waitForSync(() => view.getByTestId("range-preset-trigger"));
+    expect(view.queryByTestId("range-preset-menu")).toBeNull();
+
+    await fireEvent.press(view.getByTestId("range-preset-trigger"));
+    await flushPending();
+    expect(view.getByTestId("range-preset-backdrop")).toBeTruthy();
+    expect(view.getByTestId("range-preset-menu")).toBeTruthy();
+    expect(view.getByTestId("range-lastMonth")).toBeTruthy();
+
+    await fireEvent.press(view.getByTestId("range-lastMonth"));
+    await flushPending();
+    expect(view.getByTestId("range-preset-label").props.children).toBe("上月");
+    expect(view.queryByTestId("range-preset-menu")).toBeNull();
+  });
+
+  it("compacts toolbar: nowrap, tighter gap, smaller preset padding, config icon 16", async () => {
+    const { repos } = await setup();
+    const { view } = await renderTab(
+      <SummaryTab now={NOW} onOpenStaff={jest.fn()} />,
+      { repos },
+    );
+    await waitForSync(() => view.getByTestId("range-toolbar"));
+
+    const toolbar = StyleSheet.flatten(view.getByTestId("range-toolbar").props.style);
+    expect(toolbar.flexWrap).toBe("nowrap");
+    expect(toolbar.gap).toBe(3);
+
+    const trigger = StyleSheet.flatten(
+      view.getByTestId("range-preset-trigger").props.style,
+    );
+    expect(trigger.paddingHorizontal).toBe(4);
+    expect(trigger.paddingVertical).toBe(3);
+
+    expect(view.getByTestId("summary-export-config-icon").props.size ?? StyleSheet.flatten(view.getByTestId("summary-export-config-icon").props.style)?.fontSize).toBe(16);
   });
 });

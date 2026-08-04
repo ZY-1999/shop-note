@@ -538,11 +538,11 @@ export function SummaryTab({
               }
               style={styles.boundBtn}
             >
-              <Text style={{ color: theme.text, fontSize: 13 }}>
+              <Text style={{ color: theme.text, fontSize: 12 }}>
                 {formatDate(range.from)}
               </Text>
             </Pressable>
-            <Text style={{ color: theme.textSecondary }}>～</Text>
+            <Text style={{ color: theme.textSecondary, fontSize: 12 }}>～</Text>
             <Pressable
               testID="range-to"
               onPress={() =>
@@ -550,7 +550,7 @@ export function SummaryTab({
               }
               style={styles.boundBtn}
             >
-              <Text style={{ color: theme.text, fontSize: 13 }}>
+              <Text style={{ color: theme.text, fontSize: 12 }}>
                 {formatDate(range.to)}
               </Text>
             </Pressable>
@@ -568,53 +568,16 @@ export function SummaryTab({
               >
                 <Text
                   testID="range-preset-label"
-                  style={{ color: theme.text, fontSize: 13 }}
+                  style={{ color: theme.text, fontSize: 12 }}
                 >
                   {presetLabel}
                 </Text>
                 <Ionicons
                   name={presetOpen ? "chevron-up" : "chevron-down"}
-                  size={14}
+                  size={12}
                   color={theme.textSecondary}
                 />
               </Pressable>
-              {presetOpen && (
-                <View
-                  testID="range-preset-menu"
-                  style={[
-                    styles.presetMenu,
-                    {
-                      borderColor: theme.border,
-                      backgroundColor: theme.background,
-                    },
-                  ]}
-                >
-                  {PRESETS.map((p) => {
-                    const active = p.key === activePreset;
-                    return (
-                      <Pressable
-                        key={p.key}
-                        testID={p.testID}
-                        onPress={() => applyPreset(p.key)}
-                        style={[
-                          styles.presetItem,
-                          active && {
-                            backgroundColor: theme.backgroundSelected,
-                          },
-                        ]}
-                      >
-                        <Text
-                          style={{
-                            color: active ? theme.text : theme.textSecondary,
-                          }}
-                        >
-                          {p.label}
-                        </Text>
-                      </Pressable>
-                    );
-                  })}
-                </View>
-              )}
             </View>
             <Pressable
               testID="summary-export"
@@ -625,7 +588,7 @@ export function SummaryTab({
               onPress={onExport}
               style={styles.exportBtn}
             >
-              <Text style={{ color: theme.accent, fontSize: 13 }}>
+              <Text style={{ color: theme.accent, fontSize: 12 }}>
                 {exportMutation.isPending ? "导出中…" : "导出"}
               </Text>
             </Pressable>
@@ -635,12 +598,64 @@ export function SummaryTab({
               hitSlop={8}
             >
               <Ionicons
+                testID="summary-export-config-icon"
                 name="settings-outline"
-                size={20}
+                size={16}
                 color={theme.textSecondary}
               />
             </Pressable>
           </View>
+
+          <Modal
+            visible={presetOpen}
+            transparent
+            animationType="fade"
+            onRequestClose={() => setPresetOpen(false)}
+          >
+            <Pressable
+              testID="range-preset-backdrop"
+              style={styles.presetBackdrop}
+              onPress={() => setPresetOpen(false)}
+            >
+              <Pressable
+                testID="range-preset-menu"
+                style={[
+                  styles.presetMenuCard,
+                  {
+                    borderColor: theme.border,
+                    backgroundColor: theme.background,
+                  },
+                ]}
+                onPress={(e) => e.stopPropagation()}
+              >
+                {PRESETS.map((p) => {
+                  const active = p.key === activePreset;
+                  return (
+                    <Pressable
+                      key={p.key}
+                      testID={p.testID}
+                      onPress={() => applyPreset(p.key)}
+                      style={[
+                        styles.presetItem,
+                        active && {
+                          backgroundColor: theme.backgroundSelected,
+                        },
+                      ]}
+                    >
+                      <Text
+                        style={{
+                          color: active ? theme.text : theme.textSecondary,
+                          fontSize: 14,
+                        }}
+                      >
+                        {p.label}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </Pressable>
+            </Pressable>
+          </Modal>
 
           <Modal
             visible={configOpen}
@@ -696,6 +711,7 @@ export function SummaryTab({
               onValueChange={(_e: DateTimePickerChangeEvent, date: Date) =>
                 onPickBound(editingBound, date)
               }
+              onDismiss={() => setEditingBound(null)}
             />
           )}
 
@@ -755,40 +771,39 @@ const styles = StyleSheet.create({
   toolbar: {
     flexDirection: "row",
     alignItems: "center",
-    flexWrap: "wrap",
-    gap: 6,
+    flexWrap: "nowrap",
+    gap: 3,
     borderWidth: 1,
     borderRadius: 8,
-    paddingHorizontal: 8,
-    paddingVertical: 8,
-    zIndex: 2,
+    paddingHorizontal: 6,
+    paddingVertical: 6,
   },
-  boundBtn: { paddingVertical: 4, paddingHorizontal: 4 },
-  presetWrap: { flex: 1, minWidth: 88, zIndex: 3 },
+  boundBtn: { paddingVertical: 2, paddingHorizontal: 2 },
+  presetWrap: { flexShrink: 1 },
   presetTrigger: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
-    gap: 4,
+    gap: 2,
     borderWidth: 1,
     borderRadius: 6,
-    paddingHorizontal: 8,
-    paddingVertical: 6,
+    paddingHorizontal: 4,
+    paddingVertical: 3,
   },
-  presetMenu: {
-    position: "absolute",
-    top: "100%",
-    left: 0,
-    right: 0,
-    marginTop: 4,
+  presetBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.35)",
+    justifyContent: "flex-start",
+    paddingTop: 72,
+    paddingHorizontal: 24,
+  },
+  presetMenuCard: {
     borderWidth: 1,
-    borderRadius: 6,
+    borderRadius: 8,
     overflow: "hidden",
-    zIndex: 10,
-    elevation: 4,
+    alignSelf: "stretch",
   },
-  presetItem: { paddingVertical: 10, paddingHorizontal: 10 },
-  exportBtn: { paddingVertical: 4, paddingHorizontal: 6 },
+  presetItem: { paddingVertical: 10, paddingHorizontal: 12 },
+  exportBtn: { paddingVertical: 2, paddingHorizontal: 4 },
   modalBackdrop: {
     flex: 1,
     backgroundColor: "rgba(0,0,0,0.35)",
