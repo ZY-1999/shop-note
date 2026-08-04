@@ -3,7 +3,7 @@ import DateTimePicker, {
 } from "@expo/ui/community/datetime-picker";
 import { Ionicons } from "@expo/vector-icons";
 import { useMemo, useState } from "react";
-import { FlatList, Pressable, StyleSheet, Text, View } from "react-native";
+import { FlatList, Modal, Pressable, StyleSheet, Switch, Text, View } from "react-native";
 
 import {
   formatDate,
@@ -16,7 +16,9 @@ import { FlowEventRow } from "@/components/flow-event-row";
 import { FlowSummary } from "@/components/flow-summary";
 import { MemberName } from "@/components/member-name";
 import { MoneyText } from "@/components/money-text";
+import { useToast } from "@/components/toast";
 import { BottomTabInset } from "@/constants/theme";
+import type { SummaryExportSheets } from "@/data/config";
 import { cents } from "@/data/primitives";
 import {
   aggregateBundleRetail,
@@ -26,12 +28,20 @@ import {
 } from "@/data/split-bundle";
 import { ADMIN_STAFF_ID, DEFAULT_STAFF_LEVEL } from "@/data/staff";
 import {
+  buildSummaryWorkbook,
+  summaryExportFilename,
+} from "@/export/build-summary-workbook";
+import { XLSX_MIME } from "@/export/types";
+import { useUpdateSummaryExportSheets } from "@/hooks/mutations";
+import {
   useDailyFlow,
   useShopAggregate,
   useStaff,
   useStockRecords,
+  useSummaryExportSheets,
   useTopups,
 } from "@/hooks/reads";
+import { useExport } from "@/hooks/use-export";
 import { useTheme } from "@/hooks/use-theme";
 
 /**
@@ -48,6 +58,32 @@ const PRESETS: Array<{ key: RangePreset; label: string; testID: string }> = [
   { key: "thisWeek", label: "本周", testID: "range-thisWeek" },
   { key: "lastWeek", label: "上周", testID: "range-lastWeek" },
 ];
+
+const SHEET_TOGGLES: Array<{
+  key: keyof SummaryExportSheets;
+  label: string;
+  testID: string;
+}> = [
+  { key: "inventory", label: "库存", testID: "export-sheet-inventory" },
+  { key: "inbound", label: "入库明细", testID: "export-sheet-inbound" },
+  {
+    key: "topupCheckout",
+    label: "充值出库",
+    testID: "export-sheet-topupCheckout",
+  },
+  {
+    key: "topupCheckoutDetail",
+    label: "充值出库明细",
+    testID: "export-sheet-topupCheckoutDetail",
+  },
+];
+
+const DEFAULT_SHEETS: SummaryExportSheets = {
+  inventory: true,
+  inbound: true,
+  topupCheckout: true,
+  topupCheckoutDetail: true,
+};
 
 export interface SummaryTabProps {
   onOpenStaff: (staffId: string) => void;
@@ -76,9 +112,11 @@ export function SummaryTab({
   now = Date.now(),
 }: SummaryTabProps) {
   const theme = useTheme();
+  const toast = useToast();
   const [range, setRange] = useState(() => rangeFor("last10Days", now));
   const [presetOpen, setPresetOpen] = useState(false);
   const [editingBound, setEditingBound] = useState<"from" | "to" | null>(null);
+  const [configOpen, setConfigOpen] = useState(false);
   const [inventoryOpen, setInventoryOpen] = useState(false);
   const [expandedStaffDay, setExpandedStaffDay] = useState<string | null>(null);
   const [openDays, setOpenDays] = useState<Set<string>>(new Set());
@@ -93,6 +131,15 @@ export function SummaryTab({
   const records = useStockRecords({ date_range: range });
   const topups = useTopups({ date_range: range });
   const staff = useStaff();
+  const sheetsQ = useSummaryExportSheets();
+  const updateSheets = useUpdateSummaryExportSheets();
+  const exportMutation = useExport();
+  // Optimistic selection so toggles disable「导出」immediately; mutate persists.
+  const [localSheets, setLocalSheets] = useState<SummaryExportSheets | null>(
+    null,
+  );
+  const sheets = localSheets ?? sheetsQ.data ?? DEFAULT_SHEETS;
+  const anySheetSelected = Object.values(sheets).some(Boolean);
   const staffById = useMemo(
     () => new Map((staff.data ?? []).map((s) => [s.id, s])),
     [staff.data],
@@ -103,6 +150,31 @@ export function SummaryTab({
     (sum, r) => sum + r.total_cost,
     0,
   );
+
+  const toggleSheet = (key: keyof SummaryExportSheets, value: boolean) => {
+    const next = { ...sheets, [key]: value };
+    setLocalSheets(next);
+    updateSheets.mutate(next);
+  };
+
+  const onExport = () => {
+    const snapshotSheets = sheets;
+    const snapshotInventory = aggregateRows;
+    exportMutation.mutate(
+      {
+        filename: summaryExportFilename(range.from, range.to),
+        mimeType: XLSX_MIME,
+        encoding: "base64",
+        dialogTitle: "导出汇总",
+        build: () =>
+          buildSummaryWorkbook({
+            sheets: snapshotSheets,
+            inventory: snapshotInventory,
+          }),
+      },
+      { onError: (e) => toast.error(e.message) },
+    );
+  };
 
   const { sections, totalDays, outTotal, topupTotal } = useMemo(() => {
     const byDay = new Map<string, DaySection>();
@@ -483,7 +555,77 @@ export function SummaryTab({
                 </View>
               )}
             </View>
+            <Pressable
+              testID="summary-export"
+              accessibilityState={{
+                disabled: exportMutation.isPending || !anySheetSelected,
+              }}
+              disabled={exportMutation.isPending || !anySheetSelected}
+              onPress={onExport}
+              style={styles.exportBtn}
+            >
+              <Text style={{ color: theme.accent, fontSize: 13 }}>
+                {exportMutation.isPending ? "导出中…" : "导出"}
+              </Text>
+            </Pressable>
+            <Pressable
+              testID="summary-export-config"
+              onPress={() => setConfigOpen(true)}
+              hitSlop={8}
+            >
+              <Ionicons
+                name="settings-outline"
+                size={20}
+                color={theme.textSecondary}
+              />
+            </Pressable>
           </View>
+
+          <Modal
+            visible={configOpen}
+            transparent
+            animationType="fade"
+            onRequestClose={() => setConfigOpen(false)}
+          >
+            <Pressable
+              testID="export-config-backdrop"
+              style={styles.modalBackdrop}
+              onPress={() => setConfigOpen(false)}
+            >
+              <Pressable
+                testID="export-config-modal"
+                style={[
+                  styles.modalCard,
+                  {
+                    backgroundColor: theme.background,
+                    borderColor: theme.border,
+                  },
+                ]}
+                onPress={(e) => e.stopPropagation()}
+              >
+                <Text style={[styles.modalTitle, { color: theme.text }]}>
+                  导出配置
+                </Text>
+                {SHEET_TOGGLES.map((t) => (
+                  <View key={t.key} style={styles.sheetRow}>
+                    <Text style={{ color: theme.text, flex: 1 }}>{t.label}</Text>
+                    <Switch
+                      testID={t.testID}
+                      value={sheets[t.key]}
+                      onValueChange={(v) => toggleSheet(t.key, v)}
+                    />
+                  </View>
+                ))}
+                <Pressable
+                  testID="export-config-close"
+                  onPress={() => setConfigOpen(false)}
+                  style={styles.modalClose}
+                >
+                  <Text style={{ color: theme.accent }}>关闭</Text>
+                </Pressable>
+              </Pressable>
+            </Pressable>
+          </Modal>
 
           {editingBound && (
             <DateTimePicker
@@ -585,6 +727,26 @@ const styles = StyleSheet.create({
     elevation: 4,
   },
   presetItem: { paddingVertical: 10, paddingHorizontal: 10 },
+  exportBtn: { paddingVertical: 4, paddingHorizontal: 6 },
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.35)",
+    justifyContent: "center",
+    padding: 24,
+  },
+  modalCard: {
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 16,
+    gap: 12,
+  },
+  modalTitle: { fontSize: 16, fontWeight: "600" },
+  sheetRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+  modalClose: { alignSelf: "flex-end", paddingVertical: 8 },
   card: {
     borderWidth: 1,
     borderRadius: 8,

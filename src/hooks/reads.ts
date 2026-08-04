@@ -2,6 +2,7 @@ import { useQuery, type UseQueryResult } from "@tanstack/react-query";
 import { useRepos } from "@/providers/providers";
 import type { Aggregate } from "@/data/inventory";
 import type { Balance } from "@/data/member-balance";
+import type { SummaryExportSheets } from "@/data/config";
 import type { Product } from "@/data/product";
 import type { Staff } from "@/data/staff";
 import type { Topup } from "@/data/topup";
@@ -136,5 +137,14 @@ export function useUnitPrice(): UseQueryResult<number> {
   return useQuery<number>({
     queryKey: qk.config.unitPrice(),
     queryFn: () => repos.config.getUnitPrice(),
+  });
+}
+
+/** Summary export sheet checkboxes (default all true when unset). */
+export function useSummaryExportSheets(): UseQueryResult<SummaryExportSheets> {
+  const repos = useRepos();
+  return useQuery({
+    queryKey: qk.config.summaryExportSheets(),
+    queryFn: () => repos.config.getSummaryExportSheets(),
   });
 }

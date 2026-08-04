@@ -10,14 +10,23 @@ import { InMemoryAdapter } from "@/data/in-memory";
 import { setupRepos, type Repos } from "@/data/composition";
 import { ADMIN_STAFF_ID } from "@/data/staff";
 import { cents } from "@/data/primitives";
+import type { ExportJob } from "@/export/types";
+import { summaryExportFilename } from "@/export/build-summary-workbook";
 import { renderWithProviders, type RenderWithProvidersResult } from "@/testing/render";
 import { flushPending, waitForSync } from "@/testing/async";
+import * as XLSX from "xlsx";
 
 /**
- * Spec #05 (page-refactor) + summary-range-export #01 — 汇总 tab through the
- * real data stack. `now` injects rangeFor; DateTimePicker stubbed (device picker
- * stays device-verified).
+ * Spec #05 + summary-range-export #01/#02 — 汇总 tab through the real data stack.
+ * DateTimePicker stubbed; `runExport` mocked (share/write off-device).
  */
+
+const mockRunExport = jest.fn<(job: ExportJob) => Promise<string>>(
+  async () => "file:///cache/out.xlsx",
+);
+jest.mock("@/export/run-export", () => ({
+  runExport: (job: ExportJob) => mockRunExport(job),
+}));
 
 jest.mock("@expo/ui/community/datetime-picker", () => {
   const React = jest.requireActual("react") as typeof import("react");
@@ -64,6 +73,7 @@ let activeQueryClient: QueryClient | null = null;
 afterEach(() => {
   activeQueryClient?.clear();
   activeQueryClient = null;
+  mockRunExport.mockReset().mockResolvedValue("file:///cache/out.xlsx");
 });
 
 async function renderTab(
@@ -537,5 +547,149 @@ describe("SummaryTab — cross-view refresh (spec #05 AC7)", () => {
 
     // inventory revalues live: cola net 4 × 300¢ + water 1500¢ = 2700¢ = ¥27.00
     await waitForSync(() => expect(money(view.getByTestId("inventory-total"))).toMatch(/27\.00/));
+  });
+});
+
+describe("SummaryTab — export config + inventory sheet (summary-range-export #02)", () => {
+  it("exports 汇总-YYYYMMDD-YYYYMMDD.xlsx with 库存 sheet matching aggregate", async () => {
+    const { repos, staffId, colaId, waterId } = await setup();
+    await repos.stockRecords.create({
+      staff_id: ADMIN_STAFF_ID,
+      direction: "in",
+      timestamp: DAY(9, 10),
+      items: [
+        { product_id: colaId, qty: 4 },
+        { product_id: waterId, qty: 3 },
+      ],
+    });
+    await repos.stockRecords.create({
+      staff_id: staffId,
+      direction: "out",
+      timestamp: DAY(9, 14),
+      items: [{ product_id: colaId, qty: 1 }],
+    });
+    const { view } = await renderTab(
+      <SummaryTab now={NOW} onOpenStaff={jest.fn()} />,
+      { repos },
+    );
+    await waitForSync(() => view.getByTestId("summary-export"));
+
+    await fireEvent.press(view.getByTestId("summary-export"));
+    await waitForSync(() => expect(mockRunExport).toHaveBeenCalled());
+    const job = mockRunExport.mock.calls[0]![0]!;
+    expect(job.filename).toBe(
+      summaryExportFilename(
+        new Date(2026, 6, 1, 0, 0, 0, 0).getTime(),
+        new Date(2026, 6, 10, 23, 59, 59, 999).getTime(),
+      ),
+    );
+    const wb = XLSX.read(await job.build(), { type: "base64" });
+    expect(wb.SheetNames).toEqual(["库存"]);
+    const rows = XLSX.utils.sheet_to_json<unknown[]>(wb.Sheets["库存"]!, {
+      header: 1,
+    });
+    expect(rows[0]).toEqual(["商品", "件数", "金额"]);
+    expect(rows).toEqual(
+      expect.arrayContaining([
+        ["可乐", 3, "9.00"],
+        ["矿泉水", 3, "15.00"],
+        ["合计", 6, "24.00"],
+      ]),
+    );
+  });
+
+  it("persists sheet toggles immediately; disables export when none selected", async () => {
+    const { repos } = await setup();
+    const { view } = await renderTab(
+      <SummaryTab now={NOW} onOpenStaff={jest.fn()} />,
+      { repos },
+    );
+    await waitForSync(() => view.getByTestId("summary-export-config"));
+
+    await fireEvent.press(view.getByTestId("summary-export-config"));
+    await waitForSync(() => view.getByTestId("export-config-modal"));
+    expect(view.getByTestId("export-sheet-inventory").props.value).toBe(true);
+
+    await fireEvent(
+      view.getByTestId("export-sheet-inventory"),
+      "valueChange",
+      false,
+    );
+    await fireEvent(
+      view.getByTestId("export-sheet-inbound"),
+      "valueChange",
+      false,
+    );
+    await fireEvent(
+      view.getByTestId("export-sheet-topupCheckout"),
+      "valueChange",
+      false,
+    );
+    await fireEvent(
+      view.getByTestId("export-sheet-topupCheckoutDetail"),
+      "valueChange",
+      false,
+    );
+    await flushPending();
+    await waitForSync(() =>
+      expect(
+        view.getByTestId("summary-export").props.accessibilityState?.disabled,
+      ).toBe(true),
+    );
+
+    expect(await repos.config.getSummaryExportSheets()).toEqual({
+      inventory: false,
+      inbound: false,
+      topupCheckout: false,
+      topupCheckoutDetail: false,
+    });
+
+    await fireEvent(
+      view.getByTestId("export-sheet-inventory"),
+      "valueChange",
+      true,
+    );
+    await flushPending();
+    await waitForSync(() =>
+      expect(
+        view.getByTestId("summary-export").props.accessibilityState?.disabled,
+      ).toBe(false),
+    );
+  });
+
+  it("disables 导出 while pending; toast.error on failure; cancel does not toast", async () => {
+    const { repos } = await setup();
+    const { view } = await renderTab(
+      <SummaryTab now={NOW} onOpenStaff={jest.fn()} />,
+      { repos },
+    );
+    await waitForSync(() => view.getByTestId("summary-export"));
+
+    let resolveExport!: (uri: string) => void;
+    mockRunExport.mockImplementationOnce(
+      () =>
+        new Promise<string>((resolve) => {
+          resolveExport = resolve;
+        }),
+    );
+
+    await fireEvent.press(view.getByTestId("summary-export"));
+    await waitForSync(() => {
+      expect(
+        view.getByTestId("summary-export").props.accessibilityState?.disabled,
+      ).toBe(true);
+    });
+
+    resolveExport("file:///cache/out.xlsx");
+    await waitForSync(() => {
+      expect(
+        view.getByTestId("summary-export").props.accessibilityState?.disabled,
+      ).toBe(false);
+    });
+    expect(view.queryByTestId("toast")).toBeNull();
+
+    mockRunExport.mockRejectedValueOnce(new Error("boom"));
+    await fireEvent.press(view.getByTestId("summary-export"));
+    await waitForSync(() => expect(view.getByTestId("toast")).toBeTruthy());
   });
 });

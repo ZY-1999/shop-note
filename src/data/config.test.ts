@@ -37,3 +37,48 @@ describe("ConfigRepository — unit price", () => {
     expect(update.diff).toContainEqual({ field: "value", old: 2400, new: 3000 });
   });
 });
+
+describe("ConfigRepository — summary export sheets (summary-range-export #02)", () => {
+  test("cold start: all four sheets selected (0b1111)", async () => {
+    const { config } = setup();
+    expect(await config.getSummaryExportSheets()).toEqual({
+      inventory: true,
+      inbound: true,
+      topupCheckout: true,
+      topupCheckoutDetail: true,
+    });
+  });
+
+  test("set then get round-trips a partial selection", async () => {
+    const { config } = setup();
+    await config.setSummaryExportSheets({
+      inventory: true,
+      inbound: false,
+      topupCheckout: true,
+      topupCheckoutDetail: false,
+    });
+    expect(await config.getSummaryExportSheets()).toEqual({
+      inventory: true,
+      inbound: false,
+      topupCheckout: true,
+      topupCheckoutDetail: false,
+    });
+  });
+
+  test("persists across a fresh repository on the same storage", async () => {
+    const { storage, config } = setup();
+    await config.setSummaryExportSheets({
+      inventory: false,
+      inbound: true,
+      topupCheckout: false,
+      topupCheckoutDetail: false,
+    });
+    const again = new ConfigRepository(storage, new AuditProvider(storage));
+    expect(await again.getSummaryExportSheets()).toEqual({
+      inventory: false,
+      inbound: true,
+      topupCheckout: false,
+      topupCheckoutDetail: false,
+    });
+  });
+});

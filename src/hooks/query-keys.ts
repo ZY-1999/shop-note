@@ -50,5 +50,6 @@ export const qk = {
   config: {
     all: ["config"] as const,
     unitPrice: () => ["config", "unitPrice"] as const,
+    summaryExportSheets: () => ["config", "summaryExportSheets"] as const,
   },
 } as const;

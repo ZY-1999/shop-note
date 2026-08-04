@@ -1,7 +1,7 @@
 # 导出配置 + 库存 Sheet 端到端导出
 
 Type: spec
-Status: ready-for-agent
+Status: ready-for-human
 Parent: #01 (01-summary-range-export.md)
 Blocked by: #01 (01-white-bg-and-range-toolbar.md)
 
@@ -11,11 +11,11 @@ Blocked by: #01 (01-white-bg-and-range-toolbar.md)
 
 ## Acceptance criteria
 
-- [ ] 默认四 sheet 全选；改勾选杀进程后仍在；全不选时无法导出
-- [ ] 点导出得到 `汇总-{起YYYYMMDD}-{止YYYYMMDD}.xlsx`；导出中按钮不可再点；失败有 toast；取消分享不算失败
-- [ ] 「库存」sheet：现价成本（`purchase_price × qty`）、商品/件数/金额、表末合计；不跟时间段；**qty=0 不写行**（导出刻意紧于库存卡展开——卡上仍可能列出净 0 行；金额口径与卡一致）
-- [ ] 未勾选「库存」时文件中无「库存」sheet；本 spec 过渡期文件可以只有「库存」，不要求其它三 sheet 已存在
-- [ ] 商品合并串纯函数：同商品合并数量、顿号连接（单测即可）
+- [x] 默认四 sheet 全选；改勾选杀进程后仍在；全不选时无法导出
+- [x] 点导出得到 `汇总-{起YYYYMMDD}-{止YYYYMMDD}.xlsx`；导出中按钮不可再点；失败有 toast；取消分享不算失败
+- [x] 「库存」sheet：现价成本（`purchase_price × qty`）、商品/件数/金额、表末合计；不跟时间段；**qty=0 不写行**（导出刻意紧于库存卡展开——卡上仍可能列出净 0 行；金额口径与卡一致）
+- [x] 未勾选「库存」时文件中无「库存」sheet；本 spec 过渡期文件可以只有「库存」，不要求其它三 sheet 已存在
+- [x] 商品合并串纯函数：同商品合并数量、顿号连接（单测即可）
 
 ## Scope
 
@@ -49,3 +49,14 @@ Blocked by: #01 (01-white-bg-and-range-toolbar.md)
 ## Rework on failure
 
 失败隔离在 config 扩展 + 库存 sheet build + 汇总导出接线。后续 #03/#04 只增 sheet，不改管道。
+
+## Comments
+
+> **Comment** — implemented 2026-08-04; Status → ready-for-human
+> - [x] 默认全选 / persist / 全不选禁用 — `config.test.ts::cold start…` + `persists across a fresh repository…` + `summary-tab.test.tsx::persists sheet toggles immediately…`
+> - [x] 文件名 / pending / toast / cancel — `summary-tab.test.tsx::exports 汇总-…` + `disables 导出 while pending…`；`summaryExportFilename` in `build-summary-workbook.test.ts`
+> - [x] 库存 sheet 现价成本 qty≠0 + 合计 — `build-summary-workbook.test.ts::emits 库存 with non-zero rows…` + RNTL export suite
+> - [x] 未勾选无库存 sheet — `build-summary-workbook.test.ts::omits 库存 when inventory sheet is unchecked`
+> - [x] 商品合并串 — `format-product-qty-list.test.ts::merges same title qtys…`
+> - Test run: `npx jest src/data/config.test.ts src/export/format-product-qty-list.test.ts src/export/build-summary-workbook.test.ts src/components/summary-tab.test.tsx --forceExit` → 31 passed, 0 failed
+> - Commit: _(填入本 feat 提交 SHA)_

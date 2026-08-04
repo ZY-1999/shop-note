@@ -14,6 +14,7 @@ import type {
 } from "@/data/stock-record";
 import type { Topup, TopupCreateInput } from "@/data/topup";
 import type { Cents } from "@/data/primitives";
+import type { SummaryExportSheets } from "@/data/config";
 import { qk } from "@/hooks/query-keys";
 
 /**
@@ -319,6 +320,26 @@ export function useUpdateUnitPrice(): UseMutationResult<void, Error, Cents> {
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: qk.config.all });
       toast.success("单价已保存");
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+}
+
+/** Persist summary-export sheet selection (no success toast — silent instant save). */
+export function useUpdateSummaryExportSheets(): UseMutationResult<
+  void,
+  Error,
+  SummaryExportSheets
+> {
+  const repos = useRepos();
+  const queue = useMutationQueue();
+  const queryClient = useQueryClient();
+  const toast = useToast();
+  return useMutation({
+    mutationFn: (sheets) =>
+      queue.run(() => repos.config.setSummaryExportSheets(sheets)),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: qk.config.all });
     },
     onError: (e: Error) => toast.error(e.message),
   });
