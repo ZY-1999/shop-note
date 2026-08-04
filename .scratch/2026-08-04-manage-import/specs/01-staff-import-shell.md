@@ -62,6 +62,6 @@ Blocked by: None — 可立即开始
   - [x] Tracer — happy path 先于失败用例（同上）
   - [x] confirmExtra — `import-form.test.tsx::shows expandable failures; confirmExtra slot…`（注入可见；staff 默认无控件）
   - Test run: `npx jest src/import/ src/components/import-form.test.tsx src/components/manage-tab.test.tsx src/export/ --forceExit` → 78 passed, 0 failed
-  - Commit: `807da07`
+  - Commit: `0687f6f`
   - Dep: `expo-document-picker@~57.0.1`；写盘仍 `expo-file-system/legacy`
   - **待真机**：DocumentPicker 选文件 + 模板分享手验
