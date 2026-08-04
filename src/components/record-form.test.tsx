@@ -515,3 +515,17 @@ describe("ItemsSeletor — selected line density (summary-export-polish)", () =>
     expect(StyleSheet.flatten(view.getByTestId("picked-line-0").props.style).marginTop).toBe(4);
   });
 });
+
+describe("ItemsSeletor — search input height (items-selector-search-height)", () => {
+  it("matches manage product search paddingVertical 8", async () => {
+    const { repos, staffId } = await seed();
+    const { view } = await renderForm(
+      <RecordForm staffId={staffId} direction="out" />,
+      { repos },
+    );
+    await waitForSync(() => view.getByTestId("product-search"));
+    expect(
+      StyleSheet.flatten(view.getByTestId("product-search").props.style).paddingVertical,
+    ).toBe(8);
+  });
+});

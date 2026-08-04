@@ -1,7 +1,7 @@
 # 商品选择搜索框补 paddingVertical
 
 Type: spec
-Status: ready-for-agent
+Status: ready-for-human
 Parent: #01 (01-items-selector-search-height.md)
 Blocked by: None — can start immediately
 
@@ -11,8 +11,8 @@ Blocked by: None — can start immediately
 
 ## Acceptance criteria
 
-- [ ] 商品选择搜索输入样式 `paddingVertical === 8`
-- [ ] 不改变 chip / 已选行 / 步进器样式与选品行为
+- [x] 商品选择搜索输入样式 `paddingVertical === 8`
+- [x] 不改变 chip / 已选行 / 步进器样式与选品行为
 
 ## Scope
 
@@ -37,3 +37,10 @@ Blocked by: None — can start immediately
 ## Rework on failure
 
 失败隔离在该样式一行；单独重做。
+
+## Comments
+
+- 2026-08-04 — Evidence:
+  - AC1–AC2: `src/components/record-form.test.tsx` — `ItemsSeletor — search input height / matches manage product search paddingVertical 8`（line density 回归仍绿）
+  - PASS: `npx jest src/components/record-form.test.tsx -t "search input height|selected line density" --forceExit` — 2 passed
+  - Commit: 本条关闭提交

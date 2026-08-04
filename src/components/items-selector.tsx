@@ -223,6 +223,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderRadius: 8,
     paddingHorizontal: 12,
+    paddingVertical: 8,
     fontSize: 15,
     flex: 1,
   },
