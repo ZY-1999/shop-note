@@ -59,4 +59,4 @@ Blocked by: #01 (01-white-bg-and-range-toolbar.md)
 > - [x] 未勾选无库存 sheet — `build-summary-workbook.test.ts::omits 库存 when inventory sheet is unchecked`
 > - [x] 商品合并串 — `format-product-qty-list.test.ts::merges same title qtys…`
 > - Test run: `npx jest src/data/config.test.ts src/export/format-product-qty-list.test.ts src/export/build-summary-workbook.test.ts src/components/summary-tab.test.tsx --forceExit` → 31 passed, 0 failed
-> - Commit: _(填入本 feat 提交 SHA)_
+> - Commit: `2477c8a`
