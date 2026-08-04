@@ -58,4 +58,4 @@ Blocked by: None — can start immediately
 > - [x] 快捷下拉切换 — `summary-tab.test.tsx::defaults to 近10天… switching the preset refilters`
 > - [x] 起>止对调 + 自定义 — `summary-tab.test.tsx::swaps when from > to and shows 自定义…`；`date-format.test.ts` `last10Days` / `matchRangePreset` / `normalizeDayRange`
 > - Test run: `npx jest src/components/date-format.test.ts src/components/summary-tab.test.tsx src/components/staff-detail.test.tsx --forceExit` → 46 passed, 0 failed
-> - Commit: (pending close commit)
+> - Commit: `fd31fba`
