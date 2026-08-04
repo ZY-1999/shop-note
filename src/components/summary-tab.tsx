@@ -171,15 +171,35 @@ export function SummaryTab({
         encoding: "base64",
         dialogTitle: "导出汇总",
         build: async () => {
-          const historicalBalance = snapshotSheets.inbound
+          const needInbound = snapshotSheets.inbound;
+          const needMemberSheets =
+            snapshotSheets.topupCheckout || snapshotSheets.topupCheckoutDetail;
+          const historicalBalance = needInbound
             ? await repos.inventory.shopAggregateAsOf(snapshotFrom)
             : [];
-          const inboundRaw = snapshotSheets.inbound
+          const inboundRaw = needInbound
             ? await repos.stockRecords.list({
                 direction: "in",
                 date_range: { from: snapshotFrom, to: snapshotTo },
               })
             : [];
+          const outRaw = needMemberSheets
+            ? await repos.stockRecords.list({
+                direction: "out",
+                date_range: { from: snapshotFrom, to: snapshotTo },
+              })
+            : [];
+          const topupRaw = needMemberSheets
+            ? await repos.topups.list({
+                date_range: { from: snapshotFrom, to: snapshotTo },
+              })
+            : [];
+          const staffRows = needMemberSheets
+            ? await repos.staff.list()
+            : [];
+          const staffNames: Record<string, string> = {};
+          for (const s of staffRows) staffNames[s.id] = s.name;
+
           return buildSummaryWorkbook({
             sheets: snapshotSheets,
             inventory: snapshotInventory,
@@ -191,6 +211,25 @@ export function SummaryTab({
               amountCents: items.reduce((s, i) => s + i.line_amount, 0),
               note: record.note,
             })),
+            staffNames,
+            topups: topupRaw
+              .filter((t) => t.staff_id !== ADMIN_STAFF_ID)
+              .map((t) => ({
+                staffId: t.staff_id,
+                amountCents: t.amount,
+                timestamp: t.timestamp,
+                note: t.note,
+              })),
+            checkouts: outRaw
+              .filter(({ record }) => record.staff_id !== ADMIN_STAFF_ID)
+              .map(({ record, items }) => ({
+                staffId: record.staff_id,
+                timestamp: record.timestamp,
+                selfUse: record.self_use,
+                items: items.map((i) => ({ title: i.title, qty: i.qty })),
+                amountCents: items.reduce((s, i) => s + i.line_amount, 0),
+                note: record.note,
+              })),
           });
         },
       },

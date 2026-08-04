@@ -1,7 +1,7 @@
 # 充值出库 + 充值出库明细 双 Sheet
 
 Type: spec
-Status: ready-for-agent
+Status: ready-for-human
 Parent: #01 (01-summary-range-export.md)
 Blocked by: #02 (02-export-config-inventory-sheet.md)
 
@@ -11,11 +11,11 @@ Blocked by: #02 (02-export-config-inventory-sheet.md)
 
 ## Acceptance criteria
 
-- [ ] 「充值出库」按会员×日一行，三列金额与出库商品串正确；表末三列合计正确
-- [ ] 「充值出库明细」混排倒序，三列金额与备注/商品列正确；表末合计正确
-- [ ] 同窗样本：导出「出库 + 自用」= 页面该时段出库合计；作废与 `-1` 均不出现在这两 sheet
-- [ ] 仅勾选其中一/两个 sheet 时文件只含对应 sheet
-- [ ] 出库商品串格式与 Spec #02 helper / 入库明细一致（同一函数）
+- [x] 「充值出库」按会员×日一行，三列金额与出库商品串正确；表末三列合计正确
+- [x] 「充值出库明细」混排倒序，三列金额与备注/商品列正确；表末合计正确
+- [x] 同窗样本：导出「出库 + 自用」= 页面该时段出库合计；作废与 `-1` 均不出现在这两 sheet
+- [x] 仅勾选其中一/两个 sheet 时文件只含对应 sheet
+- [x] 出库商品串格式与 Spec #02 helper / 入库明细一致（同一函数）
 
 ## Scope
 
@@ -45,3 +45,14 @@ Blocked by: #02 (02-export-config-inventory-sheet.md)
 ## Rework on failure
 
 失败隔离在两 sheet 的 build；入库 sheet / 配置 / 管道不动。可与 #03 独立重做。
+
+## Comments
+
+> **Comment** — implemented 2026-08-04; Status → ready-for-human
+> - [x] 会员×日聚合 — `build-summary-workbook.test.ts::aggregates 充值出库 by member×day…`
+> - [x] 明细混排倒序 — `…emits 充值出库明细 mixed newest-first…`
+> - [x] 出库+自用 / 排除 `-1` — 同上两测（admin checkout dropped；6+4=10）
+> - [x] 勾选子集 — `…emits only the checked of the two sheets`
+> - [x] 商品串复用 `formatProductQtyList` — 聚合/明细断言含 `可乐×2、水×1、茶×1`
+> - Test run: `npx jest src/export/build-summary-workbook.test.ts src/components/summary-tab.test.tsx --forceExit` → 29 passed, 0 failed
+> - Commit: _(填入本 feat 提交 SHA)_

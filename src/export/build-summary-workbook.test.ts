@@ -152,3 +152,166 @@ describe("buildSummaryWorkbook — inbound sheet (#03)", () => {
     expect(sheetsOf(b64)).toEqual(["库存"]);
   });
 });
+
+describe("buildSummaryWorkbook — topup/checkout sheets (#04)", () => {
+  const onlyTopupCheckout = {
+    ...ALL_SHEETS,
+    inventory: false,
+    inbound: false,
+    topupCheckoutDetail: false,
+  };
+  const onlyDetail = {
+    ...ALL_SHEETS,
+    inventory: false,
+    inbound: false,
+    topupCheckout: false,
+  };
+  const staffNames = { m1: "张三", m2: "李四" };
+  const d5a = new Date(2026, 6, 5, 10, 0, 0, 0).getTime();
+  const d5b = new Date(2026, 6, 5, 15, 0, 0, 0).getTime();
+  const d6 = new Date(2026, 6, 6, 11, 0, 0, 0).getTime();
+
+  it("aggregates 充值出库 by member×day with self_use split and product merge", () => {
+    const b64 = buildSummaryWorkbook({
+      sheets: onlyTopupCheckout,
+      inventory: [],
+      staffNames,
+      topups: [
+        { staffId: "m1", amountCents: 5000, timestamp: d5a, note: null },
+        { staffId: "m1", amountCents: 1000, timestamp: d6, note: null },
+      ],
+      checkouts: [
+        {
+          staffId: "m1",
+          timestamp: d5b,
+          selfUse: false,
+          items: [
+            { title: "可乐", qty: 2 },
+            { title: "水", qty: 1 },
+          ],
+          amountCents: 1100,
+          note: null,
+        },
+        {
+          staffId: "m1",
+          timestamp: d5b + 1,
+          selfUse: true,
+          items: [{ title: "茶", qty: 1 }],
+          amountCents: 400,
+          note: null,
+        },
+        {
+          staffId: "m2",
+          timestamp: d6,
+          selfUse: false,
+          items: [{ title: "水", qty: 2 }],
+          amountCents: 1000,
+          note: null,
+        },
+        // Dropped: admin restock-looking id must not appear
+        {
+          staffId: "-1",
+          timestamp: d5a,
+          selfUse: false,
+          items: [{ title: "可乐", qty: 99 }],
+          amountCents: 1,
+          note: null,
+        },
+      ],
+    });
+    expect(sheetsOf(b64)).toEqual(["充值出库"]);
+    expect(sheetRows(b64, "充值出库")).toEqual([
+      ["日期", "会员", "充值", "出库", "自用", "出库商品"],
+      ["2026/07/06", "李四", "0.00", "10.00", "0.00", "水×2"],
+      ["2026/07/06", "张三", "10.00", "0.00", "0.00", ""],
+      ["2026/07/05", "张三", "50.00", "11.00", "4.00", "可乐×2、水×1、茶×1"],
+      ["合计", "", "60.00", "21.00", "4.00", ""],
+    ]);
+  });
+
+  it("emits 充值出库明细 mixed newest-first; out+self_use equals page out total", () => {
+    const b64 = buildSummaryWorkbook({
+      sheets: onlyDetail,
+      inventory: [],
+      staffNames,
+      topups: [
+        { staffId: "m1", amountCents: 5000, timestamp: d5a, note: "现金" },
+      ],
+      checkouts: [
+        {
+          staffId: "m1",
+          timestamp: d5b,
+          selfUse: false,
+          items: [{ title: "可乐", qty: 2 }],
+          amountCents: 600,
+          note: null,
+        },
+        {
+          staffId: "m1",
+          timestamp: d6,
+          selfUse: true,
+          items: [{ title: "茶", qty: 1 }],
+          amountCents: 400,
+          note: null,
+        },
+      ],
+    });
+    expect(sheetsOf(b64)).toEqual(["充值出库明细"]);
+    const rows = sheetRows(b64, "充值出库明细");
+    expect(rows[0]).toEqual(["时间", "会员", "充值", "出库", "自用", "备注/商品"]);
+    expect(rows[1]).toEqual([
+      "2026/07/06 11:00",
+      "张三",
+      "0.00",
+      "0.00",
+      "4.00",
+      "茶×1",
+    ]);
+    expect(rows[2]).toEqual([
+      "2026/07/05 15:00",
+      "张三",
+      "0.00",
+      "6.00",
+      "0.00",
+      "可乐×2",
+    ]);
+    expect(rows[3]).toEqual([
+      "2026/07/05 10:00",
+      "张三",
+      "50.00",
+      "0.00",
+      "0.00",
+      "现金",
+    ]);
+    expect(rows[4]).toEqual(["合计", "", "50.00", "6.00", "4.00", ""]);
+    // 出库+自用 = 页面出库合计
+    expect(600 + 400).toBe(1000);
+  });
+
+  it("emits only the checked of the two sheets", () => {
+    const both = buildSummaryWorkbook({
+      sheets: {
+        inventory: false,
+        inbound: false,
+        topupCheckout: true,
+        topupCheckoutDetail: true,
+      },
+      inventory: [],
+      staffNames,
+      topups: [],
+      checkouts: [],
+    });
+    expect(sheetsOf(both)).toEqual(["充值出库", "充值出库明细"]);
+
+    const none = buildSummaryWorkbook({
+      sheets: {
+        inventory: false,
+        inbound: false,
+        topupCheckout: false,
+        topupCheckoutDetail: false,
+      },
+      inventory: [],
+    });
+    expect(sheetsOf(none)).toEqual(["（暂无）"]);
+  });
+});
