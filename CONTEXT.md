@@ -33,6 +33,7 @@ Key decisions live in [docs/adr/](docs/adr/); the code terrain is mapped in [doc
 | **作废 Void** | Soft-delete: set `voided_at`. The record/items/topup remain (never hard-removed); excluded from `list`/`staffHistory`/derivation. | No `delete` API anywhere (ADR-0001). |
 | **包含删除 includeVoided** | Manage·会员 / 管理·商品列表与搜索的同一筛选：默认关（只看有效）；开则可见并可恢复已删除行。导出范围与当前开关+搜索一致。 | 补货/配置段无此开关。管理员 `-1` 始终排除。 |
 | **导出 Export** | 管理页会员/商品顶栏「导出」→ 纯 `build` 出 xlsx（base64）→ `runExport` 写 cache + 系统分享。文件名 `会员\|商品-YYYYMMDD.xlsx`。 | 管道在 `src/export/`；金额展示/单价列共用 `formatCentsAsYuan`。 |
+| **导入 Import** | 管理·会员 / 商品 / 补货顶栏「导入」→ 子页下载模板、选 xlsx → **预览**（可导入表+数量、底部失败可展开）→ 确认后只新建。去重键均为**姓名/名称**（含已删除撞名失败）。 | 确认顺序写入；不 upsert、不导入恢复。补货一行一单；备注在待确认页整批填写。 |
 | **审计 Audit** | Per-mutate field-level diff timeline. Actions: `create`/`update`/`void`/`restore`. | Stock-record `create` not audited; topup create/void + config set are. |
 | **Cents** | Branded integer type for money (units = 分). The only way to mint one is `cents()`, which rejects non-integers. | See [src/data/primitives.ts](src/data/primitives.ts). |
 | **StoragePort** | The single test seam — a dumb typed row store (`withTransaction`/`insert`/`findById`/`update`/`find`); every row carries `id`. | `InMemoryAdapter` (tests) / `ExpoSqliteAdapter` (prod). See ADR-0001, ADR-0003. **`withTransaction` is not reentrant.** |
