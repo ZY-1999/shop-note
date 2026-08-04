@@ -50,4 +50,4 @@ Blocked by: None — can start immediately
   > - [x] Modal 层快捷菜单 — `…opens preset choices in a Modal layer above the list`
   > - [x] nowrap / gap / preset padding / icon 16 — `…compacts toolbar…`
   > - Test run: `npx jest src/components/summary-tab.test.tsx --forceExit` → 23 passed, 0 failed
-  > - Commit: _(填入本 feat 提交 SHA)_
+  > - Commit: `275b222`
