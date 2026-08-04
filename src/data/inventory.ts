@@ -44,7 +44,24 @@ export class Inventory {
    * change. Negative `total_qty` = 欠货 (allowed, invariant #5).
    */
   async shopAggregate(): Promise<Aggregate[]> {
-    const records = await this.stockRecords.list(); // voided excluded by default
+    return this.aggregateFromMoves(await this.stockRecords.list());
+  }
+
+  /**
+   * Same derivation as `shopAggregate`, but only unvoided moves with
+   * `record.timestamp < beforeExclusiveMs` (exclusive cutoff — for export
+   * historical balance at range.from = start-of-day 00:00).
+   */
+  async shopAggregateAsOf(beforeExclusiveMs: number): Promise<Aggregate[]> {
+    const records = (await this.stockRecords.list()).filter(
+      ({ record }) => record.timestamp < beforeExclusiveMs,
+    );
+    return this.aggregateFromMoves(records);
+  }
+
+  private async aggregateFromMoves(
+    records: Awaited<ReturnType<StockRecordRepository["list"]>>,
+  ): Promise<Aggregate[]> {
     const moves: ItemMove[] = [];
     for (const { record, items } of records) {
       for (const item of items) moves.push({ item, direction: record.direction });

@@ -1,7 +1,7 @@
 # 入库明细 Sheet（含历史结余）
 
 Type: spec
-Status: ready-for-agent
+Status: ready-for-human
 Parent: #01 (01-summary-range-export.md)
 Blocked by: #02 (02-export-config-inventory-sheet.md)
 
@@ -11,10 +11,10 @@ Blocked by: #02 (02-export-config-inventory-sheet.md)
 
 ## Acceptance criteria
 
-- [ ] 勾选「入库明细」导出后 sheet 文首为历史结余行（备注含截至起日 00:00）；全 0 仍有一行
-- [ ] 时段内入库按单据一行，商品合并如 `可乐×2、水×1`；金额为单据快照合计
-- [ ] 表末金额合计 = 历史结余金额 + 时段内入库金额
-- [ ] 作废单不出现；`-1` 补货出现在本 sheet；历史结余数量含其对库存的贡献
+- [x] 勾选「入库明细」导出后 sheet 文首为历史结余行（备注含截至起日 00:00）；全 0 仍有一行
+- [x] 时段内入库按单据一行，商品合并如 `可乐×2、水×1`；金额为单据快照合计
+- [x] 表末金额合计 = 历史结余金额 + 时段内入库金额
+- [x] 作废单不出现；`-1` 补货出现在本 sheet；历史结余数量含其对库存的贡献
 
 ## Scope
 
@@ -45,3 +45,13 @@ Blocked by: #02 (02-export-config-inventory-sheet.md)
 ## Rework on failure
 
 失败隔离在 as-of 派生 + 入库 sheet；库存 sheet / 配置 / UI 工具行不动。
+
+## Comments
+
+> **Comment** — implemented 2026-08-04; Status → ready-for-human
+> - [x] 历史结余文首 — `build-summary-workbook.test.ts::leads with historical balance…` + `still emits a zero historical-balance row…`
+> - [x] 时段内入库一行 — 同上 + `summary-tab.test.tsx::exports 汇总-…`（含 `可乐×4、矿泉水×3`）
+> - [x] 表末合计含结余 — `leads with historical balance…`（12+11+12=35）
+> - [x] 作废/`-1`/as-of — `inventory.test.ts::counts only unvoided moves with timestamp < beforeExclusiveMs…`；inbound list 仅 `direction=in`（含 `-1`）
+> - Test run: `npx jest src/data/inventory.test.ts src/export/build-summary-workbook.test.ts src/components/summary-tab.test.tsx --forceExit` → 35 passed, 0 failed
+> - Commit: _(填入本 feat 提交 SHA)_

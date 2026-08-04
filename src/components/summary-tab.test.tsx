@@ -584,7 +584,9 @@ describe("SummaryTab — export config + inventory sheet (summary-range-export #
       ),
     );
     const wb = XLSX.read(await job.build(), { type: "base64" });
-    expect(wb.SheetNames).toEqual(["库存"]);
+    expect(wb.SheetNames).toEqual(
+      expect.arrayContaining(["库存", "入库明细"]),
+    );
     const rows = XLSX.utils.sheet_to_json<unknown[]>(wb.Sheets["库存"]!, {
       header: 1,
     });
@@ -595,6 +597,21 @@ describe("SummaryTab — export config + inventory sheet (summary-range-export #
         ["矿泉水", 3, "15.00"],
         ["合计", 6, "24.00"],
       ]),
+    );
+    const inbound = XLSX.utils.sheet_to_json<unknown[]>(
+      wb.Sheets["入库明细"]!,
+      { header: 1 },
+    );
+    // Historical balance empty (no moves before last10Days from); restock on day 9.
+    expect(inbound[0]).toEqual(["时间", "商品", "金额", "备注"]);
+    expect(inbound[1]).toEqual([
+      "",
+      "",
+      "0.00",
+      expect.stringMatching(/^截至 .+ 00:00 的历史结余$/),
+    ]);
+    expect(inbound).toEqual(
+      expect.arrayContaining([[expect.any(String), "可乐×4、矿泉水×3", "27.00", ""]]),
     );
   });
 

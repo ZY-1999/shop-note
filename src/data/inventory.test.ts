@@ -179,3 +179,56 @@ describe("Inventory — voided record/product handling", () => {
     expect(row.total_cost).toBe(7 * 1995); // product still resolves at its price
   });
 });
+
+describe("Inventory — shopAggregateAsOf (summary-range-export #03)", () => {
+  test("counts only unvoided moves with timestamp < beforeExclusiveMs; current price", async () => {
+    const { products, stockRecords, inventory } = setup();
+    const p = await products.create({ title: "可乐", purchase_price: cents(300) });
+    const day = (d: number, h = 12) => new Date(2026, 6, d, h, 0, 0, 0).getTime();
+    const from = new Date(2026, 6, 5, 0, 0, 0, 0).getTime();
+
+    await stockRecords.create({
+      staff_id: ADMIN_STAFF_ID,
+      direction: "in",
+      timestamp: day(3),
+      items: [{ product_id: p.id, qty: 10 }],
+    });
+    await stockRecords.create({
+      staff_id: "member",
+      direction: "out",
+      timestamp: day(4),
+      items: [{ product_id: p.id, qty: 2 }],
+    });
+    // On the boundary day — excluded from as-of(from).
+    await stockRecords.create({
+      staff_id: ADMIN_STAFF_ID,
+      direction: "in",
+      timestamp: from,
+      items: [{ product_id: p.id, qty: 5 }],
+    });
+    const voided = await stockRecords.create({
+      staff_id: ADMIN_STAFF_ID,
+      direction: "in",
+      timestamp: day(2),
+      items: [{ product_id: p.id, qty: 100 }],
+    });
+    await stockRecords.void(voided.record.id);
+
+    await products.update(p.id, { purchase_price: cents(400) });
+
+    const asOf = (await inventory.shopAggregateAsOf(from)).find(
+      (a) => a.product.id === p.id,
+    )!;
+    expect(asOf.total_qty).toBe(8); // 10 − 2; voided + boundary excluded
+    expect(asOf.total_cost).toBe(400 * 8);
+
+    const now = (await inventory.shopAggregate()).find((a) => a.product.id === p.id)!;
+    expect(now.total_qty).toBe(13); // +5 on boundary
+  });
+
+  test("empty ledger before cutoff returns []", async () => {
+    const { inventory } = setup();
+    const from = new Date(2026, 6, 5, 0, 0, 0, 0).getTime();
+    expect(await inventory.shopAggregateAsOf(from)).toEqual([]);
+  });
+});

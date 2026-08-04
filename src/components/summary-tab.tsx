@@ -43,6 +43,7 @@ import {
 } from "@/hooks/reads";
 import { useExport } from "@/hooks/use-export";
 import { useTheme } from "@/hooks/use-theme";
+import { useRepos } from "@/providers/providers";
 
 /**
  * The 汇总 tab — time-range-scoped supervision view (summary-range-export #01):
@@ -113,6 +114,7 @@ export function SummaryTab({
 }: SummaryTabProps) {
   const theme = useTheme();
   const toast = useToast();
+  const repos = useRepos();
   const [range, setRange] = useState(() => rangeFor("last10Days", now));
   const [presetOpen, setPresetOpen] = useState(false);
   const [editingBound, setEditingBound] = useState<"from" | "to" | null>(null);
@@ -160,17 +162,37 @@ export function SummaryTab({
   const onExport = () => {
     const snapshotSheets = sheets;
     const snapshotInventory = aggregateRows;
+    const snapshotFrom = range.from;
+    const snapshotTo = range.to;
     exportMutation.mutate(
       {
-        filename: summaryExportFilename(range.from, range.to),
+        filename: summaryExportFilename(snapshotFrom, snapshotTo),
         mimeType: XLSX_MIME,
         encoding: "base64",
         dialogTitle: "导出汇总",
-        build: () =>
-          buildSummaryWorkbook({
+        build: async () => {
+          const historicalBalance = snapshotSheets.inbound
+            ? await repos.inventory.shopAggregateAsOf(snapshotFrom)
+            : [];
+          const inboundRaw = snapshotSheets.inbound
+            ? await repos.stockRecords.list({
+                direction: "in",
+                date_range: { from: snapshotFrom, to: snapshotTo },
+              })
+            : [];
+          return buildSummaryWorkbook({
             sheets: snapshotSheets,
             inventory: snapshotInventory,
-          }),
+            rangeFrom: snapshotFrom,
+            historicalBalance,
+            inboundRecords: inboundRaw.map(({ record, items }) => ({
+              timestamp: record.timestamp,
+              items: items.map((i) => ({ title: i.title, qty: i.qty })),
+              amountCents: items.reduce((s, i) => s + i.line_amount, 0),
+              note: record.note,
+            })),
+          });
+        },
       },
       { onError: (e) => toast.error(e.message) },
     );

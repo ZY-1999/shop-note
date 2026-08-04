@@ -59,7 +59,7 @@ describe("summaryExportFilename — summary-range-export #02", () => {
 describe("buildSummaryWorkbook — inventory sheet (#02)", () => {
   it("emits 库存 with non-zero rows, yuan amounts, and a total row", () => {
     const input: SummaryWorkbookInput = {
-      sheets: ALL_SHEETS,
+      sheets: { ...ALL_SHEETS, inbound: false, topupCheckout: false, topupCheckoutDetail: false },
       inventory: [agg("可乐", 3, 300), agg("水", 0, 500), agg("茶", 2, 400)],
     };
     const b64 = buildSummaryWorkbook(input);
@@ -74,9 +74,81 @@ describe("buildSummaryWorkbook — inventory sheet (#02)", () => {
 
   it("omits 库存 when inventory sheet is unchecked", () => {
     const b64 = buildSummaryWorkbook({
-      sheets: { ...ALL_SHEETS, inventory: false },
+      sheets: { ...ALL_SHEETS, inventory: false, inbound: false, topupCheckout: false, topupCheckoutDetail: false },
       inventory: [agg("可乐", 1, 300)],
     });
     expect(sheetsOf(b64)).not.toContain("库存");
+  });
+});
+
+describe("buildSummaryWorkbook — inbound sheet (#03)", () => {
+  const from = new Date(2026, 6, 5, 0, 0, 0, 0).getTime();
+  const onlyInbound = {
+    ...ALL_SHEETS,
+    inventory: false,
+    topupCheckout: false,
+    topupCheckoutDetail: false,
+  };
+
+  it("leads with historical balance (even when all-zero), then in-range rows, total includes balance", () => {
+    const t1 = new Date(2026, 6, 5, 10, 30, 0, 0).getTime();
+    const t2 = new Date(2026, 6, 6, 9, 0, 0, 0).getTime();
+    const b64 = buildSummaryWorkbook({
+      sheets: onlyInbound,
+      inventory: [],
+      rangeFrom: from,
+      historicalBalance: [agg("可乐", 4, 300), agg("水", 0, 500)],
+      inboundRecords: [
+        {
+          timestamp: t1,
+          items: [
+            { title: "可乐", qty: 2 },
+            { title: "水", qty: 1 },
+          ],
+          amountCents: 1100,
+          note: "早班",
+        },
+        {
+          timestamp: t2,
+          items: [{ title: "茶", qty: 3 }],
+          amountCents: 1200,
+          note: null,
+        },
+      ],
+    });
+    expect(sheetsOf(b64)).toEqual(["入库明细"]);
+    expect(sheetRows(b64, "入库明细")).toEqual([
+      ["时间", "商品", "金额", "备注"],
+      ["", "可乐×4", "12.00", "截至 2026/07/05 00:00 的历史结余"],
+      ["2026/07/05 10:30", "可乐×2、水×1", "11.00", "早班"],
+      ["2026/07/06 09:00", "茶×3", "12.00", ""],
+      ["合计", "", "35.00", ""],
+    ]);
+  });
+
+  it("still emits a zero historical-balance row when ledger is empty before from", () => {
+    const b64 = buildSummaryWorkbook({
+      sheets: onlyInbound,
+      inventory: [],
+      rangeFrom: from,
+      historicalBalance: [],
+      inboundRecords: [],
+    });
+    expect(sheetRows(b64, "入库明细")).toEqual([
+      ["时间", "商品", "金额", "备注"],
+      ["", "", "0.00", "截至 2026/07/05 00:00 的历史结余"],
+      ["合计", "", "0.00", ""],
+    ]);
+  });
+
+  it("omits 入库明细 when inbound is unchecked", () => {
+    const b64 = buildSummaryWorkbook({
+      sheets: { ...ALL_SHEETS, inbound: false, inventory: true, topupCheckout: false, topupCheckoutDetail: false },
+      inventory: [agg("可乐", 1, 300)],
+      rangeFrom: from,
+      historicalBalance: [agg("可乐", 1, 300)],
+      inboundRecords: [],
+    });
+    expect(sheetsOf(b64)).toEqual(["库存"]);
   });
 });
