@@ -101,7 +101,7 @@
 - **对策**：`dateForPickerValue(ms)` → `Date.UTC(本地Y,M,D,12)`；汇总 from/to 共用。选日后仍 `normalizeDayRange`。
 - **来源**：2026-08-04 真机（开始日 07/26 → 弹窗 07/25）+ `.scratch/2026-08-04-summary-range-picker-off-by-one`。
 - **适用边界**：UTC+8 为主承诺；其它页 date picker 应复用 helper。
-- **验证**：`date-format.test.ts` off-by-one；`summary-tab` from/to picker value 断言；真机 smoke 待操作员确认。
+- **验证**：`date-format.test.ts` off-by-one；`summary-tab` from/to picker value 断言；东八区真机 smoke OK（2026-08-04）。
 
 ## UI / 布局
 

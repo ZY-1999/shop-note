@@ -75,4 +75,5 @@ Done checklist：
 - 2026-08-04 — diagnose PASS → to-prd；Gate 0 待确认。
 - 2026-08-04 — Gate 0 确认；Status → ready-for-agent；进入 /sdd-flow。
 - 2026-08-04 — /to-spec：单 spec（日历日稳定 picker value）；待 Gate A。
-- 2026-08-04 — Gate A 确认并实现（`86e3332`）；自动化 AC 绿；**待你东八区真机 smoke**（点开始日，选中应与标签同日）后可关 bug。
+- 2026-08-04 — Gate A 确认并实现（`86e3332`）；自动化 AC 绿。
+- 2026-08-04 — 东八区真机 smoke OK；bug 可关。

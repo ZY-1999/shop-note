@@ -15,7 +15,7 @@ Blocked by: None — can start immediately
 - [ ] **必做** summary-tab：打开 `range-from-picker` / `range-to-picker` 时，传入的 `value` 的本地年/月/日与对应工具栏标签一致（UTC+8 目标环境）
 - [ ] 选日后仍经 `normalizeDayRange`；`from` 00:00 / `to` 23:59:59.999 语义不变
 - [ ] 不改 `rangeFor` / 流水过滤口径
-- [ ] Gate 关闭前：东八区设备按父 bug 复现步骤确认弹窗选中日正确（人工 smoke，记入 evidence）
+- [x] Gate 关闭前：东八区设备按父 bug 复现步骤确认弹窗选中日正确（人工 smoke，记入 evidence）
 
 ## Scope
 
@@ -50,6 +50,6 @@ Blocked by: None — can start immediately
   - AC2: `src/components/summary-tab.test.tsx` — `passes from/to picker values with the same UTC calendar date as their toolbar labels`
   - AC3: `src/components/date-format.test.ts` — `snaps to local day bounds and swaps when start > end`；`summary-tab` 的 `onPickBound` 保持 `normalizeDayRange` 调用不变。
   - AC4: `rangeFor` 与流水过滤口径未改。
-  - AC5: 东八区真机按父 bug 步骤确认弹窗选中日正确（人工 smoke，未在自动化中执行）。
+  - AC5: 东八区真机 smoke OK（操作员确认弹窗选中日与工具栏同日，2026-08-04）。
   - PASS: `source "$HOME/.bashrc" && npx jest src/components/date-format.test.ts --colors=false && npx jest src/components/summary-tab.test.tsx --colors=false --forceExit > /tmp/summary-tab-full.txt 2>&1` — 2 suites / 47 tests
-  - Commit: 本条关闭提交
+  - Commit: `86e3332`
