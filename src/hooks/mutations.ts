@@ -2,6 +2,7 @@ import { useMutation, useQueryClient, type UseMutationResult } from "@tanstack/r
 import { useMutationQueue, useRepos } from "@/providers/providers";
 import { useToast } from "@/components/toast";
 import type { StaffCreateInput, StaffUpdatePatch, Staff } from "@/data/staff";
+import { ADMIN_STAFF_ID } from "@/data/staff";
 import type {
   ProductCreateInput,
   ProductUpdatePatch,
@@ -15,6 +16,7 @@ import type {
 import type { Topup, TopupCreateInput } from "@/data/topup";
 import type { Cents } from "@/data/primitives";
 import type { SummaryExportSheets } from "@/data/config";
+import type { RestockImportOk } from "@/import/preview-restock-import";
 import type { StaffImportOk } from "@/import/preview-staff-import";
 import { qk } from "@/hooks/query-keys";
 
@@ -82,6 +84,57 @@ export function useImportStaff(): UseMutationResult<
     onSuccess: (created) => {
       void queryClient.invalidateQueries({ queryKey: qk.staff.all });
       toast.success(`已导入 ${created.length} 个会员`);
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+}
+
+export type ImportRestocksInput = {
+  rows: RestockImportOk[];
+  /** Shared batch note from confirm page (may be empty). */
+  note: string;
+};
+
+/**
+ * Bulk restock import (manage-import #03). Sequential stockRecords.create
+ * (in / admin -1 / single item) inside one MutationQueue turn — same invalidate
+ * families as useCreateStockRecord + single success toast. Does NOT loop
+ * useCreateStockRecord (would toast per row).
+ */
+export function useImportRestocks(): UseMutationResult<
+  RecordWithItems[],
+  Error,
+  ImportRestocksInput
+> {
+  const repos = useRepos();
+  const queue = useMutationQueue();
+  const queryClient = useQueryClient();
+  const toast = useToast();
+  return useMutation<RecordWithItems[], Error, ImportRestocksInput>({
+    mutationFn: ({ rows, note }) =>
+      queue.run(async () => {
+        const timestamp = Date.now();
+        const trimmed = note.trim();
+        const created: RecordWithItems[] = [];
+        for (const row of rows) {
+          created.push(
+            await repos.stockRecords.create({
+              staff_id: ADMIN_STAFF_ID,
+              direction: "in",
+              timestamp,
+              note: trimmed || undefined,
+              items: [{ product_id: row.product_id, qty: row.qty }],
+            }),
+          );
+        }
+        return created;
+      }),
+    onSuccess: (created) => {
+      void queryClient.invalidateQueries({ queryKey: qk.records.all });
+      void queryClient.invalidateQueries({ queryKey: qk.inventory.all });
+      void queryClient.invalidateQueries({ queryKey: qk.balance.all });
+      void queryClient.invalidateQueries({ queryKey: qk.dailyFlow.all });
+      toast.success(`已导入 ${created.length} 笔补货`);
     },
     onError: (e: Error) => toast.error(e.message),
   });

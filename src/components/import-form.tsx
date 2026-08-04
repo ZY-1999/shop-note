@@ -7,6 +7,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from "react-native";
 
@@ -14,14 +15,24 @@ import { useToast } from "@/components/toast";
 import { BottomTabInset } from "@/constants/theme";
 import { ADMIN_STAFF_ID } from "@/data/staff";
 import { XLSX_MIME } from "@/export/types";
-import { useImportStaff } from "@/hooks/mutations";
+import { useImportRestocks, useImportStaff } from "@/hooks/mutations";
 import { useExport } from "@/hooks/use-export";
 import { useTheme } from "@/hooks/use-theme";
+import {
+  buildRestockImportTemplate,
+  RESTOCK_IMPORT_TEMPLATE_FILENAME,
+} from "@/import/build-restock-import-template";
 import {
   buildStaffImportTemplate,
   STAFF_IMPORT_TEMPLATE_FILENAME,
 } from "@/import/build-staff-import-template";
+import { parseRestockImportWorkbook } from "@/import/parse-restock-import-workbook";
 import { parseStaffImportWorkbook } from "@/import/parse-staff-import-workbook";
+import {
+  previewRestockImport,
+  type RestockImportFail,
+  type RestockImportOk,
+} from "@/import/preview-restock-import";
 import {
   previewStaffImport,
   type StaffImportFail,
@@ -29,14 +40,15 @@ import {
 } from "@/import/preview-staff-import";
 import { useRepos } from "@/providers/providers";
 
-/** Import kinds the shell accepts; product/restock wire in later specs. */
+/** Import kinds the shell accepts; product wires in #02. */
 export type ImportKind = "staff" | "product" | "restock";
 
 export type ImportFormProps = {
   kind: ImportKind;
   /**
    * Optional slot rendered above the confirm button.
-   * Staff/product unused; restock (#03) injects batch note here.
+   * Staff/product unused; restock (#03) injects batch note here when provided,
+   * otherwise restock renders its own batch-note field in this slot.
    */
   confirmExtra?: ReactNode;
 };
@@ -46,10 +58,15 @@ type StaffPreview = {
   fail: StaffImportFail[];
 };
 
+type RestockPreview = {
+  ok: RestockImportOk[];
+  fail: RestockImportFail[];
+};
+
 /**
- * Kind-parameterized import shell (manage-import #01).
- * Root-Stack sibling of record-form / topup-form. Staff path is fully wired;
- * product/restock kinds reserve the route shape for #02/#03.
+ * Kind-parameterized import shell (manage-import #01/#03).
+ * Root-Stack sibling of record-form / topup-form. Staff + restock paths wired;
+ * product kind reserves the route shape for #02.
  */
 export function ImportForm({ kind, confirmExtra }: ImportFormProps) {
   const theme = useTheme();
@@ -57,10 +74,15 @@ export function ImportForm({ kind, confirmExtra }: ImportFormProps) {
   const repos = useRepos();
   const exportMutation = useExport();
   const importStaff = useImportStaff();
-  const [preview, setPreview] = useState<StaffPreview | null>(null);
+  const importRestocks = useImportRestocks();
+  const [staffPreview, setStaffPreview] = useState<StaffPreview | null>(null);
+  const [restockPreview, setRestockPreview] = useState<RestockPreview | null>(
+    null,
+  );
   const [failOpen, setFailOpen] = useState(false);
+  const [batchNote, setBatchNote] = useState("");
 
-  if (kind !== "staff") {
+  if (kind === "product") {
     return (
       <View
         testID="import-form-unsupported"
@@ -73,14 +95,33 @@ export function ImportForm({ kind, confirmExtra }: ImportFormProps) {
     );
   }
 
+  const isStaff = kind === "staff";
+  const preview = isStaff ? staffPreview : restockPreview;
+  const importPending = isStaff
+    ? importStaff.isPending
+    : importRestocks.isPending;
+
   const onDownloadTemplate = () => {
+    if (isStaff) {
+      exportMutation.mutate(
+        {
+          filename: STAFF_IMPORT_TEMPLATE_FILENAME,
+          mimeType: XLSX_MIME,
+          encoding: "base64",
+          dialogTitle: "下载会员导入模板",
+          build: () => buildStaffImportTemplate(),
+        },
+        { onError: (e) => toast.error(e.message) },
+      );
+      return;
+    }
     exportMutation.mutate(
       {
-        filename: STAFF_IMPORT_TEMPLATE_FILENAME,
+        filename: RESTOCK_IMPORT_TEMPLATE_FILENAME,
         mimeType: XLSX_MIME,
         encoding: "base64",
-        dialogTitle: "下载会员导入模板",
-        build: () => buildStaffImportTemplate(),
+        dialogTitle: "下载补货导入模板",
+        build: () => buildRestockImportTemplate(),
       },
       { onError: (e) => toast.error(e.message) },
     );
@@ -115,12 +156,18 @@ export function ImportForm({ kind, confirmExtra }: ImportFormProps) {
       const base64 = await readAsStringAsync(asset.uri, {
         encoding: EncodingType.Base64,
       });
-      const rows = parseStaffImportWorkbook(base64);
-      const existing = await repos.staff.list({ includeVoided: true });
-      const admin = await repos.staff.getById(ADMIN_STAFF_ID);
-      const adminName = admin?.name ?? "管理员";
-      const next = previewStaffImport(rows, existing, adminName);
-      setPreview(next);
+      if (isStaff) {
+        const rows = parseStaffImportWorkbook(base64);
+        const existing = await repos.staff.list({ includeVoided: true });
+        const admin = await repos.staff.getById(ADMIN_STAFF_ID);
+        const adminName = admin?.name ?? "管理员";
+        setStaffPreview(previewStaffImport(rows, existing, adminName));
+      } else {
+        const rows = parseRestockImportWorkbook(base64);
+        // includeVoided so preview can distinguish 不存在 vs 已删除
+        const products = await repos.products.list({ includeVoided: true });
+        setRestockPreview(previewRestockImport(rows, products));
+      }
       setFailOpen(false);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : String(err));
@@ -129,16 +176,56 @@ export function ImportForm({ kind, confirmExtra }: ImportFormProps) {
 
   const onConfirm = () => {
     if (!preview || preview.ok.length === 0) return;
-    importStaff.mutate(preview.ok, {
-      onSuccess: () => router.back(),
-    });
+    if (isStaff) {
+      importStaff.mutate(preview.ok as StaffImportOk[], {
+        onSuccess: () => router.back(),
+      });
+      return;
+    }
+    importRestocks.mutate(
+      { rows: preview.ok as RestockImportOk[], note: batchNote },
+      { onSuccess: () => router.back() },
+    );
   };
 
   const n = preview?.ok.length ?? 0;
+  const confirmLabel = isStaff
+    ? `确认导入 ${n} 个会员`
+    : `确认导入 ${n} 笔补货`;
+
+  const restockNoteSlot = (
+    <View style={styles.batchNoteField}>
+      <Text style={[styles.fieldLabel, { color: theme.textSecondary }]}>
+        备注
+      </Text>
+      <TextInput
+        testID="import-batch-note"
+        style={[
+          styles.batchNoteInput,
+          {
+            backgroundColor: theme.inputBg,
+            borderColor: theme.border,
+            color: theme.text,
+          },
+        ]}
+        placeholder="整批共用备注（可空）"
+        placeholderTextColor={theme.textSecondary}
+        value={batchNote}
+        onChangeText={setBatchNote}
+      />
+    </View>
+  );
+
+  const extraSlot =
+    confirmExtra != null
+      ? confirmExtra
+      : kind === "restock"
+        ? restockNoteSlot
+        : null;
 
   return (
     <ScrollView
-      testID="import-form-staff"
+      testID={isStaff ? "import-form-staff" : "import-form-restock"}
       style={[styles.container, { backgroundColor: theme.background }]}
       contentContainerStyle={styles.content}
     >
@@ -184,36 +271,75 @@ export function ImportForm({ kind, confirmExtra }: ImportFormProps) {
             testID="import-ok-table"
             style={[styles.table, { borderColor: theme.border }]}
           >
-            <View style={[styles.tableRow, styles.tableHead]}>
-              {["姓名", "电话", "备注", "等级"].map((h) => (
-                <Text
-                  key={h}
-                  style={[styles.cell, styles.headCell, { color: theme.textSecondary }]}
-                >
-                  {h}
-                </Text>
-              ))}
-            </View>
-            {preview.ok.map((row) => (
-              <View
-                key={row.row}
-                testID={`import-ok-row-${row.row}`}
-                style={styles.tableRow}
-              >
-                <Text style={[styles.cell, { color: theme.text }]}>
-                  {row.name}
-                </Text>
-                <Text style={[styles.cell, { color: theme.text }]}>
-                  {row.phone}
-                </Text>
-                <Text style={[styles.cell, { color: theme.text }]}>
-                  {row.notes}
-                </Text>
-                <Text style={[styles.cell, { color: theme.text }]}>
-                  {row.level === "gold" ? "星站" : "普站"}
-                </Text>
-              </View>
-            ))}
+            {isStaff ? (
+              <>
+                <View style={[styles.tableRow, styles.tableHead]}>
+                  {["姓名", "电话", "备注", "等级"].map((h) => (
+                    <Text
+                      key={h}
+                      style={[
+                        styles.cell,
+                        styles.headCell,
+                        { color: theme.textSecondary },
+                      ]}
+                    >
+                      {h}
+                    </Text>
+                  ))}
+                </View>
+                {(preview.ok as StaffImportOk[]).map((row) => (
+                  <View
+                    key={row.row}
+                    testID={`import-ok-row-${row.row}`}
+                    style={styles.tableRow}
+                  >
+                    <Text style={[styles.cell, { color: theme.text }]}>
+                      {row.name}
+                    </Text>
+                    <Text style={[styles.cell, { color: theme.text }]}>
+                      {row.phone}
+                    </Text>
+                    <Text style={[styles.cell, { color: theme.text }]}>
+                      {row.notes}
+                    </Text>
+                    <Text style={[styles.cell, { color: theme.text }]}>
+                      {row.level === "gold" ? "星站" : "普站"}
+                    </Text>
+                  </View>
+                ))}
+              </>
+            ) : (
+              <>
+                <View style={[styles.tableRow, styles.tableHead]}>
+                  {["商品名称", "数量"].map((h) => (
+                    <Text
+                      key={h}
+                      style={[
+                        styles.cell,
+                        styles.headCell,
+                        { color: theme.textSecondary },
+                      ]}
+                    >
+                      {h}
+                    </Text>
+                  ))}
+                </View>
+                {(preview.ok as RestockImportOk[]).map((row) => (
+                  <View
+                    key={row.row}
+                    testID={`import-ok-row-${row.row}`}
+                    style={styles.tableRow}
+                  >
+                    <Text style={[styles.cell, { color: theme.text }]}>
+                      {row.title}
+                    </Text>
+                    <Text style={[styles.cell, { color: theme.text }]}>
+                      {row.qty}
+                    </Text>
+                  </View>
+                ))}
+              </>
+            )}
           </View>
 
           {preview.fail.length > 0 && (
@@ -240,26 +366,24 @@ export function ImportForm({ kind, confirmExtra }: ImportFormProps) {
             </View>
           )}
 
-          {confirmExtra != null ? (
-            <View testID="import-confirm-extra">{confirmExtra}</View>
+          {extraSlot != null ? (
+            <View testID="import-confirm-extra">{extraSlot}</View>
           ) : null}
 
           <Pressable
             testID="import-confirm"
             onPress={onConfirm}
-            disabled={n === 0 || importStaff.isPending}
+            disabled={n === 0 || importPending}
             style={[
               styles.confirmBtn,
               {
                 backgroundColor: theme.success,
-                opacity: n === 0 || importStaff.isPending ? 0.5 : 1,
+                opacity: n === 0 || importPending ? 0.5 : 1,
               },
             ]}
           >
             <Text style={styles.confirmText}>
-              {importStaff.isPending
-                ? "导入中…"
-                : `确认导入 ${n} 个会员`}
+              {importPending ? "导入中…" : confirmLabel}
             </Text>
           </Pressable>
         </View>
@@ -293,4 +417,13 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   confirmText: { color: "#fff", fontSize: 15, fontWeight: "600" },
+  batchNoteField: { marginTop: 12, gap: 6 },
+  fieldLabel: { fontSize: 13 },
+  batchNoteInput: {
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    fontSize: 14,
+  },
 });

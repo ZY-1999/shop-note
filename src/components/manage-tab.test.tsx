@@ -472,6 +472,19 @@ describe("ManageTab — restock segment (stock-balance-refactor AC3)", () => {
     await waitForSync(() => view.getByTestId(`pick-${colaId}`));
   });
 
+  it("toolbar 导入 opens import-form with kind=restock (manage-import #03)", async () => {
+    const { repos } = await seed();
+    const { view } = await renderManage(<ManageTab />, { repos });
+    await fireEvent.press(view.getByTestId("seg-restock"));
+    await waitForSync(() => view.getByTestId("restock-import"));
+    expect(view.queryByTestId("restock-export")).toBeNull();
+    await fireEvent.press(view.getByTestId("restock-import"));
+    expect(mockPush).toHaveBeenCalledWith({
+      pathname: "/import-form",
+      params: { kind: "restock" },
+    });
+  });
+
   it("blocks restock when no product is selected", async () => {
     const { repos } = await seed();
     const { view } = await renderManage(<ManageTab />, { repos });
@@ -655,7 +668,7 @@ describe("ManageTab — member level selector + badge (member-rename-level #03)"
 });
 
 describe("ManageTab — staff export (manage-export #03)", () => {
-  it("shows 导入 left of 导出 on staff; restock/config have none", async () => {
+  it("shows 导入 left of 导出 on staff; restock has 导入 only; config has none", async () => {
     const { repos } = await seed();
     const { view } = await renderManage(<ManageTab />, { repos });
     await waitForSync(() => view.getByTestId("view-staff"));
@@ -678,12 +691,14 @@ describe("ManageTab — staff export (manage-export #03)", () => {
     expect(view.queryByTestId("staff-export")).toBeNull();
     expect(view.queryByTestId("staff-import")).toBeNull();
     expect(view.queryByTestId("product-export")).toBeNull();
+    expect(view.getByTestId("restock-import")).toBeTruthy();
 
     await fireEvent.press(view.getByTestId("seg-config"));
     await waitForSync(() => view.getByTestId("config-price-input"));
     expect(view.queryByTestId("staff-export")).toBeNull();
     expect(view.queryByTestId("staff-import")).toBeNull();
     expect(view.queryByTestId("product-export")).toBeNull();
+    expect(view.queryByTestId("restock-import")).toBeNull();
   });
 
   it("export job filename is 会员-YYYYMMDD.xlsx; build rows match current list (switch+search)", async () => {
@@ -750,7 +765,7 @@ describe("ManageTab — staff export (manage-export #03)", () => {
 });
 
 describe("ManageTab — product export (manage-export #04)", () => {
-  it("shows 导出 on product; restock/config have none", async () => {
+  it("shows 导出 on product; restock/config have no product-export", async () => {
     const { repos } = await seed();
     const { view } = await renderManage(<ManageTab />, { repos });
 

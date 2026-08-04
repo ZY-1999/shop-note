@@ -8,8 +8,10 @@ import * as XLSX from "xlsx";
 import { ImportForm } from "@/components/import-form";
 import { InMemoryAdapter } from "@/data/in-memory";
 import { setupRepos, type Repos } from "@/data/composition";
+import { cents } from "@/data/primitives";
 import { ADMIN_STAFF_ID, type Staff } from "@/data/staff";
 import type { ExportJob } from "@/export/types";
+import { RESTOCK_IMPORT_TEMPLATE_FILENAME } from "@/import/build-restock-import-template";
 import { STAFF_IMPORT_TEMPLATE_FILENAME } from "@/import/build-staff-import-template";
 import { renderWithProviders, type RenderWithProvidersResult } from "@/testing/render";
 import { flushPending, waitForSync } from "@/testing/async";
@@ -256,5 +258,107 @@ describe("ImportForm — cancel / non-xlsx / failures / mid-fail / confirmExtra"
 
     const listed = await repos.staff.list();
     expect(listed.map((s) => s.name)).toEqual(["甲"]);
+  });
+});
+
+describe("ImportForm — restock happy path (manage-import #03 tracer)", () => {
+  async function seedRestock() {
+    const adapter = new InMemoryAdapter();
+    await adapter.insert("staff", {
+      id: ADMIN_STAFF_ID,
+      name: "管理员",
+      phone: "",
+      notes: "",
+      level: "normal",
+      voided_at: null,
+      created_at: 0,
+      updated_at: 0,
+    } as Staff);
+    const repos = setupRepos(adapter);
+    // Own product seed — must NOT depend on product-import (#02).
+    await repos.products.create({
+      title: "可乐",
+      purchase_price: cents(300),
+    });
+    await repos.products.create({
+      title: "薯片",
+      purchase_price: cents(500),
+    });
+    return { repos };
+  }
+
+  function restockWorkbook(rows: string[][]): string {
+    const ws = XLSX.utils.aoa_to_sheet(rows);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "补货");
+    return XLSX.write(wb, { type: "base64", bookType: "xlsx" }) as string;
+  }
+
+  it("downloads restock template; confirm with batch note writes one in/-1 record per row", async () => {
+    const { repos } = await seedRestock();
+    const { view } = await renderImport(<ImportForm kind="restock" />, {
+      repos,
+    });
+
+    expect(view.getByTestId("import-form-restock")).toBeTruthy();
+
+    await fireEvent.press(view.getByTestId("import-download-template"));
+    await waitForSync(() => expect(mockRunExport).toHaveBeenCalled());
+    const job = mockRunExport.mock.calls[0]![0]!;
+    expect(job.filename).toBe(RESTOCK_IMPORT_TEMPLATE_FILENAME);
+    expect(job.encoding).toBe("base64");
+    const built = await job.build();
+    const wb = XLSX.read(built, { type: "base64" });
+    const sheet = XLSX.utils.sheet_to_json<unknown[]>(
+      wb.Sheets[wb.SheetNames[0]],
+      { header: 1 },
+    );
+    expect(sheet).toEqual([["商品名称", "数量"]]);
+
+    const base64 = restockWorkbook([
+      ["商品名称", "数量"],
+      ["可乐", "10"],
+      ["薯片", "2"],
+    ]);
+    mockGetDocumentAsync.mockResolvedValueOnce({
+      canceled: false,
+      assets: [
+        {
+          uri: "file:///cache/restock.xlsx",
+          name: "restock.xlsx",
+          mimeType:
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        },
+      ],
+    });
+    mockReadAsStringAsync.mockResolvedValueOnce(base64);
+
+    await fireEvent.press(view.getByTestId("import-pick-file"));
+    await waitForSync(() => view.getByTestId("import-preview"));
+    expect(textOf(view.getByTestId("import-ok-count"))).toContain("2");
+    expect(view.getByText("确认导入 2 笔补货")).toBeTruthy();
+    expect(view.getByTestId("import-confirm-extra")).toBeTruthy();
+    expect(view.getByTestId("import-batch-note")).toBeTruthy();
+
+    await fireEvent.changeText(view.getByTestId("import-batch-note"), "进货单A");
+    await fireEvent.press(view.getByTestId("import-confirm"));
+    await waitForSync(() => expect(mockBack).toHaveBeenCalled());
+    expect(
+      await waitForSync(() => view.getByText("已导入 2 笔补货")),
+    ).toBeTruthy();
+
+    const records = await repos.stockRecords.list({ direction: "in" });
+    expect(records).toHaveLength(2);
+    for (const { record, items } of records) {
+      expect(record.staff_id).toBe(ADMIN_STAFF_ID);
+      expect(record.direction).toBe("in");
+      expect(record.note).toBe("进货单A");
+      expect(items).toHaveLength(1);
+    }
+    const qtys = records
+      .map((r) => r.items[0]!.qty)
+      .sort((a, b) => a - b);
+    expect(qtys).toEqual([2, 10]);
+    expect(view.queryAllByText("记录已保存")).toHaveLength(0);
   });
 });

@@ -310,6 +310,21 @@ function RestockManage() {
       style={styles.domain}
       contentContainerStyle={styles.listContent}
     >
+      <View style={styles.filterBar}>
+        <View style={styles.filterSpacer} />
+        <Pressable
+          testID="restock-import"
+          onPress={() =>
+            router.push({
+              pathname: "/import-form",
+              params: { kind: "restock" },
+            })
+          }
+          style={[styles.exportBtn, { borderColor: theme.border }]}
+        >
+          <Text style={{ color: theme.text, fontWeight: "600" }}>导入</Text>
+        </Pressable>
+      </View>
       <Text style={{ color: theme.textSecondary }}>选择商品补货</Text>
       <ItemsSeletor
         value={selectedItems}
