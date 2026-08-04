@@ -1,7 +1,7 @@
 # 导出能力管道（Export Pipeline）
 
 Type: prd
-Status: ready-for-agent
+Status: wontfix
 
 ## 问题陈述
 
@@ -172,3 +172,4 @@ jest.mock("expo-sharing", () => ({
 - 2026-07-11 — drafted via `/idea-to-prd`（`/grilling` 确认 2 个核心缺口：交付范围=纯管道 lib 不接 UI；`build` 返回单一 string 不预留 `buildToFile`。行为细节有推荐、Gate 0 可推翻）。
 - 2026-07-11 — 对抗性评审 **PASS**（fresh-context general-purpose sub-agent，veracity first：16 条断言全部核验通过——jest 配置 / 模块现状 / seam 真实性 / ADR 引用 / PROJECT_KNOWLEDGE 踩坑引用均属实；方案可行、ADR 对齐、seam 成立）。fold 入 3 处 minor veracity 修正：① `jest.mock` 在 ts-jest 下无 hoisting（`babel-plugin-jest-hoist` 仅 babel-jest 生效），改为「必须写在 import 之前（CommonJS 保持源码顺序）」并标注 data project 此模式无先例、build 阶段实跑确认；② CodeMap 引用 Risk Areas → Validation 节点；③「已知 expo-sharing 行为」与「待验证」措辞矛盾，统一为「待 build 阶段真机确认」。状态 `needs-info` → `ready-for-human`，待 Gate 0。
 - 2026-07-11 — Gate 0 通过（用户 reviewed PRD 文件，无修改）。状态 `ready-for-human` → `ready-for-agent`，进入 /sdd-flow 执行。
+- 2026-08-04 — **被** [manage-export](../2026-08-04-manage-export/01-manage-export.md) **吸收**：管道 + 首个真实 xlsx（会员/商品）在同一 feature 交付；本 PRD 不再单独开 build。Status → `wontfix`（由后继 feature 承接，非放弃需求）。
