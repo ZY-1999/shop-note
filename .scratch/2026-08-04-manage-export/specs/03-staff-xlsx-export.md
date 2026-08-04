@@ -55,5 +55,5 @@ xlsx 库或 UTI 选型失败只重做本 spec；#04 等本 spec 锁定后再开�
   - [x] 文件名 — `build-staff-workbook.test.ts::names the file 会员-YYYYMMDD.xlsx…` + 上条 manage-tab（`staffExportFilename()`）
   - [ ] 手动真机 — 待真机（UTI 决策见上；无需本次 `infoPlist`）
   - Test run: `npx jest src/export/build-staff-workbook.test.ts src/export/run-export.test.ts src/components/manage-tab.test.tsx --forceExit` → 39 passed, 0 failed
-  - Commit: (pending)
+  - Commit: `1ace2b0`
   - Lib: `xlsx@0.18.5`
