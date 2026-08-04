@@ -104,3 +104,4 @@ Status: ready-for-agent
 - 2026-08-04 — grill 完成。
 - 2026-08-04 — 对抗评审 PASS；Status → `ready-for-human`，待 Gate 0。
 - 2026-08-04 — Gate 0 通过；`/sdd-flow` 入口翻为 `ready-for-agent`。
+- 2026-08-04 — 三切片落地 + Stage 4；Standards 硬伤（ManageTab router）已修；DocumentPicker 待真机。
