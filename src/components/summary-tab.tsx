@@ -202,9 +202,6 @@ export function SummaryTab({
     const snapshotTo = range.to;
     const snapshotOutTotal = outTotal;
     const snapshotTopupTotal = topupTotal;
-    const snapshotRecords = records.data ?? [];
-    const snapshotTopups = topups.data ?? [];
-    const snapshotStaff = staff.data ?? [];
     exportMutation.mutate(
       {
         filename: summaryExportFilename(snapshotFrom, snapshotTo),
@@ -216,12 +213,11 @@ export function SummaryTab({
           const needMemberSheets =
             snapshotSheets.topupCheckout || snapshotSheets.topupCheckoutDetail;
 
-          const rangedRecords =
-            snapshotRecords.length > 0
-              ? snapshotRecords
-              : await repos.stockRecords.list({
-                  date_range: { from: snapshotFrom, to: snapshotTo },
-                });
+          // Always re-read ledger for export — do not prefer hook snapshots
+          // (hooks can be mid-refetch / partial while the page totals already moved).
+          const rangedRecords = await repos.stockRecords.list({
+            date_range: { from: snapshotFrom, to: snapshotTo },
+          });
 
           const historicalBalance = needInbound
             ? await repos.inventory.shopAggregateAsOf(snapshotFrom)
@@ -238,18 +234,12 @@ export function SummaryTab({
             : [];
 
           const topupRaw = needMemberSheets
-            ? snapshotTopups.length > 0
-              ? snapshotTopups
-              : await repos.topups.list({
-                  date_range: { from: snapshotFrom, to: snapshotTo },
-                })
+            ? await repos.topups.list({
+                date_range: { from: snapshotFrom, to: snapshotTo },
+              })
             : [];
 
-          const staffRows = needMemberSheets
-            ? snapshotStaff.length > 0
-              ? snapshotStaff
-              : await repos.staff.list()
-            : [];
+          const staffRows = needMemberSheets ? await repos.staff.list() : [];
           const staffNames: Record<string, string> = {};
           for (const s of staffRows) staffNames[s.id] = s.name;
 
@@ -270,7 +260,6 @@ export function SummaryTab({
               note: t.note,
             }));
 
-          // Same window as the page: UI shows money but rows missing → hard fail.
           if (needMemberSheets && snapshotOutTotal > 0 && checkouts.length === 0) {
             throw new Error("导出异常：页面有出库记录但明细为空，请重试");
           }
@@ -609,31 +598,33 @@ export function SummaryTab({
                 />
               </Pressable>
             </View>
-            <Pressable
-              testID="summary-export"
-              accessibilityState={{
-                disabled: exportMutation.isPending || !anySheetSelected,
-              }}
-              disabled={exportMutation.isPending || !anySheetSelected}
-              onPress={onExport}
-              style={styles.exportBtn}
-            >
-              <Text style={{ color: theme.accent, fontSize: 12 }}>
-                {exportMutation.isPending ? "导出中…" : "导出"}
-              </Text>
-            </Pressable>
-            <Pressable
-              testID="summary-export-config"
-              onPress={() => setConfigOpen(true)}
-              hitSlop={8}
-            >
-              <Ionicons
-                testID="summary-export-config-icon"
-                name="settings-outline"
-                size={16}
-                color={theme.textSecondary}
-              />
-            </Pressable>
+            <View testID="summary-export-actions" style={styles.exportActions}>
+              <Pressable
+                testID="summary-export"
+                accessibilityState={{
+                  disabled: exportMutation.isPending || !anySheetSelected,
+                }}
+                disabled={exportMutation.isPending || !anySheetSelected}
+                onPress={onExport}
+                style={styles.exportBtn}
+              >
+                <Text style={{ color: theme.accent, fontSize: 12 }}>
+                  {exportMutation.isPending ? "导出中…" : "导出"}
+                </Text>
+              </Pressable>
+              <Pressable
+                testID="summary-export-config"
+                onPress={() => setConfigOpen(true)}
+                hitSlop={8}
+              >
+                <Ionicons
+                  testID="summary-export-config-icon"
+                  name="settings-outline"
+                  size={16}
+                  color={theme.textSecondary}
+                />
+              </Pressable>
+            </View>
           </View>
 
           <Modal
@@ -818,6 +809,13 @@ const styles = StyleSheet.create({
     borderRadius: 6,
     paddingHorizontal: 4,
     paddingVertical: 3,
+  },
+  exportActions: {
+    marginLeft: "auto",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 3,
+    flexShrink: 0,
   },
   presetBackdrop: {
     flex: 1,

@@ -1,15 +1,19 @@
 import {
   cacheDirectory,
   EncodingType,
+  readAsStringAsync,
   writeAsStringAsync,
 } from "expo-file-system/legacy";
 import * as Sharing from "expo-sharing";
+import * as XLSX from "xlsx";
 
 import type { ExportJob } from "@/export/types";
 
 /**
- * Build + write the export file to cache. Sharing is intentionally separate so
- * UI 「导出中」does not span the system share sheet (cancel-share ≠ abort-build).
+ * Build + write the export file to cache, then round-trip read to ensure the
+ * on-disk xlsx is a complete workbook (catches truncated writes that leave
+ * later sheets empty / weird row origins in mobile spreadsheet apps).
+ * Sharing is intentionally separate so UI 「导出中」does not span the share sheet.
  */
 export async function writeExportFile(job: ExportJob): Promise<string> {
   const content = await job.build();
@@ -18,6 +22,33 @@ export async function writeExportFile(job: ExportJob): Promise<string> {
   const encoding =
     job.encoding === "base64" ? EncodingType.Base64 : EncodingType.UTF8;
   await writeAsStringAsync(uri, content, { encoding });
+
+  if (job.encoding === "base64") {
+    const roundtrip = await readAsStringAsync(uri, {
+      encoding: EncodingType.Base64,
+    });
+    if (roundtrip.length < content.length * 0.9) {
+      throw new Error("导出文件写入不完整，请重试");
+    }
+    try {
+      const wb = XLSX.read(roundtrip, { type: "base64" });
+      if (wb.SheetNames.length === 0) {
+        throw new Error("导出文件无 sheet");
+      }
+      for (const name of wb.SheetNames) {
+        const ref = wb.Sheets[name]?.["!ref"];
+        if (ref && !ref.startsWith("A1")) {
+          throw new Error(`导出 sheet「${name}」未从 A1 起写（${ref}）`);
+        }
+      }
+    } catch (err) {
+      if (err instanceof Error && err.message.startsWith("导出")) throw err;
+      throw new Error(
+        `导出文件校验失败：${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+  }
+
   return uri;
 }
 

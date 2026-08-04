@@ -77,6 +77,16 @@
 - **验证**：[src/data/expo-sqlite-migration.test.ts](src/data/expo-sqlite-migration.test.ts) v4 断言 `MIGRATIONS` v4 语句 = `["DROP TABLE IF EXISTS config", createTableSql("config")]`；真实 DROP+CREATE 执行靠设备 smoke（ADR-0004，Jest 不覆盖）。
 - **关联**：ADR-0003（DDL 与 registry 共用单源）、ADR-0008（清库重建迁移）；与「给既有表加列必须冻结历史版本的 CREATE 字面量」互为对称面。
 
+## 导出 / 表格兼容
+
+### 荣耀自带表格 vs WPS：多 sheet xlsx 显示异常优先怀疑查看器
+
+- **事实**：汇总导出多 sheet xlsx 在荣耀手机自带表格 App 中可能表现为后几 sheet「空」或首行行号怪异；同一文件用 **WPS / Excel** 打开内容正常。根因在查看器对 OOXML（尤其多 sheet、空单元格、inline string）的兼容性，不是导出缺数据。
+- **对策（已实现）**：`XLSX.write(..., { bookSST: true })`（Shared String Table）；空单元格写 `"—"` 而非 `""`；文件名加 `HHmmss` 防分享缓存；写盘后 round-trip 校验 sheet 从 A1 起。
+- **来源**：2026-08-04 真机反馈（荣耀异常 / WPS 正常）+ `.scratch/2026-08-04-summary-export-empty-sheets`。
+- **适用边界**：排障时先用 WPS 对照；不要在未对照前断定「导出丢 sheet」。其它 OEM 自带表格也可能挑食。
+- **验证**：WPS 打开四 sheet 有数据；代码侧 `build-summary-workbook` / `run-export` 单测覆盖 SST 与写盘校验。
+
 ## UI / 布局
 
 ### 全页滚动底部留白用 `BottomTabInset`（theme.ts），别各页硬编码

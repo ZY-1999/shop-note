@@ -57,3 +57,4 @@ Status: ready-for-human
 - 2026-08-04 — implemented: 导出与页面同窗快照；页面有金额但明细空则 toast；`useExport` pending 仅 build+write，分享异步不占「导出中」。
 - Test run: `npx jest src/export/run-export.test.ts src/components/summary-tab.test.tsx src/components/manage-tab.test.tsx -t "export|…" --forceExit` → 23 passed
 - Commit: `af217bd`
+- 2026-08-04 — **关键发现**：荣耀自带表格异常，**同一文件 WPS 正常** → 查看器兼容，非缺数据。加固：`bookSST: true`、空单元格 `"—"`、文件名带时分秒、写盘 round-trip 校验；见 `PROJECT_KNOWLEDGE`「荣耀自带表格 vs WPS」。

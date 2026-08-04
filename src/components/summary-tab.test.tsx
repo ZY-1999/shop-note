@@ -11,7 +11,6 @@ import { setupRepos, type Repos } from "@/data/composition";
 import { ADMIN_STAFF_ID } from "@/data/staff";
 import { cents } from "@/data/primitives";
 import type { ExportJob } from "@/export/types";
-import { summaryExportFilename } from "@/export/build-summary-workbook";
 import { renderWithProviders, type RenderWithProvidersResult } from "@/testing/render";
 import { flushPending, waitForSync } from "@/testing/async";
 import * as XLSX from "xlsx";
@@ -594,12 +593,7 @@ describe("SummaryTab — export config + inventory sheet (summary-range-export #
     await fireEvent.press(view.getByTestId("summary-export"));
     await waitForSync(() => expect(mockRunExport).toHaveBeenCalled());
     const job = mockRunExport.mock.calls[0]![0]!;
-    expect(job.filename).toBe(
-      summaryExportFilename(
-        new Date(2026, 6, 1, 0, 0, 0, 0).getTime(),
-        new Date(2026, 6, 10, 23, 59, 59, 999).getTime(),
-      ),
-    );
+    expect(job.filename).toMatch(/^汇总-20260701-20260710-\d{6}\.xlsx$/);
     const wb = XLSX.read(await job.build(), { type: "base64" });
     expect(wb.SheetNames).toEqual([
       "库存",
@@ -625,13 +619,13 @@ describe("SummaryTab — export config + inventory sheet (summary-range-export #
     // Historical balance empty (no moves before last10Days from); restock on day 9.
     expect(inbound[0]).toEqual(["时间", "商品", "金额", "备注"]);
     expect(inbound[1]).toEqual([
-      "",
-      "",
+      "—",
+      "—",
       "0.00",
       expect.stringMatching(/^截至 .+ 00:00 的历史结余$/),
     ]);
     expect(inbound).toEqual(
-      expect.arrayContaining([[expect.any(String), "可乐×4、矿泉水×3", "27.00", ""]]),
+      expect.arrayContaining([[expect.any(String), "可乐×4、矿泉水×3", "27.00", "—"]]),
     );
     // #04 wire-through: member out in range must land on both member sheets
     // (regression for "最后两个 sheet 没有内容").
@@ -816,5 +810,10 @@ describe("SummaryTab — toolbar dismiss / layer / compact (summary-toolbar-ux #
     expect(trigger.paddingVertical).toBe(3);
 
     expect(view.getByTestId("summary-export-config-icon").props.size ?? StyleSheet.flatten(view.getByTestId("summary-export-config-icon").props.style)?.fontSize).toBe(16);
+
+    const actions = StyleSheet.flatten(
+      view.getByTestId("summary-export-actions").props.style,
+    );
+    expect(actions.marginLeft).toBe("auto");
   });
 });

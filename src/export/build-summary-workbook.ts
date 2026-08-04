@@ -57,10 +57,28 @@ function ymd(ms: number): string {
   return `${y}${m}${day}`;
 }
 
-/** `汇总-{fromYYYYMMDD}-{toYYYYMMDD}.xlsx` from local calendar ends of the range. */
-export function summaryExportFilename(from: number, to: number): string {
-  return `汇总-${ymd(from)}-${ymd(to)}.xlsx`;
+function hms(ms: number): string {
+  const d = new Date(ms);
+  const hh = String(d.getHours()).padStart(2, "0");
+  const mm = String(d.getMinutes()).padStart(2, "0");
+  const ss = String(d.getSeconds()).padStart(2, "0");
+  return `${hh}${mm}${ss}`;
 }
+
+/**
+ * `汇总-{from}-{to}-{HHmmss}.xlsx` — time suffix busts share/viewer caches that
+ * reuse the same stem and keep showing a stale broken workbook.
+ */
+export function summaryExportFilename(
+  from: number,
+  to: number,
+  now: number = Date.now(),
+): string {
+  return `汇总-${ymd(from)}-${ymd(to)}-${hms(now)}.xlsx`;
+}
+
+/** Empty cell placeholder — some mobile spreadsheet apps mishandle "" in col A. */
+const EMPTY = "—";
 
 function memberName(
   staffId: string,
@@ -113,20 +131,20 @@ export function buildSummaryWorkbook(input: SummaryWorkbookInput): string {
         formatDateTime(r.timestamp),
         formatProductQtyList(r.items),
         formatCentsAsYuan(r.amountCents),
-        r.note ?? "",
+        r.note ?? EMPTY,
       ];
     });
 
     const aoa: unknown[][] = [
       ["时间", "商品", "金额", "备注"],
       [
-        "",
-        formatProductQtyList(balanceItems),
+        EMPTY,
+        formatProductQtyList(balanceItems) || EMPTY,
         formatCentsAsYuan(balanceAmount),
         balanceNote,
       ],
       ...body,
-      ["合计", "", formatCentsAsYuan(balanceAmount + inboundSum), ""],
+      ["合计", EMPTY, formatCentsAsYuan(balanceAmount + inboundSum), EMPTY],
     ];
     const ws = XLSX.utils.aoa_to_sheet(aoa);
     XLSX.utils.book_append_sheet(wb, ws, "入库明细");
@@ -183,22 +201,27 @@ export function buildSummaryWorkbook(input: SummaryWorkbookInput): string {
         formatCentsAsYuan(row.topup),
         formatCentsAsYuan(row.out),
         formatCentsAsYuan(row.selfUse),
-        formatProductQtyList(row.products),
+        formatProductQtyList(row.products) || EMPTY,
       ];
     });
     const aoa: unknown[][] = [
       ["日期", "会员", "充值", "出库", "自用", "出库商品"],
-      ...body,
+      ...(body.length > 0
+        ? body
+        : [[EMPTY, "（本时段无会员充值/出库）", "0.00", "0.00", "0.00", EMPTY]]),
       [
         "合计",
-        "",
+        EMPTY,
         formatCentsAsYuan(totals.topup),
         formatCentsAsYuan(totals.out),
         formatCentsAsYuan(totals.selfUse),
-        "",
+        EMPTY,
       ],
     ];
     const ws = XLSX.utils.aoa_to_sheet(aoa);
+    if (!ws["!ref"]?.startsWith("A1")) {
+      throw new Error("充值出库 sheet 未从 A1 起写");
+    }
     XLSX.utils.book_append_sheet(wb, ws, "充值出库");
   }
 
@@ -245,7 +268,7 @@ export function buildSummaryWorkbook(input: SummaryWorkbookInput): string {
           formatCentsAsYuan(e.amount),
           "0.00",
           "0.00",
-          e.note ?? "",
+          e.note ?? EMPTY,
         ];
       }
       if (e.selfUse) totals.selfUse += e.amount;
@@ -256,22 +279,27 @@ export function buildSummaryWorkbook(input: SummaryWorkbookInput): string {
         "0.00",
         e.selfUse ? "0.00" : formatCentsAsYuan(e.amount),
         e.selfUse ? formatCentsAsYuan(e.amount) : "0.00",
-        formatProductQtyList(e.items),
+        formatProductQtyList(e.items) || EMPTY,
       ];
     });
     const aoa: unknown[][] = [
       ["时间", "会员", "充值", "出库", "自用", "备注/商品"],
-      ...body,
+      ...(body.length > 0
+        ? body
+        : [[EMPTY, "（本时段无会员充值/出库）", "0.00", "0.00", "0.00", EMPTY]]),
       [
         "合计",
-        "",
+        EMPTY,
         formatCentsAsYuan(totals.topup),
         formatCentsAsYuan(totals.out),
         formatCentsAsYuan(totals.selfUse),
-        "",
+        EMPTY,
       ],
     ];
     const ws = XLSX.utils.aoa_to_sheet(aoa);
+    if (!ws["!ref"]?.startsWith("A1")) {
+      throw new Error("充值出库明细 sheet 未从 A1 起写");
+    }
     XLSX.utils.book_append_sheet(wb, ws, "充值出库明细");
   }
 
@@ -280,5 +308,11 @@ export function buildSummaryWorkbook(input: SummaryWorkbookInput): string {
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([[]]), "（暂无）");
   }
 
-  return XLSX.write(wb, { type: "base64", bookType: "xlsx" }) as string;
+  return XLSX.write(wb, {
+    type: "base64",
+    bookType: "xlsx",
+    // Shared String Table: Honor / some OEM spreadsheet viewers mishandle
+    // multi-sheet workbooks that inline every string (WPS/Excel are lenient).
+    bookSST: true,
+  }) as string;
 }

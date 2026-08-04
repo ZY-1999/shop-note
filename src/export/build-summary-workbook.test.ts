@@ -49,10 +49,13 @@ const ALL_SHEETS = {
 };
 
 describe("summaryExportFilename — summary-range-export #02", () => {
-  it("names 汇总-YYYYMMDD-YYYYMMDD.xlsx from local from/to days", () => {
+  it("names 汇总-YYYYMMDD-YYYYMMDD-HHmmss.xlsx from local from/to/now", () => {
     const from = new Date(2026, 6, 26, 0, 0, 0, 0).getTime();
     const to = new Date(2026, 7, 4, 23, 59, 59, 999).getTime();
-    expect(summaryExportFilename(from, to)).toBe("汇总-20260726-20260804.xlsx");
+    const now = new Date(2026, 7, 4, 15, 30, 45).getTime();
+    expect(summaryExportFilename(from, to, now)).toBe(
+      "汇总-20260726-20260804-153045.xlsx",
+    );
   });
 });
 
@@ -119,10 +122,10 @@ describe("buildSummaryWorkbook — inbound sheet (#03)", () => {
     expect(sheetsOf(b64)).toEqual(["入库明细"]);
     expect(sheetRows(b64, "入库明细")).toEqual([
       ["时间", "商品", "金额", "备注"],
-      ["", "可乐×4", "12.00", "截至 2026/07/05 00:00 的历史结余"],
+      ["—", "可乐×4", "12.00", "截至 2026/07/05 00:00 的历史结余"],
       ["2026/07/05 10:30", "可乐×2、水×1", "11.00", "早班"],
-      ["2026/07/06 09:00", "茶×3", "12.00", ""],
-      ["合计", "", "35.00", ""],
+      ["2026/07/06 09:00", "茶×3", "12.00", "—"],
+      ["合计", "—", "35.00", "—"],
     ]);
   });
 
@@ -136,8 +139,8 @@ describe("buildSummaryWorkbook — inbound sheet (#03)", () => {
     });
     expect(sheetRows(b64, "入库明细")).toEqual([
       ["时间", "商品", "金额", "备注"],
-      ["", "", "0.00", "截至 2026/07/05 00:00 的历史结余"],
-      ["合计", "", "0.00", ""],
+      ["—", "—", "0.00", "截至 2026/07/05 00:00 的历史结余"],
+      ["合计", "—", "0.00", "—"],
     ]);
   });
 
@@ -223,9 +226,9 @@ describe("buildSummaryWorkbook — topup/checkout sheets (#04)", () => {
     expect(sheetRows(b64, "充值出库")).toEqual([
       ["日期", "会员", "充值", "出库", "自用", "出库商品"],
       ["2026/07/06", "李四", "0.00", "10.00", "0.00", "水×2"],
-      ["2026/07/06", "张三", "10.00", "0.00", "0.00", ""],
+      ["2026/07/06", "张三", "10.00", "0.00", "0.00", "—"],
       ["2026/07/05", "张三", "50.00", "11.00", "4.00", "可乐×2、水×1、茶×1"],
-      ["合计", "", "60.00", "21.00", "4.00", ""],
+      ["合计", "—", "60.00", "21.00", "4.00", "—"],
     ]);
   });
 
@@ -283,7 +286,7 @@ describe("buildSummaryWorkbook — topup/checkout sheets (#04)", () => {
       "0.00",
       "现金",
     ]);
-    expect(rows[4]).toEqual(["合计", "", "50.00", "6.00", "4.00", ""]);
+    expect(rows[4]).toEqual(["合计", "—", "50.00", "6.00", "4.00", "—"]);
     // 出库+自用 = 页面出库合计
     expect(600 + 400).toBe(1000);
   });
@@ -302,6 +305,14 @@ describe("buildSummaryWorkbook — topup/checkout sheets (#04)", () => {
       checkouts: [],
     });
     expect(sheetsOf(both)).toEqual(["充值出库", "充值出库明细"]);
+    expect(sheetRows(both, "充值出库")[1]).toEqual([
+      "—",
+      "（本时段无会员充值/出库）",
+      "0.00",
+      "0.00",
+      "0.00",
+      "—",
+    ]);
 
     const none = buildSummaryWorkbook({
       sheets: {

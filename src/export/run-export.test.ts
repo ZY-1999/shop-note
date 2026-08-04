@@ -1,6 +1,8 @@
 import { beforeEach, describe, expect, it, jest } from "@jest/globals";
+import * as XLSX from "xlsx";
 
 const writeAsStringAsync = jest.fn(async () => undefined);
+const readAsStringAsync = jest.fn(async () => "");
 const shareAsync = jest.fn(async () => undefined);
 const isAvailableAsync = jest.fn(async () => true);
 
@@ -8,6 +10,7 @@ jest.mock("expo-file-system/legacy", () => ({
   cacheDirectory: "file:///cache/",
   EncodingType: { UTF8: "utf8", Base64: "base64" },
   writeAsStringAsync,
+  readAsStringAsync,
 }));
 
 jest.mock("expo-sharing", () => ({
@@ -22,6 +25,17 @@ import {
 } from "@/export/run-export";
 import type { ExportJob } from "@/export/types";
 
+/** Minimal valid xlsx base64 for round-trip verify in writeExportFile. */
+function miniXlsxBase64(): string {
+  const wb = XLSX.utils.book_new();
+  const ws = XLSX.utils.aoa_to_sheet([
+    ["a", "b"],
+    ["1", "2"],
+  ]);
+  XLSX.utils.book_append_sheet(wb, ws, "Sheet1");
+  return XLSX.write(wb, { type: "base64", bookType: "xlsx" }) as string;
+}
+
 function job(overrides: Partial<ExportJob> = {}): ExportJob {
   return {
     filename: "report.csv",
@@ -35,22 +49,28 @@ function job(overrides: Partial<ExportJob> = {}): ExportJob {
 describe("writeExportFile", () => {
   beforeEach(() => {
     writeAsStringAsync.mockReset().mockResolvedValue(undefined);
+    readAsStringAsync.mockReset().mockImplementation(async () => {
+      const last = writeAsStringAsync.mock.calls.at(-1);
+      return (last?.[1] as string) ?? "";
+    });
   });
 
   it("builds and writes cache without sharing", async () => {
+    const content = miniXlsxBase64();
     const uri = await writeExportFile(
       job({
         filename: "out.xlsx",
         encoding: "base64",
-        build: async () => "YmluYXJ5",
+        build: async () => content,
       }),
     );
     expect(uri).toBe("file:///cache/out.xlsx");
     expect(writeAsStringAsync).toHaveBeenCalledWith(
       "file:///cache/out.xlsx",
-      "YmluYXJ5",
+      content,
       { encoding: "base64" },
     );
+    expect(readAsStringAsync).toHaveBeenCalled();
   });
 });
 
@@ -85,17 +105,22 @@ describe("shareExportFile", () => {
 describe("runExport", () => {
   beforeEach(() => {
     writeAsStringAsync.mockReset().mockResolvedValue(undefined);
+    readAsStringAsync.mockReset().mockImplementation(async () => {
+      const last = writeAsStringAsync.mock.calls.at(-1);
+      return (last?.[1] as string) ?? "";
+    });
     shareAsync.mockReset().mockResolvedValue(undefined);
     isAvailableAsync.mockReset().mockResolvedValue(true);
   });
 
   it("builds, writes cache, shares, and returns the file URI", async () => {
+    const content = miniXlsxBase64();
     const uri = await runExport(
       job({
         filename: "out.xlsx",
         mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         encoding: "base64",
-        build: async () => "YmluYXJ5",
+        build: async () => content,
         dialogTitle: "导出",
       }),
     );
@@ -103,7 +128,7 @@ describe("runExport", () => {
     expect(uri).toBe("file:///cache/out.xlsx");
     expect(writeAsStringAsync).toHaveBeenCalledWith(
       "file:///cache/out.xlsx",
-      "YmluYXJ5",
+      content,
       { encoding: "base64" },
     );
     expect(shareAsync).toHaveBeenCalledWith("file:///cache/out.xlsx", {
