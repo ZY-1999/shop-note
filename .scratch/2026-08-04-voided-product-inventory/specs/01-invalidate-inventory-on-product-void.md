@@ -1,7 +1,7 @@
 # 作废/恢复商品时刷新库存聚合
 
 Type: spec
-Status: ready-for-agent
+Status: ready-for-human
 Parent: #01 (01-voided-product-inventory.md)
 Blocked by: None — can start immediately
 
@@ -38,3 +38,12 @@ Blocked by: None — can start immediately
 ## Rework on failure
 
 失败隔离在两处 mutation 的 invalidate 行；单独重做。
+
+## Comments
+
+- 2026-08-04 — Evidence:
+  - AC1: `src/components/manage-tab.test.tsx` — `voiding a product refetches the open global aggregate with its voided state`
+  - AC2: `src/components/manage-tab.test.tsx` — `restoring a product refetches the open global aggregate with its active state`
+  - AC3: `src/hooks/mutations.ts` 保留 `qk.products.all`，并新增 `qk.inventory.all`；库存件数/成本派生未改。
+  - PASS: `source "$HOME/.bashrc" && npx jest --colors=false --forceExit` — 48 suites / 415 tests
+  - Commit: 本条关闭提交

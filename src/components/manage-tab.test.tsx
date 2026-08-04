@@ -328,6 +328,7 @@ function InventoryReader({ productId }: { productId: string }) {
   return (
     <View testID="inventory-reader">
       <Text>{row ? `qty:${row.total_qty}` : "none"}</Text>
+      <Text>{row?.product.voided_at ? "voided" : "active"}</Text>
     </View>
   );
 }
@@ -369,6 +370,54 @@ describe("ManageTab — product price edit revalues inventory (spec #09 AC4)", (
 });
 
 describe("ManageTab — product void/restore + snapshot preservation (spec #09 AC5)", () => {
+  it("voiding a product refetches the open global aggregate with its voided state", async () => {
+    const { repos, colaId } = await seed();
+    await repos.stockRecords.create({
+      staff_id: ADMIN_STAFF_ID,
+      direction: "in",
+      items: [{ product_id: colaId, qty: 2 }],
+    });
+    const { view } = await renderManage(
+      <View>
+        <ManageTab />
+        <InventoryReader productId={colaId} />
+      </View>,
+      { repos },
+    );
+    await fireEvent.press(view.getByTestId("seg-product"));
+    await waitForSync(() => view.getByTestId(`manage-product-${colaId}`));
+    await waitForSync(() => view.getByText("active"));
+
+    await fireEvent.press(view.getByTestId(`product-void-${colaId}`));
+
+    await waitForSync(() => expect(view.getByText("voided")).toBeTruthy());
+  });
+
+  it("restoring a product refetches the open global aggregate with its active state", async () => {
+    const { repos, colaId } = await seed();
+    await repos.stockRecords.create({
+      staff_id: ADMIN_STAFF_ID,
+      direction: "in",
+      items: [{ product_id: colaId, qty: 2 }],
+    });
+    await repos.products.void(colaId);
+    const { view } = await renderManage(
+      <View>
+        <ManageTab />
+        <InventoryReader productId={colaId} />
+      </View>,
+      { repos },
+    );
+    await fireEvent.press(view.getByTestId("seg-product"));
+    await fireEvent(view.getByTestId("product-include-voided"), "valueChange", true);
+    await waitForSync(() => view.getByTestId(`product-restore-${colaId}`));
+    await waitForSync(() => view.getByText("voided"));
+
+    await fireEvent.press(view.getByTestId(`product-restore-${colaId}`));
+
+    await waitForSync(() => expect(view.getByText("active")).toBeTruthy());
+  });
+
   it("voids a product then restores it; record snapshots stay intact", async () => {
     const { repos, colaId } = await seed();
     // restock a record so there's a snapshot to preserve across the void

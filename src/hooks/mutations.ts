@@ -162,6 +162,7 @@ export function useVoidProduct(): UseMutationResult<Product, Error, string> {
     mutationFn: (productId) => queue.run(() => repos.products.void(productId)),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: qk.products.all });
+      void queryClient.invalidateQueries({ queryKey: qk.inventory.all });
       toast.success("商品已作废");
     },
     onError: (e: Error) => toast.error(e.message),
@@ -178,6 +179,7 @@ export function useRestoreProduct(): UseMutationResult<Product, Error, string> {
     mutationFn: (productId) => queue.run(() => repos.products.restore(productId)),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: qk.products.all });
+      void queryClient.invalidateQueries({ queryKey: qk.inventory.all });
       toast.success("商品已恢复");
     },
     onError: (e: Error) => toast.error(e.message),
