@@ -134,7 +134,7 @@ export function ItemsSeletor(props: ItemsSeletorProps) {
     handleChange((prev) => prev.filter((_, i) => i !== index));
 
   return (
-    <>
+    <View testID="items-selector">
       <TextInput
         testID="product-search"
         style={[
@@ -214,7 +214,7 @@ export function ItemsSeletor(props: ItemsSeletorProps) {
           </>
         ) : null}
       </View>
-    </>
+    </View>
   );
 }
 

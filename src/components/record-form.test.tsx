@@ -511,6 +511,7 @@ describe("ItemsSeletor — selected line density (summary-export-polish)", () =>
       { repos },
     );
 
+    expect(view.getByTestId("items-selector")).toBeTruthy();
     expect(StyleSheet.flatten(view.getByTestId("picked-line-0").props.style).marginTop).toBe(4);
   });
 });

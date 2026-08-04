@@ -44,3 +44,4 @@ Blocked by: None — can start immediately
   - AC1–AC3: `src/components/record-form.test.tsx` — `ItemsSeletor — selected line density / uses a 4px top margin between selected product lines`
   - PASS: `npx jest src/components/record-form.test.tsx --colors=false --forceExit` — 1 suite / 19 tests
   - Commit: `9bfe729 fix(summary-export-polish): 收紧商品选择器行距`
+- 2026-08-04 — follow-up: Fragment 被补货页 `listContent.gap:8` 穿透，行距叠成 8+4，出库无此 gap → 不一致；根改为单一 `View`（`items-selector`）。未提交，待确认。

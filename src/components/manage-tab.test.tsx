@@ -2,7 +2,7 @@ import type { ReactElement } from "react";
 import { afterEach, describe, expect, it, jest } from "@jest/globals";
 import type { QueryClient } from "@tanstack/react-query";
 import { fireEvent } from "@testing-library/react-native";
-import { Text, View } from "react-native";
+import { StyleSheet, Text, View } from "react-native";
 import * as XLSX from "xlsx";
 
 import { ManageTab } from "@/components/manage-tab";
@@ -452,6 +452,29 @@ describe("ManageTab — restock segment (stock-balance-refactor AC3)", () => {
     });
     const agg2 = (await repos.inventory.shopAggregate()).find((a) => a.product.id === colaId);
     expect(agg2?.total_qty).toBe(7);
+  });
+
+  it("keeps ItemsSeletor line marginTop 4 under restock content gap", async () => {
+    const { repos, colaId } = await seed();
+    const water = await repos.products.create({
+      title: "水",
+      purchase_price: cents(200),
+    });
+    const { view } = await renderManage(<ManageTab />, { repos });
+    await fireEvent.press(view.getByTestId("seg-restock"));
+    await waitForSync(() => view.getByTestId(`pick-${colaId}`));
+    await fireEvent.press(view.getByTestId(`pick-${colaId}`));
+    await fireEvent.press(view.getByTestId(`pick-${water.id}`));
+    await waitForSync(() => view.getByTestId("picked-line-1"));
+
+    // Root View isolates lines from listContent gap:8 — same density as 出库.
+    expect(view.getByTestId("items-selector")).toBeTruthy();
+    expect(
+      StyleSheet.flatten(view.getByTestId("picked-line-0").props.style).marginTop,
+    ).toBe(4);
+    expect(
+      StyleSheet.flatten(view.getByTestId("picked-line-1").props.style).marginTop,
+    ).toBe(4);
   });
 });
 

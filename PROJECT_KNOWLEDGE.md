@@ -87,6 +87,14 @@
 - **适用边界**：排障时先用 WPS 对照；不要在未对照前断定「导出丢 sheet」。其它 OEM 自带表格也可能挑食。
 - **验证**：WPS 打开四 sheet 有数据；代码侧 `build-summary-workbook` / `run-export` 单测覆盖 SST 与写盘校验。
 
+### 列表组件勿用 Fragment 直挂带 `gap` 的父级
+
+- **事实**：RN `ScrollView`/`View` 的 `gap` 会作用到 **Fragment 展开后的每个子节点**。`ItemsSeletor` 曾用 `<>…</>`，补货页 `listContent.gap: 8` 叠在已选行的 `marginTop: 4` 上 → 补货行距比出库（父级无 content gap）大一圈。
+- **对策**：选择器根节点包一层 `View`（`testID=items-selector`），行间距只由组件内样式控制。
+- **来源**：2026-08-04 summary-export-polish 收紧行距后真机反馈「出库/入库不一致」。
+- **适用边界**：任何「多行列表 + 父级 contentContainerStyle.gap」组合。
+- **验证**：`manage-tab.test.tsx` restock 双行 `marginTop===4` + `items-selector` 根存在。
+
 ## UI / 布局
 
 ### 全页滚动底部留白用 `BottomTabInset`（theme.ts），别各页硬编码
