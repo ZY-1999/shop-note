@@ -1,6 +1,6 @@
 import { describe, expect, it } from "@jest/globals";
 
-import { formatDate, formatDateTime, formatTime, formatDateTimeSeconds, formatTimeSeconds, rangeFor, matchRangePreset, normalizeDayRange } from "@/components/date-format";
+import { dateForPickerValue, formatDate, formatDateTime, formatTime, formatDateTimeSeconds, formatTimeSeconds, rangeFor, matchRangePreset, normalizeDayRange } from "@/components/date-format";
 
 /**
  * Spec #01 — pure date/time formatting + range helpers. Local calendar day
@@ -143,12 +143,11 @@ describe("normalizeDayRange — summary-range-export #01", () => {
  * native date pickers that read UTC show D-1 while the label shows D.
  */
 describe("summary range picker value vs toolbar label (off-by-one hazard)", () => {
-  it("new Date(local-midnight from) UTC ymd matches formatDate (native picker contract)", () => {
+  it("dateForPickerValue's UTC ymd matches the local toolbar label", () => {
     const aug4 = new Date(2026, 7, 4, 12, 0).getTime();
     const from = rangeFor("last10Days", aug4).from;
     expect(formatDate(from)).toBe("2026/07/26");
-    // Same construction as summary-tab DateTimePicker `value={new Date(range.from)}`
-    const pickerValue = new Date(from);
+    const pickerValue = dateForPickerValue(from);
     expect(pickerValue.toISOString().slice(0, 10)).toBe("2026/07/26".replace(/\//g, "-"));
   });
 });

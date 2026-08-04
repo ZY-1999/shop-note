@@ -58,7 +58,7 @@ jest.mock("@expo/ui/community/datetime-picker", () => {
     }) =>
       React.createElement(
         View,
-        { testID, onValueChange, onDismiss } as any,
+        { testID, value, onValueChange, onDismiss } as any,
         React.createElement(Text, null, value ? value.toISOString() : ""),
         React.createElement(
           Pressable,
@@ -1002,6 +1002,28 @@ describe("SummaryTab — export config + inventory sheet (summary-range-export #
 });
 
 describe("SummaryTab — toolbar dismiss / layer / compact (summary-toolbar-ux #01)", () => {
+  it("passes from/to picker values with the same UTC calendar date as their toolbar labels", async () => {
+    const { repos } = await setup();
+    const { view } = await renderTab(
+      <SummaryTab now={NOW} onOpenStaff={jest.fn()} />,
+      { repos },
+    );
+    await waitForSync(() => view.getByTestId("range-toolbar"));
+
+    for (const bound of ["from", "to"] as const) {
+      await fireEvent.press(view.getByTestId(`range-${bound}`));
+      await flushPending();
+
+      const value = view.getByTestId(`range-${bound}-picker`).props.value as Date;
+      expect(value.toISOString().slice(0, 10)).toBe(
+        boundLabel(view, `range-${bound}`).replace(/\//g, "-"),
+      );
+
+      await fireEvent(view.getByTestId(`range-${bound}-picker`), "onDismiss");
+      await flushPending();
+    }
+  });
+
   it("onDismiss cancels day pick without changing the range", async () => {
     const { repos } = await setup();
     const { view } = await renderTab(

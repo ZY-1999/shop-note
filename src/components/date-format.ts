@@ -17,6 +17,15 @@ export function formatDate(ms: number): string {
   return `${y}/${m}/${day}`;
 }
 
+/**
+ * Calendar-stable value for native date pickers: retain the local calendar day
+ * while avoiding a local-midnight instant that can be read as the prior UTC day.
+ */
+export function dateForPickerValue(ms: number): Date {
+  const d = new Date(ms);
+  return new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate(), 12, 0, 0));
+}
+
 /** Local `YYYY/MM/DD HH:mm`. */
 export function formatDateTime(ms: number): string {
   return `${formatDate(ms)} ${formatTime(ms)}`;

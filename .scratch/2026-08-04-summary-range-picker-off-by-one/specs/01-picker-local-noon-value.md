@@ -1,7 +1,7 @@
 # 汇总区间 date picker：日历日稳定的 value
 
 Type: spec
-Status: ready-for-agent
+Status: ready-for-human
 Parent: #01 (01-summary-range-picker-off-by-one.md)
 Blocked by: None — can start immediately
 
@@ -42,3 +42,14 @@ Blocked by: None — can start immediately
 ## Rework on failure
 
 失败隔离在 helper + summary-tab value 接线；单独重做。
+
+## Comments
+
+- 2026-08-04 — Evidence:
+  - AC1: `src/components/date-format.test.ts` — `dateForPickerValue's UTC ymd matches the local toolbar label`
+  - AC2: `src/components/summary-tab.test.tsx` — `passes from/to picker values with the same UTC calendar date as their toolbar labels`
+  - AC3: `src/components/date-format.test.ts` — `snaps to local day bounds and swaps when start > end`；`summary-tab` 的 `onPickBound` 保持 `normalizeDayRange` 调用不变。
+  - AC4: `rangeFor` 与流水过滤口径未改。
+  - AC5: 东八区真机按父 bug 步骤确认弹窗选中日正确（人工 smoke，未在自动化中执行）。
+  - PASS: `source "$HOME/.bashrc" && npx jest src/components/date-format.test.ts --colors=false && npx jest src/components/summary-tab.test.tsx --colors=false --forceExit > /tmp/summary-tab-full.txt 2>&1` — 2 suites / 47 tests
+  - Commit: 本条关闭提交

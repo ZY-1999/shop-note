@@ -6,6 +6,7 @@ import { useMemo, useState } from "react";
 import { FlatList, Modal, Pressable, StyleSheet, Switch, Text, View } from "react-native";
 
 import {
+  dateForPickerValue,
   formatDate,
   matchRangePreset,
   normalizeDayRange,
@@ -747,7 +748,9 @@ export function SummaryTab({
             <DateTimePicker
               testID={`range-${editingBound}-picker`}
               mode="date"
-              value={new Date(editingBound === "from" ? range.from : range.to)}
+              value={dateForPickerValue(
+                editingBound === "from" ? range.from : range.to,
+              )}
               onValueChange={(_e: DateTimePickerChangeEvent, date: Date) =>
                 onPickBound(editingBound, date)
               }
