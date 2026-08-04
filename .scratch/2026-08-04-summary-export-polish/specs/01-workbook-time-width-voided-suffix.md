@@ -1,7 +1,7 @@
 # 汇总 workbook：时间列宽 + 已删会员后缀
 
 Type: spec
-Status: ready-for-agent
+Status: ready-for-human
 Parent: #01 (01-summary-export-polish.md)
 Blocked by: None — can start immediately
 
@@ -43,3 +43,7 @@ Blocked by: None — can start immediately
 ## Rework on failure
 
 失败隔离在 builder 输入形状与 sheet 写入；回退 `staffDirectory` / `!cols`，不影响 ledger。
+
+## Comments
+
+- 2026-08-04 — 实现完成；`Status → ready-for-human`。证据：AC1 `build-summary-workbook.test.ts`「sets a time-column width that fits YYYY/MM/DD HH:mm」及「sets a time-column width on detail without widening the daily date column」；AC2 后者；AC3/AC4「suffixes voided members in member rows only」；AC5「aggregates 充值出库 by member×day with self_use split and product merge」及「emits 充值出库明细 mixed newest-first; out+self_use equals page out total」。`source "$HOME/.bashrc" && npx jest src/export/build-summary-workbook.test.ts --colors=false --forceExit`：1 suite / 12 tests PASS。实现提交：本条关闭提交。

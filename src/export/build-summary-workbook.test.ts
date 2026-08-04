@@ -20,6 +20,10 @@ function sheetRows(base64: string, name: string): unknown[][] {
   return XLSX.utils.sheet_to_json<unknown[]>(sheet, { header: 1 });
 }
 
+function sheetOf(base64: string, name: string): XLSX.WorkSheet {
+  return XLSX.read(base64, { type: "base64", cellStyles: true }).Sheets[name]!;
+}
+
 function agg(
   title: string,
   qty: number,
@@ -142,6 +146,18 @@ describe("buildSummaryWorkbook — inbound sheet (#03)", () => {
       ["—", "—", "0.00", "截至 2026/07/05 00:00 的历史结余"],
       ["合计", "—", "0.00", "—"],
     ]);
+  });
+
+  it("sets a time-column width that fits YYYY/MM/DD HH:mm", () => {
+    const b64 = buildSummaryWorkbook({
+      sheets: onlyInbound,
+      inventory: [],
+      rangeFrom: from,
+      historicalBalance: [],
+      inboundRecords: [],
+    });
+
+    expect(sheetOf(b64, "入库明细")["!cols"]?.[0]?.width).toBeGreaterThanOrEqual(18);
   });
 
   it("omits 入库明细 when inbound is unchecked", () => {
@@ -289,6 +305,66 @@ describe("buildSummaryWorkbook — topup/checkout sheets (#04)", () => {
     expect(rows[4]).toEqual(["合计", "—", "50.00", "6.00", "4.00", "—"]);
     // 出库+自用 = 页面出库合计
     expect(600 + 400).toBe(1000);
+  });
+
+  it("sets a time-column width on detail without widening the daily date column", () => {
+    const detail = buildSummaryWorkbook({
+      sheets: onlyDetail,
+      inventory: [],
+      staffNames,
+      topups: [],
+      checkouts: [],
+    });
+    const daily = buildSummaryWorkbook({
+      sheets: onlyTopupCheckout,
+      inventory: [],
+      staffNames,
+      topups: [],
+      checkouts: [],
+    });
+
+    expect(sheetOf(detail, "充值出库明细")["!cols"]?.[0]?.width).toBeGreaterThanOrEqual(18);
+    expect(sheetOf(daily, "充值出库")["!cols"]?.[0]).toBeUndefined();
+  });
+
+  it("suffixes voided members in member rows only", () => {
+    const b64 = buildSummaryWorkbook({
+      sheets: { ...onlyTopupCheckout, topupCheckoutDetail: true },
+      inventory: [],
+      staffDirectory: {
+        m1: { name: "张三", voided: true },
+        m2: { name: "李四" },
+      },
+      topups: [
+        { staffId: "m1", amountCents: 5000, timestamp: d5a, note: "现金" },
+        { staffId: "m2", amountCents: 1000, timestamp: d6, note: null },
+      ],
+      checkouts: [],
+    });
+
+    expect(sheetRows(b64, "充值出库")).toEqual([
+      ["日期", "会员", "充值", "出库", "自用", "出库商品"],
+      ["2026/07/06", "李四", "10.00", "0.00", "0.00", "—"],
+      ["2026/07/05", "张三（已删除）", "50.00", "0.00", "0.00", "—"],
+      ["合计", "—", "60.00", "0.00", "0.00", "—"],
+    ]);
+    expect(sheetRows(b64, "充值出库明细")[1]).toEqual([
+      "2026/07/06 11:00",
+      "李四",
+      "10.00",
+      "0.00",
+      "0.00",
+      "—",
+    ]);
+    expect(sheetRows(b64, "充值出库明细")[2]).toEqual([
+      "2026/07/05 10:00",
+      "张三（已删除）",
+      "50.00",
+      "0.00",
+      "0.00",
+      "现金",
+    ]);
+    expect(sheetRows(b64, "充值出库")[3]?.[1]).toBe("—");
   });
 
   it("emits only the checked of the two sheets", () => {

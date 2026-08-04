@@ -41,7 +41,9 @@ export type SummaryWorkbookInput = {
   historicalBalance?: Aggregate[];
   /** In-range `direction=in` documents (incl. `-1`); used when `sheets.inbound`. */
   inboundRecords?: SummaryInboundRecord[];
-  /** staff_id → display name; missing ids fall back to the id. */
+  /** staff_id → display name and void state; missing ids fall back to the id. */
+  staffDirectory?: Record<string, { name: string; voided?: boolean }>;
+  /** @deprecated Compatibility fallback without void state. */
   staffNames?: Record<string, string>;
   /** In-range member topups (caller should already exclude void / `-1`). */
   topups?: SummaryTopupEvent[];
@@ -82,8 +84,11 @@ const EMPTY = "—";
 
 function memberName(
   staffId: string,
+  directory: Record<string, { name: string; voided?: boolean }> | undefined,
   names: Record<string, string> | undefined,
 ): string {
+  const staff = directory?.[staffId];
+  if (staff) return staff.voided ? `${staff.name}（已删除）` : staff.name;
   return names?.[staffId] ?? staffId;
 }
 
@@ -147,6 +152,7 @@ export function buildSummaryWorkbook(input: SummaryWorkbookInput): string {
       ["合计", EMPTY, formatCentsAsYuan(balanceAmount + inboundSum), EMPTY],
     ];
     const ws = XLSX.utils.aoa_to_sheet(aoa);
+    ws["!cols"] = [{ wch: 18 }];
     XLSX.utils.book_append_sheet(wb, ws, "入库明细");
   }
 
@@ -184,8 +190,8 @@ export function buildSummaryWorkbook(input: SummaryWorkbookInput): string {
       const [da, sa] = a.split("\0");
       const [db, sb] = b.split("\0");
       if (da !== db) return db!.localeCompare(da!); // newest date first
-      const na = memberName(sa!, input.staffNames);
-      const nb = memberName(sb!, input.staffNames);
+      const na = memberName(sa!, input.staffDirectory, input.staffNames);
+      const nb = memberName(sb!, input.staffDirectory, input.staffNames);
       return na.localeCompare(nb, "zh");
     });
     const totals: MoneyTriple = { topup: 0, out: 0, selfUse: 0 };
@@ -197,7 +203,7 @@ export function buildSummaryWorkbook(input: SummaryWorkbookInput): string {
       totals.selfUse += row.selfUse;
       return [
         date,
-        memberName(staffId, input.staffNames),
+        memberName(staffId, input.staffDirectory, input.staffNames),
         formatCentsAsYuan(row.topup),
         formatCentsAsYuan(row.out),
         formatCentsAsYuan(row.selfUse),
@@ -264,7 +270,7 @@ export function buildSummaryWorkbook(input: SummaryWorkbookInput): string {
         totals.topup += e.amount;
         return [
           formatDateTime(e.ts),
-          memberName(e.staffId, input.staffNames),
+          memberName(e.staffId, input.staffDirectory, input.staffNames),
           formatCentsAsYuan(e.amount),
           "0.00",
           "0.00",
@@ -275,7 +281,7 @@ export function buildSummaryWorkbook(input: SummaryWorkbookInput): string {
       else totals.out += e.amount;
       return [
         formatDateTime(e.ts),
-        memberName(e.staffId, input.staffNames),
+        memberName(e.staffId, input.staffDirectory, input.staffNames),
         "0.00",
         e.selfUse ? "0.00" : formatCentsAsYuan(e.amount),
         e.selfUse ? formatCentsAsYuan(e.amount) : "0.00",
@@ -297,6 +303,7 @@ export function buildSummaryWorkbook(input: SummaryWorkbookInput): string {
       ],
     ];
     const ws = XLSX.utils.aoa_to_sheet(aoa);
+    ws["!cols"] = [{ wch: 18 }];
     if (!ws["!ref"]?.startsWith("A1")) {
       throw new Error("充值出库明细 sheet 未从 A1 起写");
     }
