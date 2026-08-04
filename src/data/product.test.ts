@@ -95,6 +95,19 @@ describe("ProductRepository — search", () => {
     const byText = await productRepo.search({ text: "可" });
     expect(byText.map((p) => p.title)).toEqual(["可口可乐"]);
   });
+
+  test("search({text, includeVoided:true}) matches voided products; default still excludes", async () => {
+    const { productRepo } = setup();
+    const a = await productRepo.create({ title: "可乐", purchase_price: cents(1995) });
+    await productRepo.create({ title: "可口可乐", purchase_price: cents(2500) });
+    await productRepo.void(a.id);
+
+    expect((await productRepo.search({ text: "可" })).map((p) => p.title)).toEqual(["可口可乐"]);
+
+    const withVoided = await productRepo.search({ text: "可", includeVoided: true });
+    expect(withVoided.map((p) => p.title).sort()).toEqual(["可乐", "可口可乐"]);
+    expect(withVoided.find((p) => p.id === a.id)?.voided_at).not.toBeNull();
+  });
 });
 
 describe("ProductRepository — void/restore", () => {

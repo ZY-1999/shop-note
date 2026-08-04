@@ -107,6 +107,19 @@ describe("StaffRepository — search", () => {
 
     expect(byName.find((s) => s.id === voidedStaff.id)).toBeUndefined();
   });
+
+  test("search({text, includeVoided:true}) matches voided staff by name/phone; default still excludes", async () => {
+    const { staffRepo } = setup();
+    await staffRepo.create({ name: "张三", phone: "13800000001", notes: "" });
+    const voidedStaff = await staffRepo.create({ name: "张五", phone: "13600000004", notes: "" });
+    await staffRepo.void(voidedStaff.id);
+
+    expect((await staffRepo.search({ text: "张" })).map((s) => s.name)).toEqual(["张三"]);
+
+    const withVoided = await staffRepo.search({ text: "张", includeVoided: true });
+    expect(withVoided.map((s) => s.name).sort()).toEqual(["张三", "张五"]);
+    expect(withVoided.find((s) => s.id === voidedStaff.id)?.voided_at).not.toBeNull();
+  });
 });
 
 describe("StaffRepository — update + audit", () => {
@@ -177,6 +190,12 @@ describe("StaffRepository — admin '-1' protection (stock-balance-refactor)", (
     expect((await staffRepo.list({ includeVoided: true })).map((s) => s.id)).not.toContain(
       ADMIN_STAFF_ID,
     );
+    expect(
+      (await staffRepo.search({ includeVoided: true })).map((s) => s.id),
+    ).not.toContain(ADMIN_STAFF_ID);
+    expect(
+      (await staffRepo.search({ text: "管理", includeVoided: true })).map((s) => s.id),
+    ).not.toContain(ADMIN_STAFF_ID);
     // The real member is still there.
     expect((await staffRepo.list()).map((s) => s.name)).toEqual(["张三"]);
   });

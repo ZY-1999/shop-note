@@ -142,11 +142,13 @@ export class StaffRepository {
       .sort(byLevelThenCreated);
   }
 
-  async search(q: { text?: string }): Promise<Staff[]> {
-    const active = await this.listActive();
-    if (!q.text) return active;
+  async search(q: { text?: string; includeVoided?: boolean }): Promise<Staff[]> {
+    // Reuse list() so includeVoided + '-1' exclusion stay one place; listActive
+    // is active-only and would silently drop voided when includeVoided is true.
+    const pool = await this.list({ includeVoided: q.includeVoided });
+    if (!q.text) return pool;
     const needle = q.text.toLowerCase();
-    return active.filter(
+    return pool.filter(
       (s) => s.name.toLowerCase().includes(needle) || s.phone.toLowerCase().includes(needle),
     );
   }

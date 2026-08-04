@@ -78,9 +78,14 @@ export class ProductRepository {
     return rows.filter((p) => p.voided_at == null);
   }
 
-  async search(q: { text?: string; code?: string; category?: string }): Promise<Product[]> {
+  async search(q: {
+    text?: string;
+    code?: string;
+    category?: string;
+    includeVoided?: boolean;
+  }): Promise<Product[]> {
     const rows = await this.storage.find<Product>("product", {
-      where: { voided_at: null },
+      ...(q.includeVoided ? {} : { where: { voided_at: null } }),
       orderBy: { field: "created_at", dir: "asc" },
     });
     const text = q.text?.toLowerCase();

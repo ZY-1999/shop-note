@@ -122,7 +122,8 @@ describe("ManageTab — staff void/restore (spec #09 AC2)", () => {
 
     // void via the row action — soft-delete (voided_at), never erased
     await fireEvent.press(view.getByTestId(`staff-void-${staffId}`));
-    await waitForSync(() => view.getByText("已删除"));
+    // default 「包含删除」off → voided row disappears from the list
+    await waitForSync(() => expect(() => view.getByTestId(`manage-staff-${staffId}`)).toThrow());
 
     const voided = await repos.staff.getById(staffId);
     expect(voided?.voided_at).not.toBeNull();
@@ -130,12 +131,77 @@ describe("ManageTab — staff void/restore (spec #09 AC2)", () => {
     const active = await repos.staff.list();
     expect(active.find((s) => s.id === staffId)).toBeUndefined();
 
+    // flip 「包含删除」→ voided row + restore affordance appear
+    await fireEvent(view.getByTestId("staff-include-voided"), "valueChange", true);
+    await waitForSync(() => view.getByText("已删除"));
+
     // restore — clears voided_at, reappears in selectors
     await fireEvent.press(view.getByTestId(`staff-restore-${staffId}`));
     await waitForSync(() => expect(() => view.getByText("已删除")).toThrow());
 
     const restored = await repos.staff.getById(staffId);
     expect(restored?.voided_at).toBeNull();
+  });
+});
+
+describe("ManageTab — includeVoided filter (manage-export #01)", () => {
+  it("staff: default hides voided; switch shows them; search respects the switch", async () => {
+    const { repos, staffId } = await seed(); // 张三
+    await repos.staff.void(staffId);
+    const { view } = await renderManage(<ManageTab />, { repos });
+
+    // default off — voided 张三 hidden; switch present
+    expect(view.getByTestId("staff-include-voided")).toBeTruthy();
+    await waitForSync(() => expect(() => view.getByTestId(`manage-staff-${staffId}`)).toThrow());
+
+    // switch on — voided appears with restore
+    await fireEvent(view.getByTestId("staff-include-voided"), "valueChange", true);
+    await waitForSync(() => view.getByTestId(`manage-staff-${staffId}`));
+    expect(view.getByText("已删除")).toBeTruthy();
+
+    // search with switch on hits voided
+    await fireEvent.changeText(view.getByTestId("staff-search"), "张");
+    await waitForSync(() => view.getByTestId(`manage-staff-${staffId}`));
+
+    // search with switch off excludes voided
+    await fireEvent(view.getByTestId("staff-include-voided"), "valueChange", false);
+    await waitForSync(() => expect(() => view.getByTestId(`manage-staff-${staffId}`)).toThrow());
+  });
+
+  it("product: default hides voided; switch + search combination mirrors staff", async () => {
+    const { repos, colaId } = await seed();
+    await repos.products.void(colaId);
+    const { view } = await renderManage(<ManageTab />, { repos });
+    await fireEvent.press(view.getByTestId("seg-product"));
+    await waitForSync(() => view.getByTestId("view-product"));
+
+    expect(view.getByTestId("product-include-voided")).toBeTruthy();
+    await waitForSync(() => expect(() => view.getByTestId(`manage-product-${colaId}`)).toThrow());
+
+    await fireEvent(view.getByTestId("product-include-voided"), "valueChange", true);
+    await waitForSync(() => view.getByTestId(`manage-product-${colaId}`));
+    expect(view.getByText("已删除")).toBeTruthy();
+
+    await fireEvent.changeText(view.getByTestId("product-search"), "可乐");
+    await waitForSync(() => view.getByTestId(`manage-product-${colaId}`));
+
+    await fireEvent(view.getByTestId("product-include-voided"), "valueChange", false);
+    await waitForSync(() => expect(() => view.getByTestId(`manage-product-${colaId}`)).toThrow());
+  });
+
+  it("restock / config segments have no include-voided switch", async () => {
+    const { repos } = await seed();
+    const { view } = await renderManage(<ManageTab />, { repos });
+
+    await fireEvent.press(view.getByTestId("seg-restock"));
+    await waitForSync(() => view.getByTestId("view-restock"));
+    expect(view.queryByTestId("staff-include-voided")).toBeNull();
+    expect(view.queryByTestId("product-include-voided")).toBeNull();
+
+    await fireEvent.press(view.getByTestId("seg-config"));
+    await waitForSync(() => view.getByTestId("config-price-input"));
+    expect(view.queryByTestId("staff-include-voided")).toBeNull();
+    expect(view.queryByTestId("product-include-voided")).toBeNull();
   });
 });
 
@@ -294,9 +360,9 @@ describe("ManageTab — product void/restore + snapshot preservation (spec #09 A
     await fireEvent.press(view.getByTestId("seg-product"));
     await waitForSync(() => view.getByTestId(`manage-product-${colaId}`));
 
-    // void — soft-delete; drops from active product reads (pickers)
+    // void — soft-delete; drops from list when 「包含删除」is off
     await fireEvent.press(view.getByTestId(`product-void-${colaId}`));
-    await waitForSync(() => view.getByText("已删除"));
+    await waitForSync(() => expect(() => view.getByTestId(`manage-product-${colaId}`)).toThrow());
     const voided = await repos.products.getById(colaId);
     expect(voided?.voided_at).not.toBeNull();
     const active = await repos.products.list();
@@ -307,7 +373,9 @@ describe("ManageTab — product void/restore + snapshot preservation (spec #09 A
     expect(detail?.items[0].title).toBe("可乐");
     expect(detail?.items[0].unit_price).toBe(cents(300));
 
-    // restore — re-selectable
+    // flip switch → restore affordance; restore — re-selectable
+    await fireEvent(view.getByTestId("product-include-voided"), "valueChange", true);
+    await waitForSync(() => view.getByText("已删除"));
     await fireEvent.press(view.getByTestId(`product-restore-${colaId}`));
     await waitForSync(() => expect(() => view.getByText("已删除")).toThrow());
     const restored = await repos.products.getById(colaId);

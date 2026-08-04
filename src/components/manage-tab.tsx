@@ -3,6 +3,7 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
+  Switch,
   Text,
   TextInput,
   View,
@@ -345,17 +346,19 @@ function RestockManage() {
 }
 
 /**
- * Staff CRUD — searchable list of staff (active + voided, with a restore
- * affordance on voided rows), plus a create/edit form. `list({ includeVoided })`
- * is used so the operator can see and restore soft-deleted staff; search()
- * stays active-only, mirroring how 记账 selectors see the world.
+ * Staff CRUD — searchable list + create/edit form. Default list is active-only;
+ * 「包含删除」Switch (testID staff-include-voided) shares includeVoided with
+ * search so voided members can be found and restored.
  */
 function StaffManage() {
   const theme = useTheme();
   const [search, setSearch] = useState("");
+  const [includeVoided, setIncludeVoided] = useState(false);
   const [creating, setCreating] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const staff = useStaff(search ? { search } : { includeVoided: true });
+  const staff = useStaff(
+    search ? { search, includeVoided } : { includeVoided },
+  );
   const voidStaff = useVoidStaff();
   const restoreStaff = useRestoreStaff();
   const rows = staff.data ?? [];
@@ -373,6 +376,16 @@ function StaffManage() {
       style={styles.domain}
       contentContainerStyle={styles.listContent}
     >
+      <View style={styles.filterBar}>
+        <Text style={[styles.filterLabel, { color: theme.textSecondary }]}>
+          包含删除
+        </Text>
+        <Switch
+          testID="staff-include-voided"
+          value={includeVoided}
+          onValueChange={setIncludeVoided}
+        />
+      </View>
       <TextInput
         testID="staff-search"
         style={[
@@ -630,18 +643,19 @@ function StaffForm({
 }
 
 /**
- * Product CRUD (spec #09) — mirrors StaffManage: searchable list (active +
- * voided, restore on voided rows) + a create/edit form (tap a row to edit).
- * Rows show title / price (MoneyText). A price edit revalues inventory on next read
- * (ADR-0002) via useUpdateProduct's cross-entity invalidation (Slice 5).
+ * Product CRUD — mirrors StaffManage: searchable list + create/edit form.
+ * Default list is active-only; 「包含删除」shares includeVoided with search.
  */
 function ProductManage() {
   const theme = useTheme();
   const [search, setSearch] = useState("");
+  const [includeVoided, setIncludeVoided] = useState(false);
   const [creating, setCreating] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const products = useProducts(
-    search ? { search: { text: search } } : { includeVoided: true },
+    search
+      ? { search: { text: search }, includeVoided }
+      : { includeVoided },
   );
   const voidProduct = useVoidProduct();
   const restoreProduct = useRestoreProduct();
@@ -662,6 +676,16 @@ function ProductManage() {
       style={styles.domain}
       contentContainerStyle={styles.listContent}
     >
+      <View style={styles.filterBar}>
+        <Text style={[styles.filterLabel, { color: theme.textSecondary }]}>
+          包含删除
+        </Text>
+        <Switch
+          testID="product-include-voided"
+          value={includeVoided}
+          onValueChange={setIncludeVoided}
+        />
+      </View>
       <TextInput
         testID="product-search"
         style={[
@@ -895,6 +919,12 @@ const styles = StyleSheet.create({
   form: { flex: 1, gap: 8 },
   field: { flexDirection: "row", alignItems: "center", gap: 8, marginTop: 8 },
   fieldLabel: { fontSize: 14, fontWeight: "500" },
+  filterBar: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  filterLabel: { fontSize: 14, fontWeight: "500" },
 
   label: { fontSize: 13, fontWeight: "500", width: 84 },
   listContent: { gap: 8, paddingBottom: BottomTabInset },

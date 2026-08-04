@@ -26,9 +26,10 @@ export function useStaff(opts?: { search?: string; includeVoided?: boolean }): U
   return useQuery<Staff[]>({
     queryKey: qk.staff.list(opts),
     queryFn: () => {
-      // search() always excludes voided (active-only); the unfiltered list honors
-      // includeVoided so 管理 (#09) can show voided rows + a restore affordance.
-      if (opts?.search) return repos.staff.search({ text: opts.search });
+      // Search and list share includeVoided so 管理「包含删除」covers both paths.
+      if (opts?.search) {
+        return repos.staff.search({ text: opts.search, includeVoided: opts?.includeVoided });
+      }
       return repos.staff.list({ includeVoided: opts?.includeVoided });
     },
   });
@@ -50,9 +51,10 @@ export function useProducts(
   return useQuery<Product[]>({
     queryKey: qk.products.list(opts),
     queryFn: () => {
-      // search() always excludes voided; the unfiltered list honors includeVoided
-      // so 管理 (#09) can show voided products + a restore affordance.
-      if (opts?.search) return repos.products.search(opts.search);
+      // Search and list share includeVoided so 管理「包含删除」covers both paths.
+      if (opts?.search) {
+        return repos.products.search({ ...opts.search, includeVoided: opts?.includeVoided });
+      }
       return repos.products.list({ includeVoided: opts?.includeVoided });
     },
   });
